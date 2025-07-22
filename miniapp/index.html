@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Цифровые Услуги</title>
+
+    <!-- Telegram Web App Script -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- Telegram Web App Styling -->
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: #1a1a2e;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      }
+
+      html, body, #root {
+        height: 100%;
+        overflow-x: hidden;
+      }
+
+      .app-container {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- Initialize Telegram Web App -->
+    <script>
+      // Инициализация Telegram Web App
+      if (window.Telegram && window.Telegram.WebApp) {
+        const tg = window.Telegram.WebApp;
+
+        // Настройка WebApp
+        tg.expand();
+        tg.MainButton.hide();
+
+        // Настройка темы
+        tg.setHeaderColor('#1a1a2e');
+        tg.setBackgroundColor('#1a1a2e');
+
+        // Включаем closing confirmation
+        tg.enableClosingConfirmation();
+
+        console.log('Telegram WebApp initialized:', tg);
+        console.log('User data:', tg.initDataUnsafe);
+      } else {
+        console.warn('Telegram WebApp not available');
+
+        // Для тестирования без Telegram
+        window.Telegram = {
+          WebApp: {
+            initDataUnsafe: {
+              user: {
+                id: 12345,
+                first_name: 'Test',
+                last_name: 'User',
+                username: 'testuser'
+              }
+            },
+            expand: () => {},
+            MainButton: { hide: () => {} },
+            setHeaderColor: () => {},
+            setBackgroundColor: () => {},
+            enableClosingConfirmation: () => {},
+            HapticFeedback: {
+              impactOccurred: () => {},
+              notificationOccurred: () => {}
+            },
+            showAlert: (message, callback) => {
+              alert(message);
+              if (callback) callback();
+            }
+          }
+        };
+      }
+    </script>
+
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
