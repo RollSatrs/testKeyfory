@@ -15,7 +15,6 @@ export const Services = sequelize.define('Services',{
   name: { type: DataTypes.STRING, allowNull: false },
   description: { type: DataTypes.TEXT }, // описание услуги
   category: { type: DataTypes.STRING },
-  price: { type: DataTypes.FLOAT }, // цена услуги
   required_keys: { type: DataTypes.INTEGER, defaultValue: 1 }, // сколько ключей нужно для услуги
   status: { type: DataTypes.STRING },
   admin_id: {

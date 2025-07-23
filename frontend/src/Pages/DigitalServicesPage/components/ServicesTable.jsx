@@ -56,7 +56,6 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       name: service.name,
       category: service.category,
       required_keys: service.required_keys,
-      price: service.price,
       status: service.status
     })
     setEditForm(true)
@@ -110,12 +109,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       dataIndex: 'required_keys',
       key: 'required_keys',
     },
-    {
-      title: 'Цена',
-      dataIndex: 'price',
-      key: 'price',
-      render: (price) => `${price} ₽`
-    },
+
     {
       title: 'Статус',
       dataIndex: 'status',

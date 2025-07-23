@@ -129,15 +129,6 @@ export function ServicesHeader({ onAdd, children }) {
               placeholder="Требуется ключей"
               required
             />
-            <Input
-              name="price"
-              type="number"
-              min={0}
-              value={form.price}
-              onChange={e => handleChange('price', e.target.value)}
-              placeholder="Цена (₽)"
-              required
-            />
             <Select
               name="status"
               value={form.status || undefined}

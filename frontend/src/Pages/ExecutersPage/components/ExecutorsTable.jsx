@@ -4,7 +4,7 @@ import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, Rate, mess
 
 const token = localStorage.getItem("admin_token");
 
-export function ExecutorsTable({ onChanged, setExecutors, executors }) {
+export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) {
   const [loading, setLoading] = useState(false);
   const [editForm, setEditForm] = useState(false);
   const [form, setForm] = useState({
@@ -44,7 +44,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors }) {
   useEffect(() => {
     fetchExecutors();
     // eslint-disable-next-line
-  }, []);
+  }, [refresh]); // <--- добавьте refresh сюда
 
   // Вызывать обновление статистики после любого действия
   function notifyChanged() {

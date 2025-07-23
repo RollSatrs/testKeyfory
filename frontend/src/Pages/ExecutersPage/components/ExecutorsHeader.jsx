@@ -16,6 +16,15 @@ export function ExecutorsHeader({ onAdd, children }) {
     setForm({ ...form, [name]: value });
   };
 
+  const resetForm = () => {
+    setForm({
+      name: '',
+      telegram_id: '',
+      status: '',
+      rating: 0
+    });
+  };
+
   const handleSubmit = async e => {
     e.preventDefault();
     await fetch('http://localhost:3000/api/executers/add', {
@@ -27,7 +36,14 @@ export function ExecutorsHeader({ onAdd, children }) {
       body: JSON.stringify(form)
     });
     setShowModal(false);
+    resetForm();
     if (onAdd) onAdd();
+    
+  };
+
+  const handleClose = () => {
+    setShowModal(false);
+    resetForm();
   };
 
 
@@ -95,7 +111,7 @@ export function ExecutorsHeader({ onAdd, children }) {
             <div className="flex gap-3 justify-end mt-2">
               <Button
                 type="default"
-                onClick={() => setShowModal(false)}
+                onClick={handleClose}
               >
                 Отмена
               </Button>

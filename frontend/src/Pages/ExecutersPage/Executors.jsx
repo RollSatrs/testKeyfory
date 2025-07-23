@@ -30,7 +30,7 @@ export function Executors() {
 
   return (
     <>
-      <ExecutorsHeader />
+      <ExecutorsHeader onAdd={() => setRefresh(r => !r)} />
       <ExecutorsStats refresh={refresh} />
       <ExecutorsSearch
         search={search}
@@ -39,12 +39,12 @@ export function Executors() {
         setStatusFilter={setStatusFilter}
         ratingFilter={ratingFilter}
         setRatingFilter={setRatingFilter}
-        // allowClear для Rate уже реализован, это и есть "все рейтинги"
       />
       <ExecutorsTable
         onChanged={() => setRefresh(r => !r)}
         setExecutors={setExecutors}
         executors={filteredExecutors}
+        refresh={refresh}
       />
     </>
   )
