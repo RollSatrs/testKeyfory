@@ -295,6 +295,19 @@ export function KeysMaterialsHeader({ onAdd }) {
               <Select.Option value="used">Использован</Select.Option>
               <Select.Option value="reserved">Зарезервирован</Select.Option>
             </Select>
+
+            <Select
+              name="source"
+              value={form.source || 'manual'}
+              onChange={value => handleChange('source', value)}
+              placeholder="Источник материала"
+              className="w-full"
+              required
+            >
+              <Select.Option value="manual">Ручной ввод</Select.Option>
+              <Select.Option value="api">API</Select.Option>
+            </Select>
+
             <div className="flex gap-3 justify-end mt-2">
               <Button type="default" onClick={handleClose}>Отмена</Button>
               <Button

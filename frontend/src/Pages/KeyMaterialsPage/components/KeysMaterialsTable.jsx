@@ -1,25 +1,19 @@
 import { FaEdit, FaTrash } from 'react-icons/fa'
 import { useEffect, useState } from 'react'
 import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message } from 'antd'
+import { notifyMaterialsChange } from '../../../utils/eventUtils'
 
 export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilter = '', typeFilter = '' }) {
   const [materials, setMaterials] = useState([])
   const [services, setServices] = useState([])
   const [editForm, setEditForm] = useState(false)
-
-  // Функция для уведомления других компонентов об изменениях
-  const notifyDataChange = () => {
-    const event = new CustomEvent('materialsDataChanged', {
-      detail: { timestamp: Date.now() }
-    });
-    window.dispatchEvent(event);
-  }
   const [form, setForm] = useState({
     id: null,
     type_key: '',
     service_id: '',
     contents: '',
-    status: ''
+    status: '',
+    source: ''
   })
 
   useEffect(() => {
@@ -68,7 +62,7 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
       })
       fetchMaterials()
       if (onChange) onChange()
-      notifyDataChange() // Уведомляем другие компоненты об изменениях
+      notifyMaterialsChange() // Уведомляем другие компоненты об изменениях
       message.success('Материал удален')
     } catch (error) {
       message.error('Ошибка при удалении материала')
@@ -81,7 +75,8 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
       type_key: material.type_key,
       service_id: material.service_id,
       contents: material.contents,
-      status: material.status
+      status: material.status,
+      source: material.source || 'manual'
     })
     setEditForm(true)
   }
@@ -102,13 +97,14 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
           type_key: form.type_key,
           service_id: form.service_id,
           contents: form.contents,
-          status: form.status
+          status: form.status,
+          source: form.source
         })
       })
       setEditForm(false)
       fetchMaterials()
       if (onChange) onChange()
-      notifyDataChange() // Уведомляем другие компоненты об изменениях
+      notifyMaterialsChange() // Уведомляем другие компоненты об изменениях
       message.success('Материал обновлен')
     } catch (error) {
       message.error('Ошибка при обновлении материала')
@@ -170,7 +166,11 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
       title: 'Источник',
       dataIndex: 'source',
       key: 'source',
-      render: (source) => source || 'manual'
+      render: (source) => {
+        if (source === 'api') return 'API';
+        if (source === 'manual') return 'Ручной ввод';
+        return 'Ручной ввод'; // По умолчанию
+      }
     },
     {
       title: 'Действия',
@@ -256,11 +256,23 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
           onChange={value => handleChange('status', value)}
           placeholder="Статус материала"
           className="w-full"
-          style={{ marginBottom: 8 }}
+          style={{ marginBottom: 16 }}
         >
           <Select.Option value="available">ДОСТУПЕН</Select.Option>
           <Select.Option value="used">ИСПОЛЬЗОВАН</Select.Option>
           <Select.Option value="reserved">ЗАРЕЗЕРВИРОВАН</Select.Option>
+        </Select>
+
+        <Select
+          name="source"
+          value={form.source || 'manual'}
+          onChange={value => handleChange('source', value)}
+          placeholder="Источник материала"
+          className="w-full"
+          style={{ marginBottom: 8 }}
+        >
+          <Select.Option value="manual">Ручной ввод</Select.Option>
+          <Select.Option value="api">API</Select.Option>
         </Select>
       </Modal>
     </div>
