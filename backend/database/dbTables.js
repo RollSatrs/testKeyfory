@@ -1,4 +1,3 @@
-import bcrypt from 'bcrypt';
 import {sequelize} from './databaseOn.js'
 import { DataTypes } from 'sequelize';
 

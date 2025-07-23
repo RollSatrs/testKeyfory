@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.11",
+    "ant": "^0.0.0",
+    "antd": "^5.26.6",
     "chart.js": "^4.5.0",
     "react": "^19.1.0",
     "react-chartjs-2": "^5.3.0",

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Input, Select, Button } from 'antd'
 
 const categories = [
   "Игры",
@@ -40,12 +41,13 @@ export function ServicesHeader({ onAdd, children }) {
   const [form, setForm] = useState({
     name: '',
     category: '',
-    required_keys: 1,
-    status: 'АКТИВНА'
+    required_keys: '',
+    price: '',
+    status: ''
   })
 
-  const handleChange = e => {
-    setForm({ ...form, [e.target.name]: e.target.value })
+  const handleChange = (name, value) => {
+    setForm({ ...form, [name]: value })
   }
 
   const handleSubmit = async e => {
@@ -64,22 +66,33 @@ export function ServicesHeader({ onAdd, children }) {
 
   return (
     <>
-      {/* Контент страницы */}
       <div>
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex bg-white shadow p-6 rounded-4xl items-center justify-between">
             <h1 className="text-2xl font-bold">Управление услугами</h1>
-            <button
-              className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-5 py-2 rounded-lg font-medium flex items-center gap-2 hover:from-blue-600 hover:to-cyan-600 transition"
-              onClick={() => setShowModal(true)}
+            <Button
+              type="primary"
+              style={{
+                background: "linear-gradient(to right, #3b82f6, #06b6d4)",
+                border: "none"
+              }}
+              onClick={() => {
+                setForm({
+                  name: '',
+                  category: '',
+                  required_keys: '',
+                  price: '',
+                  status: ''
+                });
+                setShowModal(true);
+              }}
             >
               + Добавить услугу
-            </button>
+            </Button>
           </div>
           {children}
         </div>
       </div>
-      {/* Модальное окно по центру, без blur */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-opacity-40 backdrop-blur-sm transition-all">
           <form
@@ -88,62 +101,73 @@ export function ServicesHeader({ onAdd, children }) {
             style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37)' }}
           >
             <h2 className="text-2xl font-bold mb-2 text-blue-700 text-center">Добавить услугу</h2>
-            <input
+            <Input
               name="name"
               value={form.name}
-              onChange={handleChange}
+              onChange={e => handleChange('name', e.target.value)}
               placeholder="Название услуги"
-              className="border border-blue-200 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
               required
             />
-            <select
+            <Select
               name="category"
-              value={form.category}
-              onChange={handleChange}
-              className="border border-blue-200 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+              value={form.category || undefined} // важно!
+              onChange={value => handleChange('category', value)}
+              placeholder="Выберите категорию"
+              className="w-full"
               required
             >
-              <option value="" disabled>Выберите категорию</option>
               {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
+                <Select.Option key={cat} value={cat}>{cat}</Select.Option>
               ))}
-            </select>
-            <input
+            </Select>
+            <Input
               name="required_keys"
               type="number"
               min={1}
               value={form.required_keys}
-              onChange={handleChange}
+              onChange={e => handleChange('required_keys', e.target.value)}
               placeholder="Требуется ключей"
-              className="border border-blue-200 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
               required
             />
-            <select
+            <Input
+              name="price"
+              type="number"
+              min={0}
+              value={form.price}
+              onChange={e => handleChange('price', e.target.value)}
+              placeholder="Цена (₽)"
+              required
+            />
+            <Select
               name="status"
-              value={form.status}
-              onChange={handleChange}
-              className="border border-blue-200 px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+              value={form.status || undefined}
+              onChange={value => handleChange('status', value)}
+              placeholder="Выберите статус"
+              className="w-full"
+              required
             >
-              <option value="АКТИВНА">АКТИВНА</option>
-              <option value="НЕАКТИВНА">НЕАКТИВНА</option>
-            </select>
+              <Select.Option value="active">АКТИВНА</Select.Option>
+              <Select.Option value="inactive">НЕАКТИВНА</Select.Option>
+            </Select>
             <div className="flex gap-3 justify-end mt-2">
-              <button
-                type="button"
-                className="px-5 py-2 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition font-medium"
+              <Button
+                type="default"
                 onClick={() => setShowModal(false)}
               >
                 Отмена
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold shadow hover:from-blue-600 hover:to-cyan-600 transition"
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                style={{
+                  background: "linear-gradient(to right, #3b82f6, #06b6d4)",
+                  border: "none"
+                }}
               >
                 Сохранить
-              </button>
+              </Button>
             </div>
           </form>
-          {/* Анимация появления */}
           <style>
             {`
               .animate-fade-in {

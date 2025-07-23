@@ -1,5 +1,6 @@
 import { Services, Material } from "../../database/dbTables.js";
 
+
 export async function getAllServices() {
     try {
         const services = await Services.findAll({
@@ -36,18 +37,20 @@ export async function getServiceById(id) {
 
 export async function addServiices(data) {
     try {
-        const { name, category, required_keys, status = 'active', admin_id = 1 } = data;
+        const { name, category, required_keys, price, status } = data;
 
         if (!name || !category) {
             throw new Error('Name and category are required');
         }
+        if (price === undefined) throw new Error('price is not defined');
 
         const newService = await Services.create({
             name,
             category,
+            price,
             required_keys: required_keys || 0,
             status,
-            admin_id
+            admin_id: 1
         });
         return newService;
     } catch (error) {
