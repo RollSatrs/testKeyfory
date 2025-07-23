@@ -1,39 +1,70 @@
-import { MdInventory, MdCheckCircle, MdError, MdLock } from 'react-icons/md'
+import { useEffect, useState } from 'react'
+import { MdListAlt } from 'react-icons/md'
 
-export function KeysMaterialsStats() {
+const token = localStorage.getItem("admin_token");
+
+export function KeysMaterialsStats({ refresh }) {
+  const [stats, setStats] = useState({
+    total: 0,
+    available: 0,
+    used: 0,
+    reserved: 0
+  });
+
+  async function fetchStats() {
+    try {
+      const res = await fetch('http://localhost:3000/api/materials/stats', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      setStats({
+        total: data.total || 0,
+        available: data.available || 0,
+        used: data.used || 0,
+        reserved: data.reserved || 0
+      });
+    } catch (e) {
+      console.error('Ошибка при получении статистики материалов:', e);
+    }
+  }
+
+  useEffect(() => {
+    fetchStats();
+  }, [refresh]);
+
   return (
     <div className="grid grid-cols-4 gap-4 mb-6">
       <div className="bg-white rounded-xl shadow p-6 flex flex-col">
         <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdInventory size={20} />
+          <MdListAlt size={20} />
           Всего материалов
         </div>
-        <div className="text-2xl font-bold">5</div>
-        <div className="text-green-500 text-sm mt-1">4 ключей</div>
+        <div className="text-2xl font-bold">{stats.total}</div>
       </div>
       <div className="bg-white rounded-xl shadow p-6 flex flex-col">
         <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdCheckCircle size={20} />
+          <MdListAlt size={20} />
           Доступно
         </div>
-        <div className="text-2xl font-bold">2</div>
-        <div className="text-green-500 text-sm mt-1">Готово к использованию</div>
+        <div className="text-2xl font-bold text-green-600">{stats.available}</div>
       </div>
       <div className="bg-white rounded-xl shadow p-6 flex flex-col">
         <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdLock size={20} />
+          <MdListAlt size={20} />
           Использовано
         </div>
-        <div className="text-2xl font-bold">1</div>
-        <div className="text-blue-500 text-sm mt-1">1 зарезервировано</div>
+        <div className="text-2xl font-bold text-red-500">{stats.used}</div>
       </div>
       <div className="bg-white rounded-xl shadow p-6 flex flex-col">
         <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdError size={20} />
-          Проблемы
+          <MdListAlt size={20} />
+          Зарезервировано
         </div>
-        <div className="text-2xl font-bold">1</div>
-        <div className="text-red-500 text-sm mt-1">Требует внимания</div>
+        <div className="text-2xl font-bold text-yellow-500">{stats.reserved}</div>
       </div>
     </div>
   )

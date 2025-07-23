@@ -1,97 +1,268 @@
-import { FaKey } from 'react-icons/fa'
-import { FiEdit, FiTrash2 } from 'react-icons/fi'
+import { FaEdit, FaTrash } from 'react-icons/fa'
+import { useEffect, useState } from 'react'
+import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message } from 'antd'
 
-const materials = [
-  {
-    type: 'Ключ',
-    service: 'Spotify Premium 3 месяца',
-    content: 'SPOT-ABC123-XYZ789',
-    status: 'ДОСТУПЕН',
-    source: 'API СКЛАДА',
-    added: '15.01.2024, 10:00',
-    used: '-',
-    order: '-',
-  },
-  {
-    type: 'Ключ',
-    service: 'Netflix Premium 6 месяцев',
-    content: 'NETF-DEF456-QWE321',
-    status: 'ИСПОЛЬЗОВАН',
-    source: 'РУЧНАЯ ЗАГРУЗКА',
-    added: '14.01.2024, 15:30',
-    used: '15.01.2024, 11:45',
-    order: 'ORD-002',
-  },
-  {
-    type: 'Ключ',
-    service: 'Xbox Game Pass Ultimate 1 месяц',
-    content: 'XBOX-GH1789-ASD654',
-    status: 'ЗАРЕЗЕРВИРОВАН',
-    source: 'API СКЛАДА',
-    added: '15.01.2024, 09:15',
-    used: '-',
-    order: 'ORD-003',
-  },
-]
+export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilter = '', typeFilter = '' }) {
+  const [materials, setMaterials] = useState([])
+  const [services, setServices] = useState([])
+  const [editForm, setEditForm] = useState(false)
 
-export function KeysMaterialsTable() {
+  // Функция для уведомления других компонентов об изменениях
+  const notifyDataChange = () => {
+    const event = new CustomEvent('materialsDataChanged', {
+      detail: { timestamp: Date.now() }
+    });
+    window.dispatchEvent(event);
+  }
+  const [form, setForm] = useState({
+    id: null,
+    type_key: '',
+    service_id: '',
+    contents: '',
+    status: ''
+  })
+
+  useEffect(() => {
+    fetchMaterials()
+    fetchServices()
+  }, [refresh])
+
+  async function fetchMaterials() {
+    try {
+      const res = await fetch('http://localhost:3000/api/materials/get', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        }
+      })
+      const data = await res.json()
+      setMaterials(data)
+    } catch (error) {
+      console.error('Ошибка загрузки материалов:', error)
+    }
+  }
+
+  async function fetchServices() {
+    try {
+      const res = await fetch('http://localhost:3000/api/services/get', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        }
+      })
+      const data = await res.json()
+      setServices(data)
+    } catch (error) {
+      console.error('Ошибка загрузки услуг:', error)
+    }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await fetch(`http://localhost:3000/api/materials/delete/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        }
+      })
+      fetchMaterials()
+      if (onChange) onChange()
+      notifyDataChange() // Уведомляем другие компоненты об изменениях
+      message.success('Материал удален')
+    } catch (error) {
+      message.error('Ошибка при удалении материала')
+    }
+  }
+
+  function openEditModal(material) {
+    setForm({
+      id: material.id,
+      type_key: material.type_key,
+      service_id: material.service_id,
+      contents: material.contents,
+      status: material.status
+    })
+    setEditForm(true)
+  }
+
+  function handleChange(name, value) {
+    setForm({ ...form, [name]: value })
+  }
+
+  async function handleEditSubmit() {
+    try {
+      await fetch(`http://localhost:3000/api/materials/update/${form.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          type_key: form.type_key,
+          service_id: form.service_id,
+          contents: form.contents,
+          status: form.status
+        })
+      })
+      setEditForm(false)
+      fetchMaterials()
+      if (onChange) onChange()
+      notifyDataChange() // Уведомляем другие компоненты об изменениях
+      message.success('Материал обновлен')
+    } catch (error) {
+      message.error('Ошибка при обновлении материала')
+    }
+  }
+
+  // Фильтрация перед отображением
+  const filteredMaterials = materials.filter(m =>
+    (m.contents?.toLowerCase().includes(search.toLowerCase()) ||
+     m.type_key?.toLowerCase().includes(search.toLowerCase())) &&
+    (statusFilter ? m.status === statusFilter : true) &&
+    (typeFilter ? m.type_key === typeFilter : true)
+  );
+
+  const getServiceName = (serviceId) => {
+    const service = services.find(s => s.id === serviceId);
+    return service ? service.name : 'Неизвестная услуга';
+  }
+
+  const columns = [
+    {
+      title: 'Тип',
+      dataIndex: 'type_key',
+      key: 'type_key',
+    },
+    {
+      title: 'Услуга',
+      dataIndex: 'service_id',
+      key: 'service_id',
+      render: (serviceId) => getServiceName(serviceId)
+    },
+    {
+      title: 'Содержимое',
+      dataIndex: 'contents',
+      key: 'contents',
+      render: (contents) => (
+        <div style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {contents}
+        </div>
+      )
+    },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => (
+        <Tag color={
+          status === 'available' ? 'green' :
+          status === 'used' ? 'red' :
+          status === 'reserved' ? 'orange' : 'default'
+        }>
+          {status === 'available' ? 'ДОСТУПЕН' :
+           status === 'used' ? 'ИСПОЛЬЗОВАН' :
+           status === 'reserved' ? 'ЗАРЕЗЕРВИРОВАН' : status}
+        </Tag>
+      )
+    },
+    {
+      title: 'Источник',
+      dataIndex: 'source',
+      key: 'source',
+      render: (source) => source || 'manual'
+    },
+    {
+      title: 'Действия',
+      key: 'actions',
+      render: (_, record) => (
+        <Space>
+          <Button
+            icon={<FaEdit />}
+            onClick={() => openEditModal(record)}
+            size="small"
+          />
+          <Popconfirm
+            title="Удалить материал?"
+            onConfirm={() => handleDelete(record.id)}
+            okText="Да"
+            cancelText="Нет"
+          >
+            <Button
+              icon={<FaTrash />}
+              danger
+              size="small"
+            />
+          </Popconfirm>
+        </Space>
+      )
+    }
+  ];
+
   return (
-    <div className="bg-white rounded-2xl shadow p-6">
-      <table className="min-w-full rounded-xl overflow-hidden">
-        <thead>
-          <tr className="bg-gray-100 text-gray-500 text-left text-sm">
-            <th className="py-3 px-4 font-semibold">Тип</th>
-            <th className="py-3 px-4 font-semibold">Услуга</th>
-            <th className="py-3 px-4 font-semibold">Содержимое</th>
-            <th className="py-3 px-4 font-semibold">Статус</th>
-            <th className="py-3 px-4 font-semibold">Источник</th>
-            <th className="py-3 px-4 font-semibold">Добавлен</th>
-            <th className="py-3 px-4 font-semibold">Использован</th>
-            <th className="py-3 px-4 font-semibold">Заказ</th>
-            <th className="py-3 px-4 font-semibold">Действия</th>
-          </tr>
-        </thead>
-        <tbody>
-          {materials.map((m, idx) => (
-            <tr
-              key={idx}
-              className={`transition hover:bg-blue-50 ${idx !== materials.length - 1 ? "border-b border-gray-200" : ""}`}
-            >
-              <td className="py-3 px-4 flex items-center gap-2">
-                <FaKey className="text-gray-400" size={16} />
-                {m.type}
-              </td>
-              <td className="py-3 px-4">{m.service}</td>
-              <td className="py-3 px-4">
-                <span className="bg-gray-50 px-2 py-1 rounded font-mono text-xs text-gray-700">{m.content}</span>
-              </td>
-              <td className="py-3 px-4">
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold
-                  ${m.status === 'ДОСТУПЕН'
-                    ? 'bg-green-100 text-green-700'
-                    : m.status === 'ИСПОЛЬЗОВАН'
-                    ? 'bg-gray-200 text-gray-700'
-                    : 'bg-blue-100 text-blue-700'
-                  }`}>
-                  {m.status}
-                </span>
-              </td>
-              <td className="py-3 px-4">{m.source}</td>
-              <td className="py-3 px-4">{m.added}</td>
-              <td className="py-3 px-4">{m.used}</td>
-              <td className="py-3 px-4">{m.order}</td>
-              <td className="py-3 px-4 flex gap-2">
-                <button className="bg-gray-100 p-2 rounded hover:bg-gray-200">
-                  <FiEdit className="text-gray-500" size={16} />
-                </button>
-                <button className="bg-red-100 p-2 rounded hover:bg-red-200">
-                  <FiTrash2 className="text-red-500" size={16} />
-                </button>
-              </td>
-            </tr>
+    <div className="bg-white rounded-xl shadow p-4">
+      <Table
+        columns={columns}
+        dataSource={filteredMaterials}
+        rowKey="id"
+        pagination={{ pageSize: 10 }}
+        bordered
+      />
+      <Modal
+        open={editForm}
+        title="Редактировать материал"
+        onCancel={() => setEditForm(false)}
+        onOk={handleEditSubmit}
+        okText="Сохранить"
+        cancelText="Отмена"
+      >
+        <Select
+          name="type_key"
+          value={form.type_key || undefined}
+          onChange={value => handleChange('type_key', value)}
+          placeholder="Тип материала"
+          className="w-full"
+          style={{ marginBottom: 16 }}
+        >
+          <Select.Option value="Ключ">Ключ</Select.Option>
+          <Select.Option value="Лицензия">Лицензия</Select.Option>
+          <Select.Option value="Код">Код</Select.Option>
+        </Select>
+
+        <Select
+          name="service_id"
+          value={form.service_id || undefined}
+          onChange={value => handleChange('service_id', value)}
+          placeholder="Привязать к услуге"
+          className="w-full"
+          style={{ marginBottom: 16 }}
+        >
+          {services.map(service => (
+            <Select.Option key={service.id} value={service.id}>{service.name}</Select.Option>
           ))}
-        </tbody>
-      </table>
+        </Select>
+
+        <Input
+          name="contents"
+          value={form.contents}
+          onChange={e => handleChange('contents', e.target.value)}
+          placeholder="Содержимое (ключ, код и т.п.)"
+          style={{ marginBottom: 16 }}
+        />
+
+        <Select
+          name="status"
+          value={form.status || undefined}
+          onChange={value => handleChange('status', value)}
+          placeholder="Статус материала"
+          className="w-full"
+          style={{ marginBottom: 8 }}
+        >
+          <Select.Option value="available">ДОСТУПЕН</Select.Option>
+          <Select.Option value="used">ИСПОЛЬЗОВАН</Select.Option>
+          <Select.Option value="reserved">ЗАРЕЗЕРВИРОВАН</Select.Option>
+        </Select>
+      </Modal>
     </div>
   )
 }

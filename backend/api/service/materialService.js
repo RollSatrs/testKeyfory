@@ -6,11 +6,11 @@ export async function getAllMaterials() {
             include: [
                 {
                     model: Services,
-                    as: 'service',
+                    as: 'Service', // Изменили на 'Service' с большой буквы
                     attributes: ['name', 'category']
                 }
             ],
-            order: [['createdAt', 'DESC']]
+            order: [['create_date_material', 'DESC']]
         });
         return materials;
     } catch (error) {
@@ -24,7 +24,7 @@ export async function getMaterialById(id) {
             include: [
                 {
                     model: Services,
-                    as: 'service',
+                    as: 'Service', // Изменили на 'Service' с большой буквы
                     attributes: ['name', 'category']
                 }
             ]
@@ -40,10 +40,10 @@ export async function getMaterialById(id) {
 
 export async function addMaterial(data) {
     try {
-        const { key_data, source, service_id, status = 'available' } = data;
+        const { type_key, contents, source = 'manual', service_id, status = 'available' } = data;
 
-        if (!key_data || !source || !service_id) {
-            throw new Error('Key data, source and service ID are required');
+        if (!type_key || !contents || !service_id) {
+            throw new Error('Type key, contents and service ID are required');
         }
 
         // Проверяем существование услуги
@@ -52,11 +52,28 @@ export async function addMaterial(data) {
             throw new Error('Service not found');
         }
 
+        // Проверяем количество доступных ключей для этой услуги
+        const availableKeys = await Material.count({
+            where: {
+                service_id: service_id,
+                status: ['available', 'reserved'] // учитываем доступные и зарезервированные
+            }
+        });
+
+        const requiredKeys = service.required_keys || 0;
+
+        // Если доступных ключей уже достаточно, не добавляем новый
+        if (availableKeys >= requiredKeys) {
+            throw new Error(`Для услуги "${service.name}" уже достаточно ключей (${availableKeys}/${requiredKeys}). Добавление нового ключа не требуется.`);
+        }
+
         const newMaterial = await Material.create({
-            key_data,
+            type_key,
+            contents,
             source,
             service_id,
-            status
+            status,
+            added_date: new Date()
         });
         return newMaterial;
     } catch (error) {
@@ -117,7 +134,7 @@ export async function getMaterialsByService(serviceId) {
             include: [
                 {
                     model: Services,
-                    as: 'service',
+                    as: 'Service', // Изменили на 'Service' с большой буквы
                     attributes: ['name', 'category']
                 }
             ],

@@ -1,39 +1,72 @@
-import { MdPeople, MdAccessTime, MdCheckCircle, MdInventory } from 'react-icons/md'
+import { useEffect, useState } from 'react'
+import { MdListAlt } from 'react-icons/md'
 
-export function OrdersStats() {
+const token = localStorage.getItem("admin_token");
+
+export function OrdersStats({ refresh }) {
+  const [stats, setStats] = useState({
+    total: 0,
+    pending: 0,
+    in_progress: 0,
+    completed: 0,
+    cancelled: 0
+  });
+
+  async function fetchStats() {
+    try {
+      const res = await fetch('http://localhost:3000/api/orders/stats', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      setStats({
+        total: data.total || 0,
+        pending: data.pending || 0,
+        in_progress: data.in_progress || 0,
+        completed: data.completed || 0,
+        cancelled: data.cancelled || 0
+      });
+    } catch (e) {
+      console.error('Ошибка при получении статистики заказов:', e);
+    }
+  }
+
+  useEffect(() => {
+    fetchStats();
+  }, [refresh]);
+
   return (
     <div className="grid grid-cols-4 gap-4 mb-6">
       <div className="bg-white rounded-xl shadow p-6 flex flex-col">
         <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdPeople size={20} />
+          <MdListAlt size={20} />
           Всего заказов
         </div>
-        <div className="text-2xl font-bold">4</div>
-        <div className="text-green-500 text-sm mt-1">Сегодня</div>
+        <div className="text-2xl font-bold">{stats.total}</div>
       </div>
       <div className="bg-white rounded-xl shadow p-6 flex flex-col">
         <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdAccessTime size={20} />
+          <MdListAlt size={20} />
+          Ожидают
+        </div>
+        <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
+      </div>
+      <div className="bg-white rounded-xl shadow p-6 flex flex-col">
+        <div className="flex items-center gap-2 text-gray-500 mb-2">
+          <MdListAlt size={20} />
           В работе
         </div>
-        <div className="text-2xl font-bold">1</div>
-        <div className="text-yellow-500 text-sm mt-1">1 ожидают</div>
+        <div className="text-2xl font-bold text-blue-600">{stats.in_progress}</div>
       </div>
       <div className="bg-white rounded-xl shadow p-6 flex flex-col">
         <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdCheckCircle size={20} />
+          <MdListAlt size={20} />
           Завершено
         </div>
-        <div className="text-2xl font-bold">1</div>
-        <div className="text-green-500 text-sm mt-1">1 ошибок</div>
-      </div>
-      <div className="bg-white rounded-xl shadow p-6 flex flex-col">
-        <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdInventory size={20} />
-          Выручка
-        </div>
-        <div className="text-2xl font-bold">₽4 500</div>
-        <div className="text-green-500 text-sm mt-1">За сегодня</div>
+        <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
       </div>
     </div>
   )

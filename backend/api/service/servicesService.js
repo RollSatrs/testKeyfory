@@ -9,12 +9,21 @@ export async function getAllServices() {
         const result = [];
 
         for (const service of services) {
-            // Получаем уникальные источники материалов для услуги
+            // Получаем все материалы для услуги
             const materials = await Material.findAll({ where: { service_id: service.id } });
+
+            // Считаем доступные ключи (материалы со статусом не "used")
+            const availableKeys = materials.filter(m =>
+                m.status !== 'used' && m.status !== 'ИСПОЛЬЗОВАН'
+            ).length;
+
+            // Получаем уникальные источники материалов для услуги
             const sources = [...new Set(materials.map(m => m.source))];
+
             result.push({
                 ...service.dataValues,
-                source: sources.join(', ') || '-'
+                source: sources.join(', ') || '-',
+                available_keys: availableKeys
             });
         }
         return result;

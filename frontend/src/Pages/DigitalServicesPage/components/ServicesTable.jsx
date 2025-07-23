@@ -19,7 +19,6 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
     name: '',
     category: '',
     required_keys: 1,
-    price: '',
     status: ''
   })
 
@@ -76,7 +75,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
         name: form.name,
         category: form.category,
         required_keys: form.required_keys,
-        price: form.price,
+        
         status: form.status
       })
     })
@@ -105,9 +104,23 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       key: 'category',
     },
     {
-      title: 'Требуется ключей',
-      dataIndex: 'required_keys',
-      key: 'required_keys',
+      title: 'Ключи',
+      dataIndex: 'keys',
+      key: 'keys',
+      render: (_, record) => {
+        const required = record.required_keys ?? 0;
+        const available = record.available_keys ?? 0; // это поле должно приходить с бэка!
+        let color = available >= required ? 'green' : available > 0 ? 'red' : 'gray';
+
+        return (
+          <div>
+            <div style={{ marginBottom: 4, color: '#666' }}>Требуются ключи</div>
+            <div style={{ color, fontWeight: 500, fontSize: '14px' }}>
+              Доступно: {available} из {required} ключей
+            </div>
+          </div>
+        );
+      }
     },
 
     {
@@ -195,15 +208,6 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           value={form.required_keys}
           onChange={e => handleChange('required_keys', e.target.value)}
           placeholder="Требуется ключей"
-          style={{ marginBottom: 16 }}
-        />
-        <Input
-          name="price"
-          type="number"
-          min={0}
-          value={form.price}
-          onChange={e => handleChange('price', e.target.value)}
-          placeholder="Цена (₽)"
           style={{ marginBottom: 16 }}
         />
         <Select
