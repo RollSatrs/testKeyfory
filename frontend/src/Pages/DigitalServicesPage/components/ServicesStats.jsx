@@ -10,27 +10,27 @@ export function ServicesStats({ refresh }) {
     inactive: 0
   });
 
-  useEffect(() => {
-    async function fetchStats() {
-      try {
-        console.log(refresh)
-        const res = await fetch('http://localhost:3000/api/services/stats', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        const data = await res.json();
-        setStats({
-          total: data.total || 0,
-          active: data.active || 0,
-          inactive: data.inactive || 0
-        });
-      } catch (e) {
-        console.error('Ошибка при получении статистики:', e);
-      }
+  async function fetchStats() {
+    try {
+      console.log(refresh)
+      const res = await fetch('http://localhost:3000/api/services/stats', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      setStats({
+        total: data.total || 0,
+        active: data.active || 0,
+        inactive: data.inactive || 0
+      });
+    } catch (e) {
+      console.error('Ошибка при получении статистики:', e);
     }
+  }
+  useEffect(() => {
     fetchStats();
   }, [refresh]); // теперь статистика обновляется при изменении refresh
 

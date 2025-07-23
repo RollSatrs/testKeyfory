@@ -64,10 +64,10 @@ export const Order = sequelize.define('Order', {
       key: 'id'
     }
   },
-  performer_id: {
+  executer_id: {
     type: DataTypes.INTEGER,
     references: {
-      model: 'performers',
+      model: 'executers',
       key: 'id'
     }
   },
@@ -83,13 +83,14 @@ export const Order = sequelize.define('Order', {
 }, { tableName: 'orders', timestamps: true });
 
 // Исполнители
-export const Performer = sequelize.define('Performer', {
+export const Executer = sequelize.define('Executer', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  telegramId: { type: DataTypes.STRING, unique: true, allowNull: false },
+  name: { type: DataTypes.STRING, allowNull: true }, // имя исполнителя
+  telegram_id: { type: DataTypes.STRING, unique: true, allowNull: false },
   rating: { type: DataTypes.FLOAT, defaultValue: 0 },
   status: { type: DataTypes.STRING },
-  create_date_performer: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
-}, { tableName: 'performers', timestamps: false });
+  create_date_executer: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, { tableName: 'executers', timestamps: false });
 
 // Связи
 Admin.hasMany(Services, {foreignKey: 'admin_id'});
@@ -104,5 +105,5 @@ Material.belongsTo(Order, {foreignKey: 'order_id'});
 Services.hasMany(Order, {foreignKey: 'service_id'});
 Order.belongsTo(Services, {foreignKey: 'service_id'});
 
-Performer.hasMany(Order, {foreignKey: 'performer_id'});
-Order.belongsTo(Performer, {foreignKey: 'performer_id'});
+Executer.hasMany(Order, {foreignKey: 'executer_id'});
+Order.belongsTo(Executer, {foreignKey: 'executer_id'});

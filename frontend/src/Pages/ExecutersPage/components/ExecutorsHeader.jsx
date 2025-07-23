@@ -1,13 +1,129 @@
-export function ExecutorsHeader() {
+import { useState } from "react";
+import { Input, Select, Button, Rate } from 'antd';
+
+
+export function ExecutorsHeader({ onAdd, children }) {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({
+    name: '',
+    telegram_id: '',
+    status: '',
+    rating: 0
+  });
+
+
+  const handleChange = (name, value) => {
+    setForm({ ...form, [name]: value });
+  };
+
+  const handleSubmit = async e => {
+    e.preventDefault();
+    await fetch('http://localhost:3000/api/executers/add', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+      },
+      body: JSON.stringify(form)
+    });
+    setShowModal(false);
+    if (onAdd) onAdd();
+  };
+
+
   return (
-    <div className="flex bg-white shadow p-6 rounded-4xl items-center justify-between mb-6">
-      <div>
-        <h1 className="text-2xl font-bold">Исполнители</h1>
-        <div className="text-gray-500 text-sm mt-1">Простая версия страницы исполнителей для тестирования</div>
+    <>
+      <div className="flex bg-white shadow p-6 rounded-4xl items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Управление исполнителей</h1>
+        </div>
+        <Button
+          type="primary"
+          style={{
+            background: "linear-gradient(to right, #3b82f6, #06b6d4)",
+            border: "none"
+          }}
+          onClick={() => setShowModal(true)}
+        >
+          + Добавить исполнителя
+        </Button>
       </div>
-      <button className="bg-blue-600 text-white px-5 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-blue-700">
-        + Добавить исполнителя
-      </button>
-    </div>
-  )
+      {showModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-opacity-40 backdrop-blur-sm transition-all">
+          <form
+            className="bg-gradient-to-br from-white via-gray-50 to-blue-50 p-8 rounded-2xl shadow-2xl flex flex-col gap-6 min-w-[340px] animate-fade-in"
+            onSubmit={handleSubmit}
+            style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37)' }}
+          >
+            <h2 className="text-2xl font-bold mb-2 text-blue-700 text-center">Добавить исполнителя</h2>
+            <Input
+              name="name"
+              value={form.name}
+              onChange={e => handleChange('name', e.target.value)}
+              placeholder="Имя исполнителя"
+              required
+
+            />
+            <Input
+              name="telegram_id"
+              value={form.telegram_id}
+              onChange={e => handleChange('telegram_id', e.target.value)}
+              placeholder="Telegram ID"
+              required
+
+            />
+            <div>
+              <span className="block mb-1 text-gray-600">Рейтинг:</span>
+              <Rate
+                value={form.rating}
+                onChange={value => handleChange('rating', value)}
+                count={5}
+              />
+            </div>
+            <Select
+              name="status"
+              value={form.status || undefined}
+              onChange={value => handleChange('status', value)}
+              placeholder="Выберите статус"
+              className="w-full"
+              required
+
+            >
+              <Select.Option value="active">АКТИВЕН</Select.Option>
+              <Select.Option value="inactive">НЕАКТИВЕН</Select.Option>
+            </Select>
+            <div className="flex gap-3 justify-end mt-2">
+              <Button
+                type="default"
+                onClick={() => setShowModal(false)}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                style={{
+                  background: "linear-gradient(to right, #3b82f6, #06b6d4)",
+                  border: "none"
+                }}
+              >
+                Сохранить
+              </Button>
+            </div>
+          </form>
+          <style>
+            {`
+              .animate-fade-in {
+                animation: fadeIn 0.3s ease;
+              }
+              @keyframes fadeIn {
+                from { opacity: 0; transform: scale(0.97);}
+                to { opacity: 1; transform: scale(1);}
+              }
+            `}
+          </style>
+        </div>
+      )}
+    </>
+  );
 }

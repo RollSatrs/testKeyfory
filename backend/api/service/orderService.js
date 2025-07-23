@@ -1,4 +1,4 @@
-import { Order, Services, Performer } from "../../database/dbTables.js";
+import { Order, Services, Executer } from "../../database/dbTables.js";
 
 export async function getAllOrders() {
     try {
@@ -10,9 +10,9 @@ export async function getAllOrders() {
                     attributes: ['name', 'category']
                 },
                 {
-                    model: Performer,
-                    as: 'performer',
-                    attributes: ['telegram_id', 'username', 'rating']
+                    model: Executer,
+                    as: 'executer',
+                    attributes: ['telegram_id', 'rating']
                 }
             ],
             order: [['createdAt', 'DESC']]
@@ -33,9 +33,9 @@ export async function getOrderById(id) {
                     attributes: ['name', 'category']
                 },
                 {
-                    model: Performer,
-                    as: 'performer',
-                    attributes: ['telegram_id', 'username', 'rating']
+                    model: Executer,
+                    as: 'executer',
+                    attributes: ['telegram_id', 'rating']
                 }
             ]
         });
@@ -53,7 +53,7 @@ export async function addOrder(data) {
         const {
             customer_telegram_id,
             service_id,
-            performer_id,
+            executer_id,
             status = 'pending',
             details = {},
             amount
@@ -70,17 +70,17 @@ export async function addOrder(data) {
         }
 
         // Проверяем существование исполнителя, если указан
-        if (performer_id) {
-            const performer = await Performer.findByPk(performer_id);
-            if (!performer) {
-                throw new Error('Performer not found');
+        if (executer_id) {
+            const executer = await Executer.findByPk(executer_id);
+            if (!executer) {
+                throw new Error('Executer not found');
             }
         }
 
         const newOrder = await Order.create({
             customer_telegram_id,
             service_id,
-            performer_id,
+            executer_id,
             status,
             details,
             amount
@@ -139,10 +139,10 @@ export async function getOrderStats() {
     }
 }
 
-export async function getOrdersByPerformer(performerId) {
+export async function getOrdersByExecuter(executerId) {
     try {
         const orders = await Order.findAll({
-            where: { performer_id: performerId },
+            where: { executer_id: executerId },
             include: [
                 {
                     model: Services,
@@ -154,7 +154,7 @@ export async function getOrdersByPerformer(performerId) {
         });
         return orders;
     } catch (error) {
-        throw new Error(`Error fetching orders by performer: ${error.message}`);
+        throw new Error(`Error fetching orders by executer: ${error.message}`);
     }
 }
 
@@ -164,9 +164,9 @@ export async function getOrdersByService(serviceId) {
             where: { service_id: serviceId },
             include: [
                 {
-                    model: Performer,
-                    as: 'performer',
-                    attributes: ['telegram_id', 'username', 'rating']
+                    model: Executer,
+                    as: 'executer',
+                    attributes: ['telegram_id', 'rating']
                 }
             ],
             order: [['createdAt', 'DESC']]

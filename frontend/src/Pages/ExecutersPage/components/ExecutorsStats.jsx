@@ -1,31 +1,70 @@
-import { MdPeople } from 'react-icons/md'
+import { MdPeople, MdOutlinePersonOff, MdBlock } from 'react-icons/md'
+import { useEffect, useState } from 'react'
 
-export function ExecutorsStats() {
+const token = localStorage.getItem("admin_token");
+
+export function ExecutorsStats({ refresh }) {
+  const [stats, setStats] = useState({
+    active: 0,
+    inactive: 0,
+    blocked: 0
+  });
+
+  async function fetchStats() {
+    try {
+      const res = await fetch('http://localhost:3000/api/executers/stats', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      setStats({
+        active: data.active || 0,
+        inactive: data.inactive || 0,
+        blocked: data.blocked || 0
+      });
+    } catch (e) {
+      console.error('Ошибка при получении статистики:', e);
+    }
+  }
+
+  useEffect(() => {
+    fetchStats();
+  }, [refresh]);
+
   return (
-    <div className="grid grid-cols-3 gap-4 mb-6">
-      <div className="bg-white rounded-xl shadow p-6 flex flex-col">
-        <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdPeople size={20} />
-          Всего исполнителей
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      {/* Активные */}
+      <div className="bg-gradient-to-br from-green-100 via-white to-green-50 rounded-2xl shadow-lg p-7 flex flex-col items-center hover:scale-[1.03] transition">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="bg-green-500 text-white rounded-full p-2 shadow">
+            <MdPeople size={28} />
+          </span>
+          <span className="text-lg font-semibold text-green-700">Активных</span>
         </div>
-        <div className="text-2xl font-bold">12</div>
-        <div className="text-green-500 text-sm mt-1">Активных: 10</div>
+        <div className="text-4xl font-extrabold text-green-700 drop-shadow">{stats.active}</div>
       </div>
-      <div className="bg-white rounded-xl shadow p-6 flex flex-col">
-        <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdPeople size={20} />
-          Заказов выполнено
+      {/* Неактивные */}
+      <div className="bg-gradient-to-br from-gray-100 via-gray-50 to-orange-100 rounded-2xl shadow-lg p-7 flex flex-col items-center hover:scale-[1.03] transition">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="bg-orange-400 text-white rounded-full p-2 shadow">
+            <MdOutlinePersonOff size={28} />
+          </span>
+          <span className="text-lg font-semibold text-orange-700">Неактивных</span>
         </div>
-        <div className="text-2xl font-bold">457</div>
-        <div className="text-blue-500 text-sm mt-1">За месяц</div>
+        <div className="text-4xl font-extrabold text-orange-600 drop-shadow">{stats.inactive}</div>
       </div>
-      <div className="bg-white rounded-xl shadow p-6 flex flex-col">
-        <div className="flex items-center gap-2 text-gray-500 mb-2">
-          <MdPeople size={20} />
-          Средний рейтинг
+      {/* Заблокированные */}
+      <div className="bg-gradient-to-br from-red-100 via-white to-red-50 rounded-2xl shadow-lg p-7 flex flex-col items-center hover:scale-[1.03] transition">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="bg-red-500 text-white rounded-full p-2 shadow">
+            <MdBlock size={28} />
+          </span>
+          <span className="text-lg font-semibold text-red-700">Заблокированных</span>
         </div>
-        <div className="text-2xl font-bold">4.7</div>
-        <div className="text-green-500 text-sm mt-1">Отлично</div>
+        <div className="text-4xl font-extrabold text-red-600 drop-shadow">{stats.blocked}</div>
       </div>
     </div>
   )

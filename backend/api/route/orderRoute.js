@@ -6,14 +6,14 @@ import {
     updateOrder,
     deleteOrder,
     getOrderStats,
-    getOrdersByPerformer,
+    getOrdersByExecuter,
     getOrdersByService
 } from '../service/orderService.js';
 
 export const orderRoute = express.Router();
 
 // GET /orders/get - получить все заказы
-orderRoute.get('/get', async (req, res) => {
+orderRoute.get('/getAll', async (req, res) => {
     try {
         const orders = await getAllOrders();
         res.json(orders);
@@ -34,13 +34,13 @@ orderRoute.get('/stats', async (req, res) => {
     }
 });
 
-// GET /orders/performer/:performerId - получить заказы по исполнителю
-orderRoute.get('/performer/:performerId', async (req, res) => {
+// GET /orders/executer/:executerId - получить заказы по исполнителю
+orderRoute.get('/executer/:executerId', async (req, res) => {
     try {
-        const orders = await getOrdersByPerformer(req.params.performerId);
+        const orders = await getOrdersByExecuter(req.params.executerId);
         res.json(orders);
     } catch (error) {
-        console.error('Error fetching orders by performer:', error);
+        console.error('Error fetching orders by executer:', error);
         res.status(500).json({ error: error.message });
     }
 });
