@@ -38,7 +38,7 @@ export function ExecutorsHeader({ onAdd, children }) {
     setShowModal(false);
     resetForm();
     if (onAdd) onAdd();
-    
+
   };
 
   const handleClose = () => {
@@ -65,7 +65,7 @@ export function ExecutorsHeader({ onAdd, children }) {
         </Button>
       </div>
       {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-opacity-40 backdrop-blur-sm transition-all">
+        <div className="h-full fixed inset-0 flex items-center justify-center z-50 bg-opacity-40 backdrop-blur-sm transition-all">
           <form
             className="bg-gradient-to-br from-white via-gray-50 to-blue-50 p-8 rounded-2xl shadow-2xl flex flex-col gap-6 min-w-[340px] animate-fade-in"
             onSubmit={handleSubmit}
