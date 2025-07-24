@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Input, Select, Button, message } from 'antd'
-import { FiFilter } from 'react-icons/fi'
 import { MdFileDownload, MdFileUpload } from 'react-icons/md'
-import { notifyMaterialsChange } from '../../../utils/eventUtils'
+import { CSVLink } from 'react-csv'
+
+export function exportFunction(headers ,data){
+
+}
 
 export function KeysMaterialsHeader({ onAdd }) {
   const [showModal, setShowModal] = useState(false)
@@ -27,6 +30,7 @@ export function KeysMaterialsHeader({ onAdd }) {
     if (refreshTrigger > 0) {
       fetchMaterials()
       fetchServices()
+      
     }
   }, [refreshTrigger])
 
@@ -133,7 +137,7 @@ export function KeysMaterialsHeader({ onAdd }) {
   }
 
   // Функция для уведомления других компонентов об изменениях используется из utils
-  // const notifyDataChange = () => импортирована как notifyMaterialsChange
+
 
   const resetForm = () => {
     setForm({
@@ -170,7 +174,7 @@ export function KeysMaterialsHeader({ onAdd }) {
       resetForm()
       if (onAdd) onAdd()
       fetchMaterials() // Обновляем материалы после добавления
-      notifyMaterialsChange() // Уведомляем другие компоненты об изменениях
+
       message.success('Материал успешно добавлен')
     } catch (error) {
       console.error('Ошибка при добавлении материала:', error)
@@ -185,9 +189,8 @@ export function KeysMaterialsHeader({ onAdd }) {
 
   return (
     <>
-      <div className="flex bg-white shadow p-6 rounded-4xl items-center justify-between mb-6"
-        style={{ background: "linear-gradient(to right, #3b82f6, #06b6d4)" }}>
-        <h1 className="text-2xl font-bold text-white">Управление материалами</h1>
+      <div className="flex bg-white shadow p-6 rounded-4xl items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-black">Управление материалами</h1>
         <div className="flex gap-2">
           <Button icon={<MdFileUpload size={18} />}>Импорт</Button>
           <Button icon={<MdFileDownload size={18} />}>Экспорт</Button>
@@ -195,7 +198,8 @@ export function KeysMaterialsHeader({ onAdd }) {
             type="primary"
             style={{
               background: "linear-gradient(to right, #3b82f6, #06b6d4)",
-              border: "none"
+              border: "none",
+
             }}
             onClick={() => setShowModal(true)}
           >

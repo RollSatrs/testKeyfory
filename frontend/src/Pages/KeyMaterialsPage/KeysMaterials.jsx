@@ -1,8 +1,9 @@
 import { KeysMaterialsHeader } from './components/KeysMaterialsHeader';
 import { KeysMaterialsTable } from './components/KeysMaterialsTable';
 import { KeysMaterialsStats } from './components/KeysMaterialsStats';
-import { keysMaterialsSearch } from './components/keysMaterialsSearch';
+import { KeysMaterialsSearch } from './components/KeysMaterialsSearch';
 import { useState, useCallback } from 'react';
+
 
 export function KeysMaterials() {
   const [refresh, setRefresh] = useState(false);
@@ -10,13 +11,14 @@ export function KeysMaterials() {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
 
+
   const handleRefresh = useCallback(() => setRefresh(r => !r), []);
 
   return (
     <>
       <KeysMaterialsHeader onAdd={handleRefresh} />
       <KeysMaterialsStats refresh={refresh} />
-      <keysMaterialsSearch
+      <KeysMaterialsSearch
         search={search}
         setSearch={setSearch}
         statusFilter={statusFilter}

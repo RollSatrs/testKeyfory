@@ -6,11 +6,11 @@ export async function getAllMaterials() {
             include: [
                 {
                     model: Services,
-                    as: 'Service', // Изменили на 'Service' с большой буквы
+                    as: 'Service',
                     attributes: ['name', 'category']
                 }
             ],
-            order: [['create_date_material', 'DESC']]
+            order: [['createdAt', 'DESC']]
         });
         return materials;
     } catch (error) {
@@ -24,7 +24,7 @@ export async function getMaterialById(id) {
             include: [
                 {
                     model: Services,
-                    as: 'Service', // Изменили на 'Service' с большой буквы
+                    as: 'Service',
                     attributes: ['name', 'category']
                 }
             ]
@@ -50,21 +50,6 @@ export async function addMaterial(data) {
         const service = await Services.findByPk(service_id);
         if (!service) {
             throw new Error('Service not found');
-        }
-
-        // Проверяем количество доступных ключей для этой услуги
-        const availableKeys = await Material.count({
-            where: {
-                service_id: service_id,
-                status: ['available', 'reserved'] // учитываем доступные и зарезервированные
-            }
-        });
-
-        const requiredKeys = service.required_keys || 0;
-
-        // Если доступных ключей уже достаточно, не добавляем новый
-        if (availableKeys >= requiredKeys) {
-            throw new Error(`Для услуги "${service.name}" уже достаточно ключей (${availableKeys}/${requiredKeys}). Добавление нового ключа не требуется.`);
         }
 
         const newMaterial = await Material.create({
@@ -134,7 +119,7 @@ export async function getMaterialsByService(serviceId) {
             include: [
                 {
                     model: Services,
-                    as: 'Service', // Изменили на 'Service' с большой буквы
+                    as: 'service',
                     attributes: ['name', 'category']
                 }
             ],

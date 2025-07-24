@@ -2,7 +2,7 @@ import { useState } from "react";
 import { FiFilter } from "react-icons/fi";
 import { Select, Input, Button } from 'antd';
 
-export function keysMaterialsSearch({
+export function KeysMaterialsSearch({
   search,
   setSearch,
   statusFilter,
