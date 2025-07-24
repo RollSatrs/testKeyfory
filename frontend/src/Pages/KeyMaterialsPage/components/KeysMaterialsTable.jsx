@@ -1,6 +1,42 @@
 import { FaEdit, FaTrash } from 'react-icons/fa'
 import { useEffect, useState } from 'react'
 import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message } from 'antd'
+import { CSVLink } from 'react-csv'
+import { DownloadOutlined } from '@ant-design/icons'
+
+let successCount = 0
+
+
+
+async function getMateriallsServices(nameService) {
+  try{
+    await fetch('http://localhost:3000/api/materials/:', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+      }
+    })
+  }catch{
+    console.log('Ошибка', err)
+  }
+}
+
+async function addMaterialls(row) {
+  try{
+    await fetch('http://localhost:3000/api/materials/add', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+      },
+      body: JSON.stringify(row)
+    })
+    successCount++
+  }catch(err){
+    console.log('Ошибка' ,err)
+  }
+}
 
 export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilter = '', typeFilter = '' }) {
   const [materials, setMaterials] = useState([])
@@ -116,6 +152,20 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
     return service ? service.name : 'Неизвестная услуга';
   }
 
+  const headers = [
+    { label: 'Тип матриала', key: 'type_key' },
+    { label: 'Название услуги', key: 'service_name' },
+    { label: 'Содержимое', key: 'contents' },
+    { label: 'Статус', key: 'status' },
+    { label: 'Источник', key: 'source' }
+  ]
+
+  // Преобразуем данные для экспорта
+  const exportData = filteredMaterials.map(m => ({
+    ...m,
+    service_name: getServiceName(m.service_id)
+  }))
+
   const columns = [
     {
       title: 'Тип',
@@ -189,12 +239,63 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   return (
     <div className="bg-white rounded-xl shadow p-4">
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 18
+      }}>
+        <div>
+          <h2 style={{
+            fontSize: '1.6rem',
+            fontWeight: 700,
+            color: '#1e293b',
+            marginBottom: 2,
+            letterSpacing: '0.5px'
+          }}>
+            📦 Список материалов
+          </h2>
+          <div style={{
+            color: '#64748b',
+            fontSize: '1rem',
+            fontWeight: 400,
+            marginTop: 2
+          }}>
+            Здесь отображаются все материалы, доступные для услуг.<br />
+            Вы можете <span style={{ color: '#06b6d4', fontWeight: 500 }}>экспортировать</span> данные, а также редактировать и удалять записи.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <CSVLink
+            headers={headers}
+            data={exportData}
+            filename="materials_export.csv"
+            separator=";"
+            style={{ textDecoration: 'none' }}
+          >
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              style={{
+                background: "linear-gradient(to right, #3b82f6, #06b6d4)",
+                border: "none",
+                color: "#fff",
+                fontWeight: 500,
+                boxShadow: "0 2px 8px 0 rgba(59,130,246,0.15)"
+              }}
+            >
+              Экспорт данных
+            </Button>
+          </CSVLink>
+        </div>
+      </div>
       <Table
         columns={columns}
         dataSource={filteredMaterials}
         rowKey="id"
         pagination={{ pageSize: 10 }}
         bordered
+        style={{ marginTop: 8 }}
       />
       <Modal
         open={editForm}

@@ -1,11 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Input, Select, Button, message } from 'antd'
 import { MdFileDownload, MdFileUpload } from 'react-icons/md'
-import { CSVLink } from 'react-csv'
-
-export function exportFunction(headers ,data){
-
-}
 
 export function KeysMaterialsHeader({ onAdd }) {
   const [showModal, setShowModal] = useState(false)
@@ -30,7 +25,7 @@ export function KeysMaterialsHeader({ onAdd }) {
     if (refreshTrigger > 0) {
       fetchMaterials()
       fetchServices()
-      
+
     }
   }, [refreshTrigger])
 
@@ -192,14 +187,11 @@ export function KeysMaterialsHeader({ onAdd }) {
       <div className="flex bg-white shadow p-6 rounded-4xl items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-black">Управление материалами</h1>
         <div className="flex gap-2">
-          <Button icon={<MdFileUpload size={18} />}>Импорт</Button>
-          <Button icon={<MdFileDownload size={18} />}>Экспорт</Button>
           <Button
             type="primary"
             style={{
               background: "linear-gradient(to right, #3b82f6, #06b6d4)",
               border: "none",
-
             }}
             onClick={() => setShowModal(true)}
           >

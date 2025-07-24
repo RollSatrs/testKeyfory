@@ -6,16 +6,16 @@ export async function getAllOrders() {
             include: [
                 {
                     model: Services,
-                    as: 'service',
+                    as: 'Service',
                     attributes: ['name', 'category']
                 },
                 {
                     model: Executer,
-                    as: 'executer',
-                    attributes: ['telegram_id', 'rating']
+                    as: 'Executer',
+                    attributes: ['name', 'telegram_id', 'rating']
                 }
             ],
-            order: [['createdAt', 'DESC']]
+            order: [['created_at', 'DESC']]
         });
         return orders;
     } catch (error) {
@@ -29,13 +29,13 @@ export async function getOrderById(id) {
             include: [
                 {
                     model: Services,
-                    as: 'service',
+                    as: 'Service',
                     attributes: ['name', 'category']
                 },
                 {
                     model: Executer,
-                    as: 'executer',
-                    attributes: ['telegram_id', 'rating']
+                    as: 'Executer',
+                    attributes: ['name', 'telegram_id', 'rating']
                 }
             ]
         });
@@ -51,16 +51,17 @@ export async function getOrderById(id) {
 export async function addOrder(data) {
     try {
         const {
-            customer_telegram_id,
             service_id,
             executer_id,
+            total_sum,
             status = 'pending',
+            payment_status = 'pending',
             details = {},
-            amount
+            materials = []
         } = data;
 
-        if (!customer_telegram_id || !service_id) {
-            throw new Error('Customer telegram ID and service ID are required');
+        if (!service_id || !executer_id) {
+            throw new Error('Service ID and executer ID are required');
         }
 
         // Проверяем существование услуги
@@ -69,22 +70,25 @@ export async function addOrder(data) {
             throw new Error('Service not found');
         }
 
-        // Проверяем существование исполнителя, если указан
-        if (executer_id) {
-            const executer = await Executer.findByPk(executer_id);
-            if (!executer) {
-                throw new Error('Executer not found');
-            }
+        // Проверяем существование исполнителя
+        const executer = await Executer.findByPk(executer_id);
+        if (!executer) {
+            throw new Error('Executer not found');
         }
 
         const newOrder = await Order.create({
-            customer_telegram_id,
             service_id,
-            executer_id,
+            executer_id: executer_id,
+            total_sum: parseFloat(total_sum),
             status,
-            details,
-            amount
+            payment_status,
+            details: {
+                ...details,
+                materials: materials
+            },
+            created_at: new Date()
         });
+
         return newOrder;
     } catch (error) {
         throw new Error(`Error creating order: ${error.message}`);
@@ -146,11 +150,11 @@ export async function getOrdersByExecuter(executerId) {
             include: [
                 {
                     model: Services,
-                    as: 'service',
+                    as: 'Service',
                     attributes: ['name', 'category']
                 }
             ],
-            order: [['createdAt', 'DESC']]
+            order: [['created_at', 'DESC']]
         });
         return orders;
     } catch (error) {
@@ -165,11 +169,11 @@ export async function getOrdersByService(serviceId) {
             include: [
                 {
                     model: Executer,
-                    as: 'executer',
-                    attributes: ['telegram_id', 'rating']
+                    as: 'Executer',
+                    attributes: ['name', 'telegram_id', 'rating']
                 }
             ],
-            order: [['createdAt', 'DESC']]
+            order: [['created_at', 'DESC']]
         });
         return orders;
     } catch (error) {

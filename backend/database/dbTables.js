@@ -70,16 +70,12 @@ export const Order = sequelize.define('Order', {
       key: 'id'
     }
   },
-  customer_telegram_id: { type: DataTypes.STRING, allowNull: true }, // поле для клиента (может быть null для старых записей)
-  description: { type: DataTypes.TEXT }, // описание заказа
-  contact_info: { type: DataTypes.STRING }, // контактная информация
-  amount: { type: DataTypes.FLOAT }, // сумма заказа
-  product_keys: { type: DataTypes.TEXT }, // ключи продукта
-  price: { type: DataTypes.FLOAT },
-  source: { type: DataTypes.STRING },
-  status: { type: DataTypes.STRING },
-  create_date_order: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
-}, { tableName: 'orders', timestamps: true });
+  total_sum: { type: DataTypes.FLOAT }, // сумма заказа
+  status: { type: DataTypes.STRING, defaultValue: 'pending' }, // статус заказа
+  payment_status: { type: DataTypes.STRING, defaultValue: 'pending' }, // статус оплаты
+  details: { type: DataTypes.JSON }, // дополнительные детали заказа (включая материалы)
+  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, { tableName: 'orders', timestamps: false });
 
 // Исполнители
 export const Executer = sequelize.define('Executer', {

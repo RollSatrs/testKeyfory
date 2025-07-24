@@ -12,7 +12,18 @@ import {
 
 export const orderRoute = express.Router();
 
-// GET /orders/get - получить все заказы
+// GET /orders/get - получить все заказы (альтернативный маршрут)
+orderRoute.get('/get', async (req, res) => {
+    try {
+        const orders = await getAllOrders();
+        res.json(orders);
+    } catch (error) {
+        console.error('Error fetching orders:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /orders/getAll - получить все заказы
 orderRoute.get('/getAll', async (req, res) => {
     try {
         const orders = await getAllOrders();

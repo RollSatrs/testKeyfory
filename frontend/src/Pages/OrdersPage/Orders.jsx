@@ -1,6 +1,7 @@
 import { OrdersHeader } from './components/OrdersHeader';
 import { OrdersTable } from './components/OrdersTable';
 import { OrdersStats } from './components/OrdersStats';
+import { OrdersSearch } from './components/OrdersSearch'; // импорт добавлен
 import { useState, useCallback } from 'react';
 
 export function Orders() {
@@ -13,8 +14,9 @@ export function Orders() {
 
   return (
     <>
-      <OrdersHeader
-        onAdd={handleRefresh}
+      <OrdersHeader onAdd={handleRefresh} />
+      <OrdersStats refresh={refresh} />
+      <OrdersSearch
         search={search}
         setSearch={setSearch}
         statusFilter={statusFilter}
@@ -22,7 +24,6 @@ export function Orders() {
         serviceFilter={serviceFilter}
         setServiceFilter={setServiceFilter}
       />
-      <OrdersStats refresh={refresh} />
       <OrdersTable
         refresh={refresh}
         onChange={handleRefresh}
