@@ -6,22 +6,19 @@ export function Navigation() {
 
   const navItems = [
     {
-      path: '/',
+      path: '/dashboard',
       icon: '🏠',
-      label: 'Главная',
-      gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      label: 'Главная'
     },
     {
       path: '/orders',
       icon: '📋',
-      label: 'Заказы',
-      gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
+      label: 'Заказы'
     },
     {
       path: '/profile',
       icon: '👤',
-      label: 'Профиль',
-      gradient: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'
+      label: 'Профиль'
     }
   ];
 
@@ -31,22 +28,52 @@ export function Navigation() {
       bottom: 0,
       left: 0,
       right: 0,
-      background: 'rgba(255, 255, 255, 0.1)',
-      backdropFilter: 'blur(20px)',
-      borderTop: '1px solid rgba(255, 255, 255, 0.2)',
-      padding: '12px 16px',
-      zIndex: 50,
-      boxShadow: '0 -10px 30px rgba(0, 0, 0, 0.3)'
+      background: 'var(--tg-theme-secondary-bg-color, #f8f8f8)',
+      borderTop: '1px solid rgba(0,0,0,0.1)',
+      display: 'flex',
+      justifyContent: 'space-around',
+      alignItems: 'center',
+      padding: '10px 0',
+      zIndex: 1000
     }}>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-around',
-        alignItems: 'center',
-        maxWidth: '500px',
-        margin: '0 auto'
-      }}>
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
+      {navItems.map((item) => {
+        const isActive = location.pathname === item.path;
+
+        return (
+          <Link
+            key={item.path}
+            to={item.path}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '8px 15px',
+              borderRadius: '12px',
+              textDecoration: 'none',
+              background: isActive ? 'var(--tg-theme-button-color, #0088cc)' : 'transparent',
+              color: isActive ? 'var(--tg-theme-button-text-color, #ffffff)' : 'var(--tg-theme-text-color, #000000)',
+              transition: 'all 0.3s ease',
+              minWidth: '60px'
+            }}
+          >
+            <div style={{
+              fontSize: '20px',
+              marginBottom: '4px'
+            }}>
+              {item.icon}
+            </div>
+            <div style={{
+              fontSize: '12px',
+              fontWeight: isActive ? '600' : '400'
+            }}>
+              {item.label}
+            </div>
+          </Link>
+        )
+      })}
+    </nav>
+  );
+}
 
           return (
             <Link

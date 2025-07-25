@@ -1,53 +1,407 @@
 import { useState, useEffect } from 'react'
 
-export function ProfilePage({ user }) {
+export const ProfilePage = ({ executer, onLogout }) => {
   const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
-    totalOrders: 0,
-    completedOrders: 0,
-    totalSpent: 0
+    total: 0,
+    completed: 0,
+    inProgress: 0,
+    totalEarnings: 0
   })
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (user) {
-      fetchOrders()
-    }
-  }, [user])
+    loadExecuterData()
+  }, [executer])
 
-  const fetchOrders = async () => {
+  const loadExecuterData = async () => {
+    if (!executer) return
+
+    setIsLoading(true)
     try {
-      const response = await fetch(`http://localhost:3000/api/orders/get`)
-      const data = await response.json()
-      const userOrders = data.filter(order =>
-        order.customer_telegram_id === user.id.toString()
-      )
-      setOrders(userOrders)
-
-      // Подсчитываем статистику
-      const totalOrders = userOrders.length
-      const completedOrders = userOrders.filter(order => order.status === 'COMPLETED').length
-      const totalSpent = userOrders
-        .filter(order => order.status === 'COMPLETED')
-        .reduce((sum, order) => sum + parseFloat(order.price || 0), 0)
-
-      setStats({
-        totalOrders,
-        completedOrders,
-        totalSpent
+      const response = await fetch(`http://localhost:3000/api/orders/executer/${executer.id}`, {
+        headers: {
+          'Authorization': 'Bearer admin_token'
+        }
       })
+
+      if (response.ok) {
+        const ordersData = await response.json()
+        setOrders(ordersData)
+        calculateStats(ordersData)
+      }
     } catch (error) {
-      console.error('Error fetching orders:', error)
+      console.error('Ошибка загрузки данных:', error)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const getStatusText = (status) => {
-    const statusMap = {
-      'PENDING': 'В ожидании',
-      'PROCESSING': 'Обработка',
-      'COMPLETED': 'Выполнен',
+  const calculateStats = (ordersData) => {
+    const stats = {
+      total: ordersData.length,
+      completed: ordersData.filter(o => o.status === 'completed').length,
+      inProgress: ordersData.filter(o => o.status === 'in_progress').length,
+      totalEarnings: ordersData
+        .filter(o => o.status === 'completed')
+        .reduce((sum, order) => sum + (order.total_sum || 0), 0)
+    }
+    setStats(stats)
+  }
+
+  const getCompletionRate = () => {
+    if (stats.total === 0) return 0
+    return Math.round((stats.completed / stats.total) * 100)
+  }
+
+  const getRecentOrders = () => {
+    return orders
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 5)
+  }
+
+  if (isLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--tg-theme-bg-color, #ffffff)'
+      }}>
+        <div style={{
+          textAlign: 'center',
+          color: 'var(--tg-theme-hint-color, #999999)'
+        }}>
+          <div style={{ fontSize: '24px', marginBottom: '10px' }}>⏳</div>
+          <div>Загрузка профиля...</div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      padding: '20px 20px 100px 20px',
+      background: 'var(--tg-theme-bg-color, #ffffff)'
+    }}>
+      {/* Заголовок */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '25px'
+      }}>
+        <h1 style={{
+          fontSize: '24px',
+          fontWeight: '600',
+          color: 'var(--tg-theme-text-color, #000000)'
+        }}>
+          👤 Профиль
+        </h1>
+        <button
+          onClick={onLogout}
+          style={{
+            padding: '8px 15px',
+            fontSize: '12px',
+            background: 'rgba(255, 68, 68, 0.1)',
+            color: '#ff4444',
+            border: '1px solid #ff4444',
+            borderRadius: '8px',
+            cursor: 'pointer'
+          }}
+        >
+          Выйти
+        </button>
+      </div>
+
+      {/* Информация об исполнителе */}
+      <div style={{
+        background: 'var(--tg-theme-secondary-bg-color, #f8f8f8)',
+        padding: '25px',
+        borderRadius: '15px',
+        marginBottom: '25px',
+        textAlign: 'center',
+        border: '1px solid rgba(0,0,0,0.1)'
+      }}>
+        <div style={{
+          width: '80px',
+          height: '80px',
+          background: 'var(--tg-theme-button-color, #0088cc)',
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 15px auto',
+          fontSize: '32px',
+          color: 'white'
+        }}>
+          👤
+        </div>
+
+        <h2 style={{
+          fontSize: '20px',
+          fontWeight: '600',
+          color: 'var(--tg-theme-text-color, #000000)',
+          marginBottom: '8px'
+        }}>
+          {executer.name || 'Исполнитель'}
+        </h2>
+
+        <div style={{
+          fontSize: '14px',
+          color: 'var(--tg-theme-hint-color, #999999)',
+          marginBottom: '15px'
+        }}>
+          Telegram ID: {executer.telegram_id}
+        </div>
+
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px'
+          }}>
+            <span style={{ fontSize: '16px' }}>⭐</span>
+            <span style={{
+              fontSize: '16px',
+              fontWeight: '600',
+              color: 'var(--tg-theme-text-color, #000000)'
+            }}>
+              {executer.rating || '0'}
+            </span>
+          </div>
+          <div style={{
+            padding: '4px 8px',
+            background: getCompletionRate() >= 80 ? '#28a745' :
+                       getCompletionRate() >= 60 ? '#ffc107' : '#6c757d',
+            color: 'white',
+            borderRadius: '12px',
+            fontSize: '12px',
+            fontWeight: 'bold'
+          }}>
+            {getCompletionRate()}% завершено
+          </div>
+        </div>
+      </div>
+
+      {/* Статистика */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '15px',
+        marginBottom: '25px'
+      }}>
+        <div style={{
+          background: 'var(--tg-theme-secondary-bg-color, #f8f8f8)',
+          padding: '20px',
+          borderRadius: '12px',
+          textAlign: 'center',
+          border: '1px solid rgba(0,0,0,0.1)'
+        }}>
+          <div style={{
+            fontSize: '24px',
+            fontWeight: 'bold',
+            color: 'var(--tg-theme-button-color, #0088cc)',
+            marginBottom: '5px'
+          }}>
+            {stats.total}
+          </div>
+          <div style={{
+            fontSize: '12px',
+            color: 'var(--tg-theme-hint-color, #999999)'
+          }}>
+            Всего заказов
+          </div>
+        </div>
+
+        <div style={{
+          background: 'var(--tg-theme-secondary-bg-color, #f8f8f8)',
+          padding: '20px',
+          borderRadius: '12px',
+          textAlign: 'center',
+          border: '1px solid rgba(0,0,0,0.1)'
+        }}>
+          <div style={{
+            fontSize: '24px',
+            fontWeight: 'bold',
+            color: '#28a745',
+            marginBottom: '5px'
+          }}>
+            {stats.completed}
+          </div>
+          <div style={{
+            fontSize: '12px',
+            color: 'var(--tg-theme-hint-color, #999999)'
+          }}>
+            Выполнено
+          </div>
+        </div>
+
+        <div style={{
+          background: 'var(--tg-theme-secondary-bg-color, #f8f8f8)',
+          padding: '20px',
+          borderRadius: '12px',
+          textAlign: 'center',
+          border: '1px solid rgba(0,0,0,0.1)'
+        }}>
+          <div style={{
+            fontSize: '24px',
+            fontWeight: 'bold',
+            color: '#17a2b8',
+            marginBottom: '5px'
+          }}>
+            {stats.inProgress}
+          </div>
+          <div style={{
+            fontSize: '12px',
+            color: 'var(--tg-theme-hint-color, #999999)'
+          }}>
+            В работе
+          </div>
+        </div>
+
+        <div style={{
+          background: 'var(--tg-theme-secondary-bg-color, #f8f8f8)',
+          padding: '20px',
+          borderRadius: '12px',
+          textAlign: 'center',
+          border: '1px solid rgba(0,0,0,0.1)'
+        }}>
+          <div style={{
+            fontSize: '20px',
+            fontWeight: 'bold',
+            color: '#28a745',
+            marginBottom: '5px'
+          }}>
+            {stats.totalEarnings.toLocaleString()} ₽
+          </div>
+          <div style={{
+            fontSize: '12px',
+            color: 'var(--tg-theme-hint-color, #999999)'
+          }}>
+            Заработано
+          </div>
+        </div>
+      </div>
+
+      {/* Последние заказы */}
+      <div style={{ marginBottom: '25px' }}>
+        <h2 style={{
+          fontSize: '18px',
+          fontWeight: '600',
+          color: 'var(--tg-theme-text-color, #000000)',
+          marginBottom: '15px'
+        }}>
+          📋 Последние заказы
+        </h2>
+
+        {getRecentOrders().length === 0 ? (
+          <div style={{
+            background: 'var(--tg-theme-secondary-bg-color, #f8f8f8)',
+            padding: '40px',
+            borderRadius: '12px',
+            textAlign: 'center',
+            color: 'var(--tg-theme-hint-color, #999999)'
+          }}>
+            Заказы не найдены
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {getRecentOrders().map(order => (
+              <div
+                key={order.id}
+                style={{
+                  background: 'var(--tg-theme-secondary-bg-color, #f8f8f8)',
+                  padding: '15px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(0,0,0,0.1)'
+                }}
+              >
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '8px'
+                }}>
+                  <span style={{
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: 'var(--tg-theme-text-color, #000000)'
+                  }}>
+                    Заказ #{order.id}
+                  </span>
+                  <span style={{
+                    padding: '3px 8px',
+                    borderRadius: '10px',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                    background: order.status === 'completed' ? '#28a745' :
+                              order.status === 'in_progress' ? '#17a2b8' :
+                              order.status === 'pending' ? '#ffc107' : '#6c757d',
+                    color: 'white'
+                  }}>
+                    {order.status === 'completed' ? 'Выполнен' :
+                     order.status === 'in_progress' ? 'В работе' :
+                     order.status === 'pending' ? 'Ожидает' : order.status}
+                  </span>
+                </div>
+                <div style={{
+                  fontSize: '13px',
+                  color: 'var(--tg-theme-hint-color, #999999)',
+                  display: 'flex',
+                  justifyContent: 'space-between'
+                }}>
+                  <span>{order.Service?.name || 'Услуга не указана'}</span>
+                  <span>{order.total_sum || 0} ₽</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Информация о статусе */}
+      <div style={{
+        background: 'var(--tg-theme-secondary-bg-color, #f8f8f8)',
+        padding: '20px',
+        borderRadius: '12px',
+        border: '1px solid rgba(0,0,0,0.1)'
+      }}>
+        <h3 style={{
+          fontSize: '16px',
+          fontWeight: '600',
+          color: 'var(--tg-theme-text-color, #000000)',
+          marginBottom: '10px'
+        }}>
+          ℹ️ Информация о статусе
+        </h3>
+        <div style={{
+          fontSize: '14px',
+          color: 'var(--tg-theme-text-color, #000000)',
+          lineHeight: '1.5'
+        }}>
+          <div style={{ marginBottom: '8px' }}>
+            <strong>Статус аккаунта:</strong> {executer.status || 'Активный'}
+          </div>
+          <div style={{ marginBottom: '8px' }}>
+            <strong>Дата регистрации:</strong> {new Date(executer.create_date_executer).toLocaleDateString('ru-RU')}
+          </div>
+          <div>
+            <strong>Эффективность:</strong> {getCompletionRate()}% заказов завершено успешно
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
       'CANCELLED': 'Отменен'
     }
     return statusMap[status] || status
