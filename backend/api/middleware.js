@@ -24,7 +24,7 @@ export function authExecuterMiddleware(req, res, next) {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET_EXECUTER);
-    if (decoded.role !== 'executer') {
+    if (decoded.type !== 'executer') {
       return res.status(403).json({ error: 'Нет доступа' });
     }
     req.user = decoded;

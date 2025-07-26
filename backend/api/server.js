@@ -5,7 +5,11 @@ import { adminRoute } from './route/RouteAdmin/adminRoute.js'
 import { sercesRoute } from './route/RouteAdmin/adminServicesRoute.js'
 import { materialRoute } from './route/RouteAdmin/adminMaterialRoute.js'
 import { orderRoute } from './route/RouteAdmin/adminOrderRoute.js'
-import { executerRoute } from './route/RouteAdmin/adminExecuterRoute.js'
+import { executerRoute as adminExecuterRoute } from './route/RouteAdmin/adminExecuterRoute.js'
+import { executerRoute } from './route/RouteExecuter/executerRoute.js'
+import { executerOrderRoute } from './route/RouteExecuter/executerOrderRoute.js'
+import { executerMaterialRoute } from './route/RouteExecuter/executerMaterialRoute.js'
+import { executerServicesRoute } from './route/RouteExecuter/executerServicesRoute.js'
 import { authMiddleware, authExecuterMiddleware } from './middleware.js'
 import { sequelize } from '../database/databaseOn.js'
 
@@ -20,16 +24,18 @@ app.use(express.json())
 
 // Публичные роуты (НЕ требуют токен)
 app.use('/api/admin', adminRoute)
-app.use('api/executer/', executerRoute) // изменён путь
+app.use('/api/executer', executerRoute) // маршруты исполнителей (регистрация, вход, профиль)
 
-// Защищённые роуты (ТРЕБУЮТ токен)
+// Защищённые роуты для исполнителей (ТРЕБУЮТ токен исполнителя)
+app.use('/api/executer/orders', authExecuterMiddleware, executerOrderRoute)
+app.use('/api/executer/materials', authExecuterMiddleware, executerMaterialRoute)
+app.use('/api/executer/services', authExecuterMiddleware, executerServicesRoute)
 
-app.use('/api/services/executer', authExecuterMiddleware, sercesRoute) // изменён путь и переменная
-
+// Защищённые роуты для админов (ТРЕБУЮТ токен админа)
 app.use('/api/services/admin', authMiddleware, sercesRoute)
 app.use('/api/materials/admin', authMiddleware, materialRoute)
 app.use('/api/orders/admin', authMiddleware, orderRoute)
-app.use('/api/executers/admin', authMiddleware, executerRoute) // изменён путь и переменная
+app.use('/api/executers/admin', authMiddleware, adminExecuterRoute)
 
 app.get('/', (req, res) => {
   res.send('👋 Сервер работает!');
@@ -51,14 +57,18 @@ const startServer = async () => {
     // Запускаем сервер
     app.listen(PORT, () => {
       console.log(`🚀 Сервер запущен на порту ${PORT}`);
-      console.log(`📋 Роуты:`);
-      console.log(`   - Admin: http://localhost:${PORT}/api/admin/* (login/check публичные, add защищён)`);
-      console.log(`🔒 Защищённые роуты:`);
-      console.log(`   - Services: http://localhost:${PORT}/api/services/admin*`);
-      console.log(`   - Materials: http://localhost:${PORT}/api/materials/admin*`);
-      console.log(`   - Orders: http://localhost:${PORT}/api/orders/admin*`);
+      console.log(`📋 Публичные роуты:`);
+      console.log(`   - Admin: http://localhost:${PORT}/api/admin/* (login/check/register)`);
+      console.log(`   - Executer: http://localhost:${PORT}/api/executer/* (login/check/register/profile)`);
+      console.log(`🔒 Защищённые роуты для админов:`);
+      console.log(`   - Services: http://localhost:${PORT}/api/services/admin/*`);
+      console.log(`   - Materials: http://localhost:${PORT}/api/materials/admin/*`);
+      console.log(`   - Orders: http://localhost:${PORT}/api/orders/admin/*`);
       console.log(`   - Executers: http://localhost:${PORT}/api/executers/admin/*`);
-      console.log(`   - Users: http://localhost:${PORT}/api/users/*`);
+      console.log(`🔒 Защищённые роуты для исполнителей:`);
+      console.log(`   - Orders: http://localhost:${PORT}/api/executer/orders/*`);
+      console.log(`   - Materials: http://localhost:${PORT}/api/executer/materials/*`);
+      console.log(`   - Services: http://localhost:${PORT}/api/executer/services/*`);
     });
   } catch (error) {
     console.error('❌ Ошибка запуска сервера:', error);

@@ -1,0 +1,170 @@
+import { Material, Services, Order } from '../../../database/dbTables.js';
+import { Op } from 'sequelize';
+
+// Получить материалы, доступные для исполнителя (для его заказов)
+export const getMyMaterials = async (executerId) => {
+  try {
+    const materials = await Material.findAll({
+      include: [
+        {
+          model: Order,
+          where: { executer_id: executerId },
+          attributes: ['id', 'status'],
+          include: [
+            {
+              model: Services,
+              attributes: ['id', 'name', 'category']
+            }
+          ]
+        }
+      ],
+      where: {
+        status: { [Op.in]: ['available', 'used'] }
+      },
+      order: [['added_date', 'DESC']]
+    });
+
+    return materials;
+  } catch (error) {
+    console.error('Ошибка при получении материалов исполнителя:', error);
+    throw new Error('Ошибка при получении материалов');
+  }
+};
+
+// Получить доступные материалы для конкретного заказа
+export const getMaterialsForOrder = async (orderId, executerId) => {
+  try {
+    // Проверяем, что заказ принадлежит исполнителю
+    const order = await Order.findOne({
+      where: {
+        id: orderId,
+        executer_id: executerId
+      },
+      include: [Services]
+    });
+
+    if (!order) {
+      throw new Error('Заказ не найден или не принадлежит исполнителю');
+    }
+
+    // Получаем доступные материалы для услуги этого заказа
+    const materials = await Material.findAll({
+      where: {
+        service_id: order.service_id,
+        status: 'available',
+        order_id: null
+      },
+      order: [['added_date', 'ASC']]
+    });
+
+    return materials;
+  } catch (error) {
+    console.error('Ошибка при получении материалов для заказа:', error);
+    throw new Error(error.message || 'Ошибка при получении материалов для заказа');
+  }
+};
+
+// Использовать материал для заказа
+export const useMaterial = async (materialId, orderId, executerId) => {
+  try {
+    // Проверяем, что заказ принадлежит исполнителю
+    const order = await Order.findOne({
+      where: {
+        id: orderId,
+        executer_id: executerId,
+        status: 'in_progress'
+      }
+    });
+
+    if (!order) {
+      throw new Error('Заказ не найден, не принадлежит исполнителю или не в работе');
+    }
+
+    // Проверяем, что материал доступен
+    const material = await Material.findOne({
+      where: {
+        id: materialId,
+        service_id: order.service_id,
+        status: 'available',
+        order_id: null
+      }
+    });
+
+    if (!material) {
+      throw new Error('Материал не найден или уже использован');
+    }
+
+    // Обновляем материал
+    await Material.update(
+      {
+        status: 'used',
+        order_id: orderId,
+        used_date: new Date()
+      },
+      { where: { id: materialId } }
+    );
+
+    const updatedMaterial = await Material.findOne({
+      where: { id: materialId },
+      include: [
+        {
+          model: Services,
+          attributes: ['id', 'name', 'category']
+        },
+        {
+          model: Order,
+          attributes: ['id', 'status']
+        }
+      ]
+    });
+
+    return updatedMaterial;
+  } catch (error) {
+    console.error('Ошибка при использовании материала:', error);
+    throw new Error(error.message || 'Ошибка при использовании материала');
+  }
+};
+
+// Получить статистику материалов для исполнителя
+export const getMaterialsStats = async (executerId) => {
+  try {
+    const totalUsed = await Material.count({
+      include: [
+        {
+          model: Order,
+          where: { executer_id: executerId }
+        }
+      ],
+      where: { status: 'used' }
+    });
+
+    const availableForMyOrders = await Material.count({
+      include: [
+        {
+          model: Services,
+          include: [
+            {
+              model: Order,
+              where: {
+                executer_id: executerId,
+                status: 'in_progress'
+              }
+            }
+          ]
+        }
+      ],
+      where: {
+        status: 'available',
+        order_id: null
+      }
+    });
+
+    return {
+      totalUsed,
+      availableForMyOrders
+    };
+  } catch (error) {
+    console.error('Ошибка при получении статистики материалов:', error);
+    throw new Error('Ошибка при получении статистики материалов');
+  }
+};
