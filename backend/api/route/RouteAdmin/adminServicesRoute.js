@@ -6,7 +6,7 @@ import {
     updateService,
     deleteService,
     getServiceStats
-} from '../service/servicesService.js';
+} from '../../service/ServiceAdmim/adminServicesService.js';
 import dotenv from 'dotenv';
 
 export const sercesRoute = express.Router()

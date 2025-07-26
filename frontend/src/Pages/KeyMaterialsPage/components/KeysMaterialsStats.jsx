@@ -13,7 +13,7 @@ export function KeysMaterialsStats({ refresh }) {
 
   async function fetchStats() {
     try {
-      const res = await fetch('http://localhost:3000/api/materials/stats', {
+      const res = await fetch('http://localhost:3000/api/materials/admin/stats', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

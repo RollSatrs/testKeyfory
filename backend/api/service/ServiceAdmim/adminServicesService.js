@@ -1,4 +1,4 @@
-import { Services, Material } from "../../database/dbTables.js";
+import { Services, Material } from "../../../database/dbTables.js";
 
 
 export async function getAllServices() {

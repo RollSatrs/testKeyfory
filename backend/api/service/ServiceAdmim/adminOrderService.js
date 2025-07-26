@@ -1,4 +1,4 @@
-import { Order, Services, Executer } from "../../database/dbTables.js";
+import { Order, Services, Executer } from "../../../database/dbTables.js";
 
 export async function getAllOrders() {
     try {

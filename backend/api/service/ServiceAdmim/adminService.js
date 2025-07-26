@@ -1,4 +1,4 @@
-import { Admin } from "../../database/dbTables.js";
+import { Admin } from "../../../database/dbTables.js";
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 

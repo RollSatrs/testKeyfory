@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { 
-  Card, 
-  Button, 
-  Space, 
-  Typography, 
-  Row, 
-  Col, 
-  Statistic, 
+import {
+  Card,
+  Button,
+  Space,
+  Typography,
+  Row,
+  Col,
+  Statistic,
   Avatar,
   Form,
   Input,
@@ -18,9 +18,9 @@ import {
   Tag,
   Divider
 } from 'antd'
-import { 
-  HomeOutlined, 
-  ShoppingOutlined, 
+import {
+  HomeOutlined,
+  ShoppingOutlined,
   UserOutlined,
   EditOutlined,
   SaveOutlined,
@@ -49,7 +49,7 @@ const ProfilePage = ({ user, onLogout }) => {
 
   const fetchProfile = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/api/executers/${user.id}`)
+      const response = await fetch(`http://localhost:3000/api/executers/admin/${user.id}`)
       if (response.ok) {
         const data = await response.json()
         setProfile(data.executer)
@@ -68,7 +68,7 @@ const ProfilePage = ({ user, onLogout }) => {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/api/executers/stats/${user.id}`)
+      const response = await fetch(`http://localhost:3000/api/executers/admin/stats/${user.id}`)
       if (response.ok) {
         const data = await response.json()
         setStats(data.stats)
@@ -82,7 +82,7 @@ const ProfilePage = ({ user, onLogout }) => {
 
   const updateProfile = async (values) => {
     try {
-      const response = await fetch(`http://localhost:3000/api/executers/${user.id}`, {
+      const response = await fetch(`http://localhost:3000/api/executers/admin/${user.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -95,7 +95,7 @@ const ProfilePage = ({ user, onLogout }) => {
         setProfile(data.executer)
         setEditing(false)
         message.success('Профиль обновлен')
-        
+
         // Обновляем данные в localStorage
         const updatedUser = { ...user, name: values.name }
         localStorage.setItem('executerUser', JSON.stringify(updatedUser))
@@ -130,15 +130,15 @@ const ProfilePage = ({ user, onLogout }) => {
           </Col>
           <Col>
             <Space>
-              <Button 
-                type="primary" 
-                icon={<HomeOutlined />} 
+              <Button
+                type="primary"
+                icon={<HomeOutlined />}
                 onClick={() => navigate('/')}
               >
                 Главная
               </Button>
-              <Button 
-                icon={<ShoppingOutlined />} 
+              <Button
+                icon={<ShoppingOutlined />}
                 onClick={() => navigate('/orders')}
               >
                 Заказы
@@ -160,27 +160,27 @@ const ProfilePage = ({ user, onLogout }) => {
             }
             extra={
               !editing ? (
-                <Button 
+                <Button
                   type="primary"
-                  icon={<EditOutlined />} 
+                  icon={<EditOutlined />}
                   onClick={() => setEditing(true)}
                 >
                   Редактировать
                 </Button>
               ) : null
             }
-            style={{ 
+            style={{
               borderRadius: '12px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
             }}
           >
             {!editing ? (
               <>
                 <Row align="middle" style={{ marginBottom: '2rem' }}>
                   <Col span={4}>
-                    <Avatar 
-                      size={80} 
-                      icon={<UserOutlined />} 
+                    <Avatar
+                      size={80}
+                      icon={<UserOutlined />}
                       style={{ backgroundColor: '#1890ff' }}
                     />
                   </Col>
@@ -199,34 +199,34 @@ const ProfilePage = ({ user, onLogout }) => {
                     </div>
                   </Col>
                 </Row>
-                
+
                 <Descriptions column={2} bordered>
                   <Descriptions.Item label="Имя" span={2}>
                     <Text strong>{profile?.name || 'Не указано'}</Text>
                   </Descriptions.Item>
-                  
+
                   <Descriptions.Item label="Telegram ID">
                     <Text code>{profile?.telegram_id}</Text>
                   </Descriptions.Item>
-                  
+
                   <Descriptions.Item label="Рейтинг">
                     <Space>
                       <StarOutlined style={{ color: '#fadb14' }} />
                       <Text strong>{profile?.rating || 0}</Text>
                     </Space>
                   </Descriptions.Item>
-                  
+
                   <Descriptions.Item label="Статус">
                     <Tag color={profile?.status === 'active' ? 'success' : 'default'}>
                       {profile?.status === 'active' ? 'Активен' : 'Неактивен'}
                     </Tag>
                   </Descriptions.Item>
-                  
+
                   <Descriptions.Item label="Дата регистрации">
                     <Space>
                       <CalendarOutlined />
                       <Text>
-                        {profile?.create_date_executer 
+                        {profile?.create_date_executer
                           ? new Date(profile.create_date_executer).toLocaleDateString('ru-RU', {
                               year: 'numeric',
                               month: 'long',
@@ -237,7 +237,7 @@ const ProfilePage = ({ user, onLogout }) => {
                       </Text>
                     </Space>
                   </Descriptions.Item>
-                  
+
                   <Descriptions.Item label="ID в системе">
                     <Text type="secondary">#{profile?.id}</Text>
                   </Descriptions.Item>
@@ -256,17 +256,17 @@ const ProfilePage = ({ user, onLogout }) => {
                 >
                   <Input placeholder="Введите ваше имя" />
                 </Form.Item>
-                
+
                 <Form.Item
                   label="Telegram ID"
                   name="telegram_id"
                 >
                   <Input disabled />
                 </Form.Item>
-                
+
                 <Space>
-                  <Button 
-                    type="primary" 
+                  <Button
+                    type="primary"
                     htmlType="submit"
                     icon={<SaveOutlined />}
                   >
@@ -291,9 +291,9 @@ const ProfilePage = ({ user, onLogout }) => {
                   <span>Статистика работы</span>
                 </Space>
               }
-              style={{ 
+              style={{
                 borderRadius: '12px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
               }}
             >
               <Row gutter={[16, 16]}>
@@ -329,9 +329,9 @@ const ProfilePage = ({ user, onLogout }) => {
                   />
                 </Col>
               </Row>
-              
+
               <Divider />
-              
+
               <Statistic
                 title="Общий заработок"
                 value={stats?.totalEarnings || 0}
@@ -342,13 +342,13 @@ const ProfilePage = ({ user, onLogout }) => {
 
             <Card
               title="Быстрые действия"
-              style={{ 
+              style={{
                 borderRadius: '12px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)' 
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
               }}
             >
               <Space direction="vertical" style={{ width: '100%' }}>
-                <Button 
+                <Button
                   type="primary"
                   block
                   icon={<ShoppingOutlined />}
@@ -356,8 +356,8 @@ const ProfilePage = ({ user, onLogout }) => {
                 >
                   Просмотреть все заказы
                 </Button>
-                
-                <Button 
+
+                <Button
                   danger
                   block
                   onClick={() => {

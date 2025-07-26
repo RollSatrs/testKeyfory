@@ -27,7 +27,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   }, [refresh])
 
   async function fetchServices() {
-    const res = await fetch('http://localhost:3000/api/services/get', {
+    const res = await fetch('http://localhost:3000/api/services/admin/get', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
       }
@@ -37,7 +37,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   }
 
   async function handleDelete(id) {
-    await fetch(`http://localhost:3000/api/services/delete/${id}`, {
+    await fetch(`http://localhost:3000/api/services/admin/delete/${id}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -65,7 +65,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   }
 
   async function handleEditSubmit() {
-    await fetch(`http://localhost:3000/api/services/update/${form.id}`, {
+    await fetch(`http://localhost:3000/api/services/admin/update/${form.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -75,7 +75,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
         name: form.name,
         category: form.category,
         required_keys: form.required_keys,
-        
+
         status: form.status
       })
     })

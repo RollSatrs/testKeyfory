@@ -1,9 +1,9 @@
 import express from 'express'
-import { addAdmin, checkAdmin, login } from '../service/adminService.js'
+import { addAdmin, checkAdmin, login } from '../../service/ServiceAdmim/adminService.js'
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
-import { Admin } from '../../database/dbTables.js'
+import { Admin } from '../../../database/dbTables.js'
 
 export const adminRoute = express.Router()
 

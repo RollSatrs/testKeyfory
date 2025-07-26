@@ -1,4 +1,4 @@
-import { Executer, Order } from "../../database/dbTables.js";
+import { Executer, Order } from "../../../database/dbTables.js";
 
 export async function getAllExecuters() {
     try {

@@ -43,7 +43,7 @@ const OrdersPage = ({ user, onLogout }) => {
   const fetchOrders = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`http://localhost:3000/api/executers/orders/${user.id}`)
+      const response = await fetch(`http://localhost:3000/api/executers/admin/orders/${user.id}`)
       if (response.ok) {
         const data = await response.json()
         setOrders(data.orders || [])
@@ -60,7 +60,7 @@ const OrdersPage = ({ user, onLogout }) => {
 
   const updateOrderStatus = async (orderId, newStatus) => {
     try {
-      const response = await fetch(`http://localhost:3000/api/executers/orders/${orderId}/status`, {
+      const response = await fetch(`http://localhost:3000/api/executers/admin/orders/${orderId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

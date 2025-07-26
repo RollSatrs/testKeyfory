@@ -27,7 +27,7 @@ const Dashboard = ({ user, onLogout }) => {
       }
 
       // Получаем статистику
-      const statsResponse = await fetch(`http://localhost:3000/api/executers/stats/${user.id}`)
+      const statsResponse = await fetch(`http://localhost:3000/api/executers/admin/stats/${user.id}`)
       if (statsResponse.ok) {
         const statsData = await statsResponse.json()
         setStats(statsData)

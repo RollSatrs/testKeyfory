@@ -85,7 +85,7 @@ export function KeysMaterialsHeader({ onAdd }) {
 
   async function fetchServices() {
     try {
-      const res = await fetch('http://localhost:3000/api/services/get', {
+      const res = await fetch('http://localhost:3000/api/services/admin/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -99,7 +99,7 @@ export function KeysMaterialsHeader({ onAdd }) {
 
   async function fetchMaterials() {
     try {
-      const res = await fetch('http://localhost:3000/api/materials/get', {
+      const res = await fetch('http://localhost:3000/api/materials/admin/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -149,7 +149,7 @@ export function KeysMaterialsHeader({ onAdd }) {
   const handleSubmit = async e => {
     e.preventDefault()
     try {
-      const response = await fetch('http://localhost:3000/api/materials/add', {
+      const response = await fetch('http://localhost:3000/api/materials/admin/add', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

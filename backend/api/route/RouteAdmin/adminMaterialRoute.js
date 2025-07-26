@@ -7,7 +7,7 @@ import {
     deleteMaterial,
     getMaterialStats,
     getMaterialsByService
-} from '../service/materialService.js';
+} from '../../service/ServiceAdmim/adminMaterialService.js';
 
 export const materialRoute = express.Router();
 

@@ -14,7 +14,7 @@ export function OrdersStats({ refresh }) {
 
   async function fetchStats() {
     try {
-      const res = await fetch('http://localhost:3000/api/orders/stats', {
+      const res = await fetch('http://localhost:3000/api/orders/admin/stats', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

@@ -8,7 +8,7 @@ import {
     getOrderStats,
     getOrdersByExecuter,
     getOrdersByService
-} from '../service/orderService.js';
+} from '../../service/ServiceAdmim/adminOrderService.js';
 
 export const orderRoute = express.Router();
 

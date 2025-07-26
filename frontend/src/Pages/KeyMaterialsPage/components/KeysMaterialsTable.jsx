@@ -10,7 +10,7 @@ let successCount = 0
 
 async function getMateriallsServices(nameService) {
   try{
-    await fetch('http://localhost:3000/api/materials/:', {
+    await fetch('http://localhost:3000/api/materials/admin/:', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -24,7 +24,7 @@ async function getMateriallsServices(nameService) {
 
 async function addMaterialls(row) {
   try{
-    await fetch('http://localhost:3000/api/materials/add', {
+    await fetch('http://localhost:3000/api/materials/admin/add', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -57,7 +57,7 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   async function fetchMaterials() {
     try {
-      const res = await fetch('http://localhost:3000/api/materials/get', {
+      const res = await fetch('http://localhost:3000/api/materials/admin/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -71,7 +71,7 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   async function fetchServices() {
     try {
-      const res = await fetch('http://localhost:3000/api/services/get', {
+      const res = await fetch('http://localhost:3000/api/services/admin/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -85,7 +85,7 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   async function handleDelete(id) {
     try {
-      await fetch(`http://localhost:3000/api/materials/delete/${id}`, {
+      await fetch(`http://localhost:3000/api/materials/admin/delete/${id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -117,7 +117,7 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   async function handleEditSubmit() {
     try {
-      await fetch(`http://localhost:3000/api/materials/update/${form.id}`, {
+      await fetch(`http://localhost:3000/api/materials/admin/update/${form.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

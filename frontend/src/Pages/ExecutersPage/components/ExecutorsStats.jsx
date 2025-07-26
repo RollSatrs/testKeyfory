@@ -12,7 +12,7 @@ export function ExecutorsStats({ refresh }) {
 
   async function fetchStats() {
     try {
-      const res = await fetch('http://localhost:3000/api/executers/stats', {
+      const res = await fetch('http://localhost:3000/api/executers/admin/stats', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

@@ -9,7 +9,7 @@ import {
     getExecuterStats,
     getExecuterWithOrderStats,
     updateExecuterRating
-} from '../service/executerService.js';
+} from '../../service/ServiceAdmim/adminExecuterService.js';
 
 export const executerRoute = express.Router();
 

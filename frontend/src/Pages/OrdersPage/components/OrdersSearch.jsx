@@ -19,7 +19,7 @@ export function OrdersSearch({
 
     async function fetchServices() {
       try {
-        const res = await fetch('http://localhost:3000/api/services/get', {
+        const res = await fetch('http://localhost:3000/api/services/admin/get', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
           }
