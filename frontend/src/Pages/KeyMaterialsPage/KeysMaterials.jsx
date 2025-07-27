@@ -2,6 +2,7 @@ import { KeysMaterialsHeader } from './components/KeysMaterialsHeader';
 import { KeysMaterialsTable } from './components/KeysMaterialsTable';
 import { KeysMaterialsStats } from './components/KeysMaterialsStats';
 import { KeysMaterialsSearch } from './components/KeysMaterialsSearch';
+import ReplacementRequests from './components/ReplacementRequests';
 import { useState, useCallback } from 'react';
 
 
@@ -33,6 +34,7 @@ export function KeysMaterials() {
         statusFilter={statusFilter}
         typeFilter={typeFilter}
       />
+      <ReplacementRequests />
     </>
   );
 }

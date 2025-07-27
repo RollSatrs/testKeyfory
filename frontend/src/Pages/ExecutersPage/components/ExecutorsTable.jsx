@@ -11,9 +11,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
     id: null,
     name: '',
     telegram_id: '',
-    orders: 0,
-    rating: 1,
-    status: ''
+    rating: 1
   });
 
   // Получение данных из API
@@ -27,16 +25,45 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
         }
       });
       const data = await res.json();
-      setExecutors(
-        Array.isArray(data)
-          ? data.map(e => ({
-              ...e,
-              orders: e.orders ?? 0
-            }))
-          : []
+
+      // Получаем только информацию об активных заказах для логики удаления
+      const executorsWithOrderInfo = await Promise.all(
+        (Array.isArray(data) ? data : []).map(async (executor) => {
+          try {
+            // Получаем только количество активных заказов для проверки возможности удаления
+            const ordersRes = await fetch(`http://localhost:3000/api/executers/admin/orders/${executor.id}`, {
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              }
+            });
+
+            if (ordersRes.ok) {
+              const ordersData = await ordersRes.json();
+              const activeOrders = ordersData.filter(order =>
+                order.status === 'pending' || order.status === 'in_progress'
+              ).length;
+
+              return {
+                ...executor,
+                activeOrders: activeOrders || 0
+              };
+            }
+          } catch (error) {
+            console.warn(`Не удалось получить заказы для исполнителя ${executor.id}:`, error);
+          }
+
+          return {
+            ...executor,
+            activeOrders: 0
+          };
+        })
       );
+
+      setExecutors(executorsWithOrderInfo);
     } catch (e) {
       message.error('Ошибка при загрузке исполнителей');
+      console.error('Fetch error:', e);
     }
     setLoading(false);
   }
@@ -57,9 +84,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
       id: executor.id,
       name: executor.name,
       telegram_id: executor.telegram_id,
-      orders: executor.orders,
-      rating: executor.rating,
-      status: executor.status
+      rating: executor.rating
     });
     setEditForm(true);
   }
@@ -81,6 +106,12 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
       if (!res.ok) throw new Error();
       message.success('Исполнитель обновлен');
       setEditForm(false);
+      setForm({
+        id: null,
+        name: '',
+        telegram_id: '',
+        rating: 1
+      });
       notifyChanged();
     } catch {
       message.error('Ошибка при обновлении исполнителя');
@@ -96,11 +127,22 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
           'Authorization': `Bearer ${token}`
         }
       });
-      if (!res.ok) throw new Error();
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        if (errorData.error && errorData.error.includes('active orders')) {
+          message.error('Нельзя удалить исполнителя с активными заказами. Сначала завершите или переназначьте заказы.');
+        } else {
+          message.error('Ошибка при удалении исполнителя');
+        }
+        return;
+      }
+
       message.success('Исполнитель удален');
       notifyChanged();
-    } catch {
+    } catch (error) {
       message.error('Ошибка при удалении исполнителя');
+      console.error('Delete error:', error);
     }
   }
 
@@ -133,11 +175,6 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
       dataIndex: 'telegram_id',
       key: 'telegram_id',
       render: tg => <span className="text-blue-600 font-mono">{tg}</span>
-    },
-    {
-      title: 'Заказов',
-      dataIndex: 'orders',
-      key: 'orders',
     },
     {
       title: 'Рейтинг',
@@ -176,15 +213,31 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
             size="small"
           />
           <Popconfirm
-            title="Удалить исполнителя?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Да"
-            cancelText="Нет"
+            title={
+              record.status === 'active' && record.activeOrders > 0
+                ? `У активного исполнителя ${record.activeOrders} активных заказов. Деактивируйте исполнителя для удаления!`
+                : record.status !== 'active'
+                ? "Удалить неактивного исполнителя?"
+                : "Удалить исполнителя?"
+            }
+            onConfirm={record.status === 'active' && record.activeOrders > 0 ? undefined : () => handleDelete(record.id)}
+            okText={record.status === 'active' && record.activeOrders > 0 ? undefined : "Да"}
+            cancelText={record.status === 'active' && record.activeOrders > 0 ? "Понятно" : "Нет"}
+            okButtonProps={{
+              disabled: record.status === 'active' && record.activeOrders > 0,
+              style: record.status === 'active' && record.activeOrders > 0 ? { display: 'none' } : {}
+            }}
           >
             <Button
               icon={<FaTrash />}
               danger
               size="small"
+              disabled={record.status === 'active' && record.activeOrders > 0}
+              title={
+                record.status === 'active' && record.activeOrders > 0
+                  ? "Нельзя удалить активного исполнителя с активными заказами"
+                  : "Удалить исполнителя"
+              }
             />
           </Popconfirm>
           {record.status !== 'blocked' && (
@@ -219,7 +272,15 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
       <Modal
         open={editForm}
         title="Редактировать исполнителя"
-        onCancel={() => setEditForm(false)}
+        onCancel={() => {
+          setEditForm(false);
+          setForm({
+            id: null,
+            name: '',
+            telegram_id: '',
+            rating: 1
+          });
+        }}
         onOk={handleEditSubmit}
         okText="Сохранить"
         cancelText="Отмена"
@@ -256,18 +317,6 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
             allowHalf
           />
         </div>
-        <Select
-          name="status"
-          value={form.status || undefined}
-          onChange={value => handleChange('status', value)}
-          placeholder="Выберите статус"
-          className="w-full"
-          style={{ marginBottom: 8 }}
-        >
-          <Select.Option value="active">АКТИВЕН</Select.Option>
-          <Select.Option value="inactive">НЕАКТИВЕН</Select.Option>
-          <Select.Option value="blocked">ЗАБЛОКИРОВАН</Select.Option>
-        </Select>
       </Modal>
     </div>
   );

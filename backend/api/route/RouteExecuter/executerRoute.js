@@ -5,7 +5,19 @@ import {
   loginExecuter,
   getExecuterProfile,
   updateExecuterProfile,
-  updateExecuterStatus
+  updateExecuterStatus,
+  getExecuterOrders,
+  getExecuterServices,
+  getExecuterStats,
+  getExecuterBalance,
+  getOrderById,
+  getMaterialsByOrder,
+  completeOrder,
+  acceptOrder,
+  requestMaterialReplacement,
+  writeExecuterLog,
+  updateExecuterActivity,
+  createExecuterLog
 } from '../../service/ServiceExecuter/executerService.js'
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken'
@@ -16,6 +28,194 @@ export const executerRoute = express.Router()
 dotenv.config();
 
 // ПУБЛИЧНЫЕ МАРШРУТЫ (без авторизации)
+
+// Авторизация для бота
+executerRoute.post('/auth', async (req, res) => {
+  try {
+    const { telegram_id } = req.body;
+
+    if (!telegram_id) {
+      return res.status(400).json({ error: 'Telegram ID обязателен' });
+    }
+
+    const executer = await checkExecuter(telegram_id);
+
+    if (!executer) {
+      return res.status(404).json({ error: 'Исполнитель не найден' });
+    }
+
+    if (executer.status === 'blocked') {
+      return res.status(403).json({ error: 'Аккаунт заблокирован' });
+    }
+
+    res.json({
+      id: executer.id,
+      name: executer.name,
+      telegram_id: executer.telegram_id,
+      balance: executer.balance,
+      rating: executer.rating
+    });
+  } catch (error) {
+    console.error('Ошибка авторизации исполнителя:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получить заказы исполнителя
+executerRoute.get('/orders/:executerId', async (req, res) => {
+  try {
+    const { executerId } = req.params;
+    const orders = await getExecuterOrders(executerId);
+    res.json(orders);
+  } catch (error) {
+    console.error('Ошибка получения заказов:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получить выполненные заказы исполнителя
+executerRoute.get('/completed-orders/:executerId', async (req, res) => {
+  try {
+    const { executerId } = req.params;
+    const orders = await getExecuterOrders(executerId, 'completed');
+    res.json(orders);
+  } catch (error) {
+    console.error('Ошибка получения выполненных заказов:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получить доступные услуги для исполнителя
+executerRoute.get('/services/:executerId', async (req, res) => {
+  try {
+    const { executerId } = req.params;
+    const services = await getExecuterServices(executerId);
+    res.json(services);
+  } catch (error) {
+    console.error('Ошибка получения услуг:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получить статистику исполнителя
+executerRoute.get('/stats/:executerId', async (req, res) => {
+  try {
+    const { executerId } = req.params;
+    const stats = await getExecuterStats(executerId);
+    res.json(stats);
+  } catch (error) {
+    console.error('Ошибка получения статистики:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получить баланс исполнителя
+executerRoute.get('/balance/:executerId', async (req, res) => {
+  try {
+    const { executerId } = req.params;
+    const balance = await getExecuterBalance(executerId);
+    res.json({ balance });
+  } catch (error) {
+    console.error('Ошибка получения баланса:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получить информацию о заказе
+executerRoute.get('/order/:orderId/:executerId', async (req, res) => {
+  try {
+    const { orderId, executerId } = req.params;
+    const order = await getOrderById(orderId, executerId);
+    res.json(order);
+  } catch (error) {
+    console.error('Ошибка получения заказа:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получить материалы по заказу
+executerRoute.get('/materials/:orderId', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const materials = await getMaterialsByOrder(orderId);
+    res.json(materials);
+  } catch (error) {
+    console.error('Ошибка получения материалов:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Завершить заказ
+executerRoute.post('/complete-order', async (req, res) => {
+  try {
+    const { order_id, executer_id } = req.body;
+    const result = await completeOrder(order_id, executer_id);
+    res.json(result);
+  } catch (error) {
+    console.error('Ошибка завершения заказа:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Принять заказ в работу
+executerRoute.post('/accept-order', async (req, res) => {
+  try {
+    const { order_id, executer_id } = req.body;
+    const result = await acceptOrder(order_id, executer_id);
+    res.json(result);
+  } catch (error) {
+    console.error('Ошибка принятия заказа:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Обновить активность исполнителя
+executerRoute.post('/activity', async (req, res) => {
+  try {
+    const { executer_id } = req.body;
+    const result = await updateExecuterActivity(executer_id);
+    res.json({ success: true, message: 'Активность обновлена' });
+  } catch (error) {
+    console.error('Ошибка обновления активности:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Создать лог действия
+executerRoute.post('/log', async (req, res) => {
+  try {
+    const { user_id, action, description, order_id, service_id } = req.body;
+    const result = await createExecuterLog(user_id, action, description, order_id, service_id);
+    res.json({ success: true, message: 'Лог создан' });
+  } catch (error) {
+    console.error('Ошибка создания лога:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Запросить замену материала
+executerRoute.post('/request-replacement', async (req, res) => {
+  try {
+    const { order_id, executer_id, reason } = req.body;
+    const result = await requestMaterialReplacement(order_id, executer_id, reason);
+    res.json(result);
+  } catch (error) {
+    console.error('Ошибка запроса замены:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Записать лог
+executerRoute.post('/log', async (req, res) => {
+  try {
+    const { user_id, user_type, action, description, order_id, service_id } = req.body;
+    const result = await writeExecuterLog(user_id, user_type, action, description, order_id, service_id);
+    res.json(result);
+  } catch (error) {
+    console.error('Ошибка записи лога:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
 
 // Регистрация нового исполнителя
 executerRoute.post('/register', async (req, res) => {

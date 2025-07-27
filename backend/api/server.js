@@ -12,6 +12,7 @@ import { executerMaterialRoute } from './route/RouteExecuter/executerMaterialRou
 import { executerServicesRoute } from './route/RouteExecuter/executerServicesRoute.js'
 import { authMiddleware, authExecuterMiddleware } from './middleware.js'
 import { sequelize } from '../database/databaseOn.js'
+import { checkInactiveExecuters } from './service/ServiceAdmim/adminExecuterService.js'
 
 dotenv.config()
 const app = express()
@@ -69,6 +70,20 @@ const startServer = async () => {
       console.log(`   - Orders: http://localhost:${PORT}/api/executer/orders/*`);
       console.log(`   - Materials: http://localhost:${PORT}/api/executer/materials/*`);
       console.log(`   - Services: http://localhost:${PORT}/api/executer/services/*`);
+
+      // Запускаем фоновый процесс проверки неактивных исполнителей каждые 5 минут
+      setInterval(async () => {
+        try {
+          const updatedCount = await checkInactiveExecuters();
+          if (updatedCount > 0) {
+            console.log(`⏰ Обновлен статус ${updatedCount} неактивных исполнителей`);
+          }
+        } catch (error) {
+          console.error('❌ Ошибка проверки неактивных исполнителей:', error);
+        }
+      }, 5 * 60 * 1000); // 5 минут
+
+      console.log('⏰ Фоновый процесс проверки активности исполнителей запущен');
     });
   } catch (error) {
     console.error('❌ Ошибка запуска сервера:', error);

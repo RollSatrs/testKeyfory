@@ -26,7 +26,7 @@ export function Graphics(){
     return(
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white rounded-4xl shadow p-6">
-          <h2 className="font-semibold mb-2">Заказы и выручка (последние 7 дней)</h2>
+          <h2 className="font-semibold mb-2">Заказы (последние 7 дней)</h2>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>
               <CartesianGrid stroke="#eee" strokeDasharray="5 5" />

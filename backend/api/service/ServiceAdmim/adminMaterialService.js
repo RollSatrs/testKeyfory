@@ -1,4 +1,4 @@
-import { Material, Services } from "../../../database/dbTables.js";
+import { Material, Services, MaterialReplacement, Order, Executer } from "../../../database/dbTables.js";
 
 export async function getAllMaterials() {
     try {
@@ -128,5 +128,88 @@ export async function getMaterialsByService(serviceId) {
         return materials;
     } catch (error) {
         throw new Error(`Error fetching materials by service: ${error.message}`);
+    }
+}
+
+// Получить все запросы на замену материалов
+export async function getAllReplacementRequests() {
+    try {
+        const requests = await MaterialReplacement.findAll({
+            include: [
+                {
+                    model: Order,
+                    attributes: ['id', 'total_sum', 'status'],
+                    include: [
+                        {
+                            model: Services,
+                            attributes: ['name']
+                        }
+                    ]
+                },
+                {
+                    model: Executer,
+                    attributes: ['id', 'name', 'telegram_id']
+                }
+            ],
+            order: [['created_at', 'DESC']]
+        });
+        return requests;
+    } catch (error) {
+        throw new Error(`Error fetching replacement requests: ${error.message}`);
+    }
+}
+
+// Получить запросы на замену материалов с определенным статусом
+export async function getReplacementRequestsByStatus(status = 'pending') {
+    try {
+        const requests = await MaterialReplacement.findAll({
+            where: { status },
+            include: [
+                {
+                    model: Order,
+                    attributes: ['id', 'total_sum', 'status'],
+                    include: [
+                        {
+                            model: Services,
+                            attributes: ['name']
+                        }
+                    ]
+                },
+                {
+                    model: Executer,
+                    attributes: ['id', 'name', 'telegram_id']
+                }
+            ],
+            order: [['created_at', 'DESC']]
+        });
+        return requests;
+    } catch (error) {
+        throw new Error(`Error fetching replacement requests by status: ${error.message}`);
+    }
+}
+
+// Обработать запрос на замену материала
+export async function processReplacementRequest(requestId, adminId, decision, adminResponse = null) {
+    try {
+        const request = await MaterialReplacement.findByPk(requestId);
+
+        if (!request) {
+            throw new Error('Запрос на замену не найден');
+        }
+
+        if (request.status !== 'pending') {
+            throw new Error('Запрос уже обработан');
+        }
+
+        await request.update({
+            status: decision, // 'approved' или 'rejected'
+            admin_response: adminResponse,
+            processed_by: adminId,
+            processed_at: new Date()
+        });
+
+        return request;
+    } catch (error) {
+        throw new Error(`Error processing replacement request: ${error.message}`);
     }
 }

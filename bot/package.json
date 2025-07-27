@@ -1,14 +1,18 @@
 {
-  "name": "bot",
+  "name": "telegram-executer-bot",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "start": "node executerBot.js",
+    "dev": "nodemon executerBot.js",
     "executer": "nodemon executer.js",
-    "dev": "nodemon index.js"
+    "old-dev": "nodemon index.js"
   },
   "dependencies": {
-    "telegraf": "^4.16.0",
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.3.1",
+    "node-fetch": "^3.3.2",
+    "node-telegram-bot-api": "^0.61.0",
+    "telegraf": "^4.16.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

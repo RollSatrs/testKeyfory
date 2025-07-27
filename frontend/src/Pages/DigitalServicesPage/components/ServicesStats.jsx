@@ -12,7 +12,7 @@ export function ServicesStats({ refresh }) {
 
   async function fetchStats() {
     try {
-      console.log(refresh)
+
       const res = await fetch('http://localhost:3000/api/services/admin/stats', {
         method: 'GET',
         headers: {

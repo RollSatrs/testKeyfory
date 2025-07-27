@@ -7,7 +7,6 @@ export function ExecutorsHeader({ onAdd, children }) {
   const [form, setForm] = useState({
     name: '',
     telegram_id: '',
-    status: '',
     rating: 0
   });
 
@@ -20,7 +19,6 @@ export function ExecutorsHeader({ onAdd, children }) {
     setForm({
       name: '',
       telegram_id: '',
-      status: '',
       rating: 0
     });
   };
@@ -96,18 +94,6 @@ export function ExecutorsHeader({ onAdd, children }) {
                 count={5}
               />
             </div>
-            <Select
-              name="status"
-              value={form.status || undefined}
-              onChange={value => handleChange('status', value)}
-              placeholder="Выберите статус"
-              className="w-full"
-              required
-
-            >
-              <Select.Option value="active">АКТИВЕН</Select.Option>
-              <Select.Option value="inactive">НЕАКТИВЕН</Select.Option>
-            </Select>
             <div className="flex gap-3 justify-end mt-2">
               <Button
                 type="default"

@@ -1,5 +1,124 @@
-import { Executer } from '../../../database/dbTables.js';
+import { Executer, Order, Services, Material, Log, ServiceAccess, MaterialReplacement } from '../../../database/dbTables.js';
 import { Op } from 'sequelize';
+
+// Функция для автоматического обновления активности исполнителя
+export const updateExecuterActivity = async (executerId) => {
+  try {
+    const executer = await Executer.findByPk(executerId);
+    if (executer) {
+      await executer.update({
+        last_activity: new Date(),
+        status: 'active'
+      });
+    }
+    return executer;
+  } catch (err) {
+    console.error('Ошибка при обновлении активности:', err);
+  }
+};
+
+// Функция для создания лога
+export const createExecuterLog = async (executerId, action, description, orderId = null, serviceId = null) => {
+  try {
+    await Log.create({
+      user_id: executerId,
+      user_type: 'executer',
+      action: action,
+      description: description,
+      order_id: orderId,
+      service_id: serviceId
+    });
+  } catch (err) {
+    console.error('Ошибка при создании лога:', err);
+  }
+};
+
+// Функция для завершения заказа
+export const completeOrder = async (orderId, executerId) => {
+  try {
+    const order = await Order.findOne({
+      where: { id: orderId, executer_id: executerId }
+    });
+
+    if (!order) {
+      throw new Error('Заказ не найден');
+    }
+
+    if (order.status === 'completed') {
+      throw new Error('Заказ уже завершен');
+    }
+
+    // Автоматически обновляем статус заказа и оплаты
+    await order.update({
+      status: 'completed',
+      payment_status: 'paid'
+    });
+
+    // Обновляем баланс исполнителя
+    const executer = await Executer.findByPk(executerId);
+    if (executer) {
+      await executer.update({
+        balance: executer.balance + (order.total_sum || 0)
+      });
+    }
+
+    // Создаем лог
+    await createExecuterLog(
+      executerId,
+      'order_completed',
+      `Заказ #${orderId} завершен`,
+      orderId,
+      order.service_id
+    );
+
+    // Обновляем активность
+    await updateExecuterActivity(executerId);
+
+    return order;
+  } catch (err) {
+    console.error('Ошибка при завершении заказа:', err);
+    throw new Error(err.message || 'Ошибка сервера');
+  }
+};
+
+// Функция для принятия заказа в работу
+export const acceptOrder = async (orderId, executerId) => {
+  try {
+    const order = await Order.findOne({
+      where: { id: orderId, executer_id: executerId }
+    });
+
+    if (!order) {
+      throw new Error('Заказ не найден');
+    }
+
+    if (order.status !== 'pending') {
+      throw new Error('Заказ нельзя принять в работу');
+    }
+
+    // Автоматически обновляем статус заказа
+    await order.update({
+      status: 'in_progress'
+    });
+
+    // Создаем лог
+    await createExecuterLog(
+      executerId,
+      'order_accepted',
+      `Заказ #${orderId} принят в работу`,
+      orderId,
+      order.service_id
+    );
+
+    // Обновляем активность
+    await updateExecuterActivity(executerId);
+
+    return order;
+  } catch (err) {
+    console.error('Ошибка при принятии заказа:', err);
+    throw new Error(err.message || 'Ошибка сервера');
+  }
+};
 
 // Добавление нового исполнителя
 export const addExecuter = async (telegramId, name = null) => {
@@ -20,8 +139,9 @@ export const addExecuter = async (telegramId, name = null) => {
     const executer = await Executer.create({
       telegram_id: telegramId,
       name: name,
-      status: 'active',
-      rating: 0
+      status: 'inactive', // новые исполнители неактивны до первого действия
+      rating: 0,
+      balance: 0
     });
 
     return executer;
@@ -49,6 +169,222 @@ export const checkExecuter = async (telegramId) => {
   }
 };
 
+// Получить заказы исполнителя
+export const getExecuterOrders = async (executerId, status = null) => {
+  try {
+    const whereCondition = { executer_id: executerId };
+
+    // Если указан статус, добавляем его в условие
+    if (status) {
+      whereCondition.status = status;
+    }
+
+    const orders = await Order.findAll({
+      where: whereCondition,
+      include: [
+        {
+          model: Services,
+          attributes: ['name', 'description']
+        }
+      ],
+      order: [['created_at', 'DESC']]
+    });
+
+    // Логируем активность просмотра заказов
+    const logAction = status === 'completed' ? 'view_completed_orders' : 'view_orders';
+    const logDescription = status === 'completed' ? 'Просмотр выполненных заказов' : 'Просмотр списка заказов';
+
+    await createExecuterLog(
+      executerId,
+      logAction,
+      logDescription
+    );
+
+    // Обновляем активность
+    await updateExecuterActivity(executerId);
+
+    return orders;
+  } catch (err) {
+    console.error('Ошибка при получении заказов:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
+// Получить доступные услуги для исполнителя
+export const getExecuterServices = async (executerId) => {
+  try {
+    const serviceAccess = await ServiceAccess.findAll({
+      where: {
+        executer_id: executerId,
+        has_access: true
+      },
+      include: [
+        {
+          model: Services,
+          attributes: ['id', 'name', 'description', 'price']
+        }
+      ]
+    });
+
+    return serviceAccess.map(access => access.Service);
+  } catch (err) {
+    console.error('Ошибка при получении услуг:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
+// Получить статистику исполнителя
+export const getExecuterStats = async (executerId) => {
+  try {
+    const completedOrders = await Order.count({
+      where: {
+        executer_id: executerId,
+        status: 'completed'
+      }
+    });
+
+    const activeOrders = await Order.count({
+      where: {
+        executer_id: executerId,
+        status: 'in_progress'
+      }
+    });
+
+    const totalEarningsResult = await Order.sum('total_sum', {
+      where: {
+        executer_id: executerId,
+        status: 'completed'
+      }
+    });
+
+    const executer = await Executer.findByPk(executerId);
+
+    const replacementRequests = await Log.count({
+      where: {
+        user_id: executerId,
+        user_type: 'executer',
+        action: 'request_replacement'
+      }
+    });
+
+    return {
+      completedOrders: completedOrders || 0,
+      activeOrders: activeOrders || 0,
+      totalEarnings: totalEarningsResult || 0,
+      rating: executer?.rating || 0,
+      replacementRequests: replacementRequests || 0
+    };
+  } catch (err) {
+    console.error('Ошибка при получении статистики:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
+// Получить баланс исполнителя
+export const getExecuterBalance = async (executerId) => {
+  try {
+    const executer = await Executer.findByPk(executerId);
+    return executer?.balance || 0;
+  } catch (err) {
+    console.error('Ошибка при получении баланса:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
+// Получить заказ по ID
+export const getOrderById = async (orderId, executerId) => {
+  try {
+    const order = await Order.findOne({
+      where: {
+        id: orderId,
+        executer_id: executerId
+      },
+      include: [
+        {
+          model: Services,
+          attributes: ['name', 'description']
+        }
+      ]
+    });
+
+    return order;
+  } catch (err) {
+    console.error('Ошибка при получении заказа:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
+// Получить материалы по заказу
+export const getMaterialsByOrder = async (orderId) => {
+  try {
+    const materials = await Material.findAll({
+      where: { order_id: orderId }
+    });
+
+    return materials;
+  } catch (err) {
+    console.error('Ошибка при получении материалов:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
+// Запросить замену материала
+export const requestMaterialReplacement = async (orderId, executerId, reason) => {
+  try {
+    // Проверяем, что заказ существует и принадлежит исполнителю
+    const order = await Order.findOne({
+      where: { id: orderId, executer_id: executerId }
+    });
+
+    if (!order) {
+      throw new Error('Заказ не найден');
+    }
+
+    // Создаем запрос на замену материала
+    const replacementRequest = await MaterialReplacement.create({
+      order_id: orderId,
+      executer_id: executerId,
+      reason: reason,
+      status: 'pending'
+    });
+
+    // Записываем лог запроса
+    await createExecuterLog(
+      executerId,
+      'request_replacement',
+      `Запрос замены материала: ${reason}`,
+      orderId
+    );
+
+    // Обновляем активность
+    await updateExecuterActivity(executerId);
+
+    return { success: true, message: 'Запрос на замену отправлен', requestId: replacementRequest.id };
+  } catch (err) {
+    console.error('Ошибка при запросе замены:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
+// Записать лог
+export const writeExecuterLog = async (userId, userType, action, description, orderId = null, serviceId = null) => {
+  try {
+    const log = await Log.create({
+      user_id: userId,
+      user_type: userType,
+      action: action,
+      description: description,
+      order_id: orderId,
+      service_id: serviceId
+    });
+
+    return log;
+  } catch (err) {
+    console.error('Ошибка при записи лога:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
 // Авторизация исполнителя (без пароля, только по Telegram ID)
 export const loginExecuter = async (telegramId) => {
   try {
@@ -62,7 +398,7 @@ export const loginExecuter = async (telegramId) => {
       throw new Error('Исполнитель не найден');
     }
 
-    if (executer.status !== 'active') {
+    if (executer.status === 'blocked') {
       throw new Error('Аккаунт исполнителя заблокирован');
     }
 
@@ -103,7 +439,7 @@ export const updateExecuterProfile = async (telegramId, updateData) => {
       throw new Error('Исполнитель не найден');
     }
 
-    // Разрешаем обновлять только определенные поля
+    // Разрешаем обновлять только определенные поля (статус исключен)
     const allowedFields = ['name'];
     const updateFields = {};
 

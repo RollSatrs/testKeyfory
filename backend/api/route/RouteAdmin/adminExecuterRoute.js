@@ -8,7 +8,11 @@ import {
     deleteExecuter,
     getExecuterStats,
     getExecuterWithOrderStats,
-    updateExecuterRating
+    updateExecuterRating,
+    getExecuterRights,
+    updateExecuterRights,
+    getAllLogs,
+    getExecuterOrders
 } from '../../service/ServiceAdmim/adminExecuterService.js';
 
 export const executerRoute = express.Router();
@@ -20,6 +24,43 @@ executerRoute.get('/get', async (req, res) => {
         res.json(executers);
     } catch (error) {
         console.error('Error fetching executers:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /executer-rights/:executerId - получить права исполнителя
+executerRoute.get('/executer-rights/:executerId', async (req, res) => {
+    try {
+        const { executerId } = req.params;
+        const rights = await getExecuterRights(executerId);
+        res.json(rights);
+    } catch (error) {
+        console.error('Error fetching executer rights:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// PUT /executer-rights/:executerId - обновить права исполнителя
+executerRoute.put('/executer-rights/:executerId', async (req, res) => {
+    try {
+        const { executerId } = req.params;
+        const { rights } = req.body;
+        const result = await updateExecuterRights(executerId, rights);
+        res.json(result);
+    } catch (error) {
+        console.error('Error updating executer rights:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /logs - получить все логи
+executerRoute.get('/logs', async (req, res) => {
+    try {
+        const { limit = 100, offset = 0, user_type, action } = req.query;
+        const logs = await getAllLogs({ limit, offset, user_type, action });
+        res.json(logs);
+    } catch (error) {
+        console.error('Error fetching logs:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -57,6 +98,18 @@ executerRoute.get('/get/:id', async (req, res) => {
     } catch (error) {
         console.error('Error fetching executer:', error);
         res.status(404).json({ error: error.message });
+    }
+});
+
+// GET /executers/orders/:executerId - получить заказы исполнителя
+executerRoute.get('/orders/:executerId', async (req, res) => {
+    try {
+        const { executerId } = req.params;
+        const orders = await getExecuterOrders(executerId);
+        res.json(orders);
+    } catch (error) {
+        console.error('Error fetching executer orders:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 
