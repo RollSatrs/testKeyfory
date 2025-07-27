@@ -13,6 +13,7 @@ import {
   getOrderById,
   getMaterialsByOrder,
   completeOrder,
+  startOrderWork,
   acceptOrder,
   requestMaterialReplacement,
   writeExecuterLog,
@@ -157,6 +158,18 @@ executerRoute.post('/complete-order', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Ошибка завершения заказа:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Начать работу над заказом
+executerRoute.post('/start-order', async (req, res) => {
+  try {
+    const { order_id, executer_id } = req.body;
+    const result = await startOrderWork(order_id, executer_id);
+    res.json(result);
+  } catch (error) {
+    console.error('Ошибка начала работы над заказом:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });

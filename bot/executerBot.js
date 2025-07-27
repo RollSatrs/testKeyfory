@@ -328,7 +328,8 @@ const processOrderNumber = async (ctx, orderNumber, executerId) => {
     }
 
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('📦 Получить материалы', `get_materials_${orderNumber}`)],
+      [Markup.button.callback('� Начать работу', `start_work_${orderNumber}`)],
+      [Markup.button.callback('�📦 Получить материалы', `get_materials_${orderNumber}`)],
       [Markup.button.callback('✅ Завершить заказ', `complete_order_${orderNumber}`)],
       [Markup.button.callback('🔄 Запросить замену', `request_replacement_${orderNumber}`)]
     ]);
@@ -348,6 +349,18 @@ const processOrderNumber = async (ctx, orderNumber, executerId) => {
 };
 
 // Обработка inline кнопок
+bot.action(/start_work_(\d+)/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const chatId = ctx.chat.id;
+
+  if (!userSessions[chatId]) {
+    return ctx.answerCbQuery('Сессия истекла. Нажмите /start');
+  }
+
+  const session = userSessions[chatId];
+  await startOrderWork(ctx, orderId, session.executer_id);
+});
+
 bot.action(/get_materials_(\d+)/, async (ctx) => {
   const orderId = ctx.match[1];
   const chatId = ctx.chat.id;
@@ -440,6 +453,35 @@ const getMaterials = async (ctx, orderId, executerId) => {
   } catch (error) {
     await ctx.answerCbQuery();
     return ctx.reply('❌ Ошибка при получении материалов');
+  }
+};
+
+// Начать работу по заказу (изменить статус на "в работе")
+const startOrderWork = async (ctx, orderId, executerId) => {
+  try {
+    const response = await fetch(`${API_URL}/executer/start-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        order_id: orderId,
+        executer_id: executerId
+      })
+    });
+
+    if (!response.ok) {
+      await ctx.answerCbQuery();
+      return ctx.reply('❌ Ошибка при начале работы над заказом');
+    }
+
+    await ctx.answerCbQuery();
+    await ctx.reply('🚀 Работа над заказом начата! Статус изменен на "В работе".');
+
+    await logActivity(executerId, 'start_order', `Начало работы над заказом #${orderId}`, orderId);
+  } catch (error) {
+    await ctx.answerCbQuery();
+    return ctx.reply('❌ Ошибка при начале работы над заказом');
   }
 };
 

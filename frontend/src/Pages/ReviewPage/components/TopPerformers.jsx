@@ -1,13 +1,72 @@
+import { useState, useEffect } from 'react'
 import { FaStar } from 'react-icons/fa'
 
-const performers = [
-  { name: 'Иван Петров', orders: 23, rating: 4.9, spec: 'Игровые сервисы' },
-  { name: 'Мария Сидорова', orders: 18, rating: 4.8, spec: 'Стриминг' },
-  { name: 'Алексей Козлов', orders: 15, rating: 4.7, spec: 'ПО и VPN' },
-  { name: 'Анна Воронова', orders: 12, rating: 4.6, spec: 'Подписки' },
-]
-
 export function TopPerformers() {
+  const [performers, setPerformers] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchTopPerformers = async () => {
+      try {
+        setLoading(true)
+
+        // Получаем всех исполнителей и заказы
+        const [executersRes, ordersRes] = await Promise.all([
+          fetch('http://localhost:3000/api/admin/executers'),
+          fetch('http://localhost:3000/api/admin/orders')
+        ])
+
+        const executers = await executersRes.json()
+        const orders = await ordersRes.json()
+
+        // Подсчитываем количество заказов для каждого исполнителя
+        const executerStats = executers.map(executer => {
+          const executerOrders = orders.filter(order => order.executer_id === executer.id)
+          const completedOrders = executerOrders.filter(order => order.status === 'completed')
+
+          return {
+            id: executer.id,
+            name: executer.name || `Исполнитель #${executer.id}`,
+            orders: completedOrders.length,
+            totalOrders: executerOrders.length,
+            rating: executer.rating || 0
+          }
+        })
+
+        // Сортируем по количеству выполненных заказов
+        const topPerformers = executerStats
+          .filter(e => e.orders > 0) // Только с выполненными заказами
+          .sort((a, b) => b.orders - a.orders)
+          .slice(0, 4) // Берем топ-4
+
+        setPerformers(topPerformers)
+      } catch (error) {
+        console.error('Ошибка загрузки топ исполнителей:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchTopPerformers()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl shadow p-6 mb-6">
+        <h2 className="font-semibold mb-4">Лучшие исполнители</h2>
+        <div className="animate-pulse">
+          {[1, 2, 3, 4].map((item) => (
+            <div key={item} className="flex justify-between items-center py-3 border-b border-gray-200">
+              <div className="h-4 bg-gray-200 rounded w-32"></div>
+              <div className="h-4 bg-gray-200 rounded w-16"></div>
+              <div className="h-4 bg-gray-200 rounded w-16"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-white rounded-xl shadow p-6 mb-6">
       <h2 className="font-semibold mb-4">Лучшие исполнители</h2>
@@ -16,26 +75,35 @@ export function TopPerformers() {
           <thead>
             <tr className="text-gray-400/50 text-left text-sm">
               <th className="pb-2">Исполнитель</th>
-              <th className="pb-2">Заказов</th>
+              <th className="pb-2">Заказов выполнено</th>
               <th className="pb-2">Рейтинг</th>
-              <th className="pb-2">Специализация</th>
             </tr>
           </thead>
           <tbody>
-            {performers.map((p, idx) => (
-              <tr
-                key={idx}
-                className={idx !== performers.length - 1 ? "border-b border-gray-200" : ""}
-              >
-                <td className="py-2">{p.name}</td>
-                <td className="py-2">{p.orders}</td>
-                <td className="py-2 flex items-center gap-1">
-                  <FaStar className="text-yellow-400" size={16} />
-                  {p.rating}
+            {performers.length > 0 ? (
+              performers.map((p, idx) => (
+                <tr
+                  key={p.id}
+                  className={idx !== performers.length - 1 ? "border-b border-gray-200" : ""}
+                >
+                  <td className="py-2 font-medium">{p.name}</td>
+                  <td className="py-2">
+                    <span className="font-semibold text-green-600">{p.orders}</span>
+                    <span className="text-gray-500 text-sm ml-1">из {p.totalOrders}</span>
+                  </td>
+                  <td className="py-2 flex items-center gap-1">
+                    <FaStar className="text-yellow-400" size={16} />
+                    {p.rating > 0 ? p.rating.toFixed(1) : 'Нет рейтинга'}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="3" className="py-4 text-center text-gray-500">
+                  Нет данных о выполненных заказах
                 </td>
-                <td className="py-2 text-gray-500">{p.spec}</td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>

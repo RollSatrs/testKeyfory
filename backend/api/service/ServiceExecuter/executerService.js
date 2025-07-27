@@ -81,6 +81,49 @@ export const completeOrder = async (orderId, executerId) => {
   }
 };
 
+// Функция для начала работы над заказом
+export const startOrderWork = async (orderId, executerId) => {
+  try {
+    const order = await Order.findOne({
+      where: { id: orderId, executer_id: executerId }
+    });
+
+    if (!order) {
+      throw new Error('Заказ не найден');
+    }
+
+    if (order.status === 'completed') {
+      throw new Error('Заказ уже завершен');
+    }
+
+    if (order.status === 'in_progress') {
+      throw new Error('Заказ уже находится в работе');
+    }
+
+    // Обновляем статус заказа на "в работе"
+    await order.update({
+      status: 'in_progress'
+    });
+
+    // Создаем лог
+    await createExecuterLog(
+      executerId,
+      'order_started',
+      `Заказ #${orderId} взят в работу`,
+      orderId,
+      order.service_id
+    );
+
+    // Обновляем активность
+    await updateExecuterActivity(executerId);
+
+    return order;
+  } catch (err) {
+    console.error('Ошибка при начале работы над заказом:', err);
+    throw new Error(err.message || 'Ошибка сервера');
+  }
+};
+
 // Функция для принятия заказа в работу
 export const acceptOrder = async (orderId, executerId) => {
   try {
