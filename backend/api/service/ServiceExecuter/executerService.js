@@ -307,6 +307,40 @@ export const getOrderById = async (orderId, executerId) => {
       ]
     });
 
+    if (!order) {
+      return null;
+    }
+
+    // Если в details есть материалы, загружаем их полные данные
+    if (order.details && order.details.materials && Array.isArray(order.details.materials)) {
+      console.log(`🔍 Загружаем полные данные для материалов из details:`, order.details.materials);
+
+      // Если materials содержит ID материалов, загружаем их
+      if (order.details.materials.length > 0 && typeof order.details.materials[0] === 'number') {
+        const materialIds = order.details.materials;
+        const fullMaterials = await Material.findAll({
+          where: {
+            id: materialIds
+          }
+        });
+
+        console.log(`📦 Найдено полных материалов: ${fullMaterials.length}`);
+
+        // Обновляем details с полными данными материалов
+        order.details = {
+          ...order.details,
+          materials: fullMaterials.map(material => ({
+            id: material.id,
+            type_key: material.type_key,
+            contents: material.contents,
+            status: material.status,
+            source: material.source,
+            added_date: material.added_date
+          }))
+        };
+      }
+    }
+
     return order;
   } catch (err) {
     console.error('Ошибка при получении заказа:', err);
@@ -317,9 +351,19 @@ export const getOrderById = async (orderId, executerId) => {
 // Получить материалы по заказу
 export const getMaterialsByOrder = async (orderId) => {
   try {
+    console.log(`🔍 Поиск материалов для заказа ID: ${orderId}`);
+
     const materials = await Material.findAll({
       where: { order_id: orderId }
     });
+
+    console.log(`📦 Найдено материалов: ${materials.length}`);
+    console.log(`📦 Детали материалов:`, materials.map(m => ({
+      id: m.id,
+      type_key: m.type_key,
+      contents: m.contents,
+      order_id: m.order_id
+    })));
 
     return materials;
   } catch (err) {

@@ -51,12 +51,20 @@ export async function addServiices(data) {
         if (!name || !category) {
             throw new Error('Name and category are required');
         }
-        if (price === undefined) throw new Error('price is not defined');
+
+        // Правильно обрабатываем price - если пустая строка или undefined, ставим 0
+        let validPrice = 0;
+        if (price !== undefined && price !== null && price !== '') {
+            validPrice = parseFloat(price);
+            if (isNaN(validPrice)) {
+                throw new Error('Price must be a valid number');
+            }
+        }
 
         const newService = await Services.create({
             name,
             category,
-            price,
+            price: validPrice,
             required_keys: required_keys || 0,
             status,
             admin_id: 1
@@ -72,6 +80,19 @@ export async function updateService(id, data) {
         const service = await Services.findByPk(id);
         if (!service) {
             throw new Error('Service not found');
+        }
+
+        // Правильно обрабатываем price при обновлении
+        if (data.price !== undefined) {
+            if (data.price === null || data.price === '') {
+                data.price = 0;
+            } else {
+                const validPrice = parseFloat(data.price);
+                if (isNaN(validPrice)) {
+                    throw new Error('Price must be a valid number');
+                }
+                data.price = validPrice;
+            }
         }
 
         const updatedService = await service.update(data);

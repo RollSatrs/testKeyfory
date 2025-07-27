@@ -137,7 +137,11 @@ executerRoute.get('/order/:orderId/:executerId', async (req, res) => {
 executerRoute.get('/materials/:orderId', async (req, res) => {
   try {
     const { orderId } = req.params;
+    console.log(`🔍 API запрос материалов для заказа: ${orderId}`);
+
     const materials = await getMaterialsByOrder(orderId);
+    console.log(`📦 API возвращает ${materials.length} материалов`);
+
     res.json(materials);
   } catch (error) {
     console.error('Ошибка получения материалов:', error);

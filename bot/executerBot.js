@@ -34,6 +34,18 @@ const translateStatus = (status) => {
   return statusTranslations[status] || status;
 };
 
+// Функция для перевода статуса материала на русский язык
+const translateMaterialStatus = (status) => {
+  const materialStatusTranslations = {
+    'available': 'Доступен',
+    'used': 'Использован',
+    'reserved': 'Зарезервирован',
+    'expired': 'Истёк',
+    'invalid': 'Недействителен'
+  };
+  return materialStatusTranslations[status] || status;
+};
+
 // Функция для записи лога и обновления активности
 const logActivity = async (executerId, action, description, orderId = null, serviceId = null) => {
   try {
@@ -375,31 +387,56 @@ bot.action(/request_replacement_(\d+)/, async (ctx) => {
 // Получить материалы
 const getMaterials = async (ctx, orderId, executerId) => {
   try {
-    const response = await fetch(`${API_URL}/executer/materials/${orderId}`);
+    console.log(`🔍 Запрос материалов для заказа ${orderId}, исполнитель ${executerId}`);
+    console.log(`🌐 URL запроса: ${API_URL}/executer/order/${orderId}/${executerId}`);
+
+    // Получаем данные заказа вместо прямого запроса материалов
+    const response = await fetch(`${API_URL}/executer/order/${orderId}/${executerId}`);
+
+    console.log(`📡 Статус ответа: ${response.status}`);
 
     if (!response.ok) {
+      console.log(`❌ Ошибка ответа: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.log(`❌ Текст ошибки: ${errorText}`);
       await ctx.answerCbQuery();
-      return ctx.reply('❌ Ошибка при получении материалов');
+      return ctx.reply('❌ Ошибка при получении заказа');
     }
 
-    const materials = await response.json();
+    const order = await response.json();
+    console.log(`� Получены данные заказа:`, JSON.stringify(order, null, 2));
 
-    if (materials.length === 0) {
+    // Извлекаем материалы из поля details заказа
+    let materials = [];
+    if (order.details && order.details.materials) {
+      materials = order.details.materials;
+      console.log(`📦 Материалы из details.materials:`, JSON.stringify(materials, null, 2));
+    } else if (order.details && Array.isArray(order.details)) {
+      // Если details - это массив материалов
+      materials = order.details;
+      console.log(`📦 Материалы как массив:`, JSON.stringify(materials, null, 2));
+    } else {
+      console.log(`📦 Поле details пустое или не содержит материалов:`, order.details);
+    }
+
+    if (!materials || materials.length === 0) {
       await ctx.answerCbQuery();
-      return ctx.reply('📦 Материалы для этого заказа не найдены');
+      return ctx.reply('📦 Материалы для этого заказа не найдены в details');
     }
 
     let message = '📦 Материалы для заказа:\n\n';
-    materials.forEach(material => {
-      message += `🔸 ${material.material_name}\n`;
-      message += `📋 Данные: ${material.material_data}\n`;
-      message += `📊 Количество: ${material.quantity}\n\n`;
+    materials.forEach((material, index) => {
+      message += `🔸 Материал ${index + 1}:\n`;
+      message += `📝 Тип: ${material.type_key || 'Не указан'}\n`;
+      message += `📋 Содержимое: ${material.contents || 'Нет данных'}\n`;
+      message += `📊 Статус: ${translateMaterialStatus(material.status) || 'Неизвестен'}\n`;
+      message += `📌 Источник: ${material.source || 'Не указан'}\n\n`;
     });
 
     await ctx.answerCbQuery();
     await ctx.reply(message);
 
-    await logActivity(executerId, 'get_materials', `Получение материалов для заказа #${orderId}`, orderId);
+    await logActivity(executerId, 'get_materials', `Получение материалов для заказа #${orderId} из details`, orderId);
   } catch (error) {
     await ctx.answerCbQuery();
     return ctx.reply('❌ Ошибка при получении материалов');
@@ -461,7 +498,6 @@ const requestReplacement = async (ctx, orderId, executerId) => {
     await logActivity(executerId, 'request_replacement', `Запрос замены материала для заказа #${orderId}`, orderId);
   } catch (error) {
     await ctx.answerCbQuery();
-    return ctx.reply('❌ Ошибка при отправке запроса на замену');
   }
 };
 
