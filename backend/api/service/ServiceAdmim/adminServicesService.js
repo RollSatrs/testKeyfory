@@ -1,4 +1,4 @@
-import { Services, Material } from "../../../database/dbTables.js";
+import { Services, Material, ExecuterPricing, Executer } from "../../../database/dbTables.js";
 
 
 export async function getAllServices() {
@@ -20,10 +20,26 @@ export async function getAllServices() {
             // Получаем уникальные источники материалов для услуги
             const sources = [...new Set(materials.map(m => m.source))];
 
+            // Получаем индивидуальные цены для исполнителей
+            const customPricing = await ExecuterPricing.findAll({
+                where: { service_id: service.id },
+                include: [
+                    {
+                        model: Executer,
+                        attributes: ['id', 'name', 'telegram_id']
+                    }
+                ]
+            });
+
             result.push({
                 ...service.dataValues,
                 source: sources.join(', ') || '-',
-                available_keys: availableKeys
+                available_keys: availableKeys,
+                custom_pricing: customPricing.map(pricing => ({
+                    executer_id: pricing.executer_id,
+                    executer_name: pricing.Executer?.name || `Исполнитель ${pricing.executer_id}`,
+                    custom_price: pricing.custom_price
+                }))
             });
         }
         return result;

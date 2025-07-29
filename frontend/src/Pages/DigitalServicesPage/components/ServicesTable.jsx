@@ -1,6 +1,6 @@
 import { FaEdit, FaTrash, FaUpload, FaBoxOpen } from 'react-icons/fa'
 import { useEffect, useState } from 'react'
-import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message, Upload, Card, Row, Col, Statistic, Divider } from 'antd'
+import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message, Upload, Card, Row, Col, Statistic, Divider, Tooltip } from 'antd'
 
 const categories = [
   "Игры", "Программное обеспечение", "Образование", "Развлечения", "Услуги", "Другое", "Музыка",
@@ -289,7 +289,44 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       title: 'Цена',
       dataIndex: 'price',
       key: 'price',
-      render: (price) => `₽${price || 0}`
+      width: 160,
+      render: (price, record) => {
+        const basePrice = `₽${price || 0}`;
+        const customPricing = record.custom_pricing || [];
+
+        if (customPricing.length === 0) {
+          return <div>{basePrice}</div>;
+        }
+
+        const tooltipContent = (
+          <div>
+            <div style={{ marginBottom: 8, fontWeight: 'bold' }}>
+              Базовая цена: {basePrice}
+            </div>
+            <div style={{ fontWeight: 'bold', marginBottom: 4 }}>
+              Индивидуальные цены:
+            </div>
+            {customPricing.map((pricing, index) => (
+              <div key={index}>
+                • {pricing.executer_name}: ₽{pricing.custom_price}
+              </div>
+            ))}
+          </div>
+        );
+
+        return (
+          <Tooltip title={tooltipContent} placement="topLeft">
+            <div style={{ cursor: 'pointer' }}>
+              <div style={{ fontWeight: 'bold' }}>
+                {basePrice}
+              </div>
+              <div style={{ fontSize: '11px', color: '#1890ff' }}>
+                +{customPricing.length} исключ.
+              </div>
+            </div>
+          </Tooltip>
+        );
+      }
     },
     {
       title: 'Статус',
