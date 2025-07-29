@@ -236,16 +236,13 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
           onChange={(newStatus) => handleStatusChange(record.id, newStatus)}
         >
           <Select.Option value="available">
-            <Tag color="green">ДОСТУПЕН</Tag>
+            <Tag color="green">Доступен</Tag>
           </Select.Option>
           <Select.Option value="used">
-            <Tag color="red">ИСПОЛЬЗОВАН</Tag>
-          </Select.Option>
-          <Select.Option value="reserved">
-            <Tag color="orange">ЗАРЕЗЕРВИРОВАН</Tag>
+            <Tag color="red">Использован</Tag>
           </Select.Option>
           <Select.Option value="pending_replace">
-            <Tag color="purple">НА ЗАМЕНУ</Tag>
+            <Tag color="volcano">На замене</Tag>
           </Select.Option>
         </Select>
       )
@@ -380,9 +377,9 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
           className="w-full"
           style={{ marginBottom: 8 }}
         >
-          <Select.Option value="available">ДОСТУПЕН</Select.Option>
-          <Select.Option value="used">ИСПОЛЬЗОВАН</Select.Option>
-          <Select.Option value="reserved">ЗАРЕЗЕРВИРОВАН</Select.Option>
+          <Select.Option value="available">Доступен</Select.Option>
+          <Select.Option value="used">Использован</Select.Option>
+          <Select.Option value="pending_replace">На замене</Select.Option>
         </Select>
       </Modal>
     </div>

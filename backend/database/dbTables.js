@@ -44,6 +44,7 @@ export const Material = sequelize.define('Material',{
   source: { type: DataTypes.STRING }, // API склада или ручная загрузка
   added_date: { type: DataTypes.DATE },
   used_date: { type: DataTypes.DATE },
+  replacement_requested_date: { type: DataTypes.DATE }, // Дата запроса замены
   order_id: {
     type: DataTypes.INTEGER,
     references: {

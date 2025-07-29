@@ -91,7 +91,19 @@ export async function updateMaterialStatus(id, status) {
             throw new Error('Material not found');
         }
 
-        const updatedMaterial = await material.update({ status });
+        const updateData = { status };
+
+        // Если статус меняется на "pending_replace", устанавливаем дату запроса замены
+        if (status === 'pending_replace') {
+            updateData.replacement_requested_date = new Date();
+        }
+
+        // Если статус меняется на "used", устанавливаем дату использования
+        if (status === 'used') {
+            updateData.used_date = new Date();
+        }
+
+        const updatedMaterial = await material.update(updateData);
         return updatedMaterial;
     } catch (error) {
         throw new Error(`Error updating material status: ${error.message}`);
@@ -117,13 +129,13 @@ export async function getMaterialStats() {
         const total = await Material.count();
         const available = await Material.count({ where: { status: 'available' } });
         const used = await Material.count({ where: { status: 'used' } });
-        const reserved = await Material.count({ where: { status: 'reserved' } });
+        const pending_replace = await Material.count({ where: { status: 'pending_replace' } });
 
         return {
             total,
             available,
             used,
-            reserved
+            pending_replace
         };
     } catch (error) {
         throw new Error(`Error fetching material stats: ${error.message}`);
@@ -371,12 +383,6 @@ export async function getMaterialStatsByService(serviceId) {
                 status: 'pending_replace'
             }
         });
-        const replaced = await Material.count({
-            where: {
-                service_id: serviceId,
-                status: 'replaced'
-            }
-        });
 
         // Статистика по источникам
         const sourceStats = await Material.findAll({
@@ -411,8 +417,7 @@ export async function getMaterialStatsByService(serviceId) {
                 available,
                 used,
                 pending_replace,
-                replaced,
-                unused: available + pending_replace + replaced
+                unused: available + pending_replace
             },
             sourceBreakdown: sourceStats,
             typeBreakdown: typeStats

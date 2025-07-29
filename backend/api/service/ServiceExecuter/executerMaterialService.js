@@ -168,3 +168,43 @@ export const getMaterialsStats = async (executerId) => {
     throw new Error('Ошибка при получении статистики материалов');
   }
 };
+
+// Запрос замены материала
+export const requestMaterialReplacement = async (materialId, executerId, reason = '') => {
+  try {
+    // Проверяем, что материал существует и используется в заказе исполнителя
+    const material = await Material.findOne({
+      where: { id: materialId },
+      include: [
+        {
+          model: Order,
+          where: { executer_id: executerId },
+          attributes: ['id', 'executer_id']
+        }
+      ]
+    });
+
+    if (!material) {
+      throw new Error('Материал не найден или не принадлежит вашим заказам');
+    }
+
+    if (material.status !== 'used') {
+      throw new Error('Можно запросить замену только для использованных материалов');
+    }
+
+    // Обновляем статус материала на "pending_replace" и устанавливаем дату запроса
+    await material.update({
+      status: 'pending_replace',
+      replacement_requested_date: new Date()
+    });
+
+    return {
+      success: true,
+      message: 'Запрос на замену материала отправлен',
+      material
+    };
+  } catch (error) {
+    console.error('Ошибка при запросе замены материала:', error);
+    throw new Error(error.message || 'Ошибка при запросе замены материала');
+  }
+};

@@ -454,7 +454,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           setMaterialStats(null)
         }}
         footer={null}
-        width={1000}
+        width={1400}
       >
         {/* Статистика материалов */}
         {materialStats && (
@@ -484,8 +484,8 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
                 </Col>
                 <Col span={6}>
                   <Statistic
-                    title="На замене/заменено"
-                    value={materialStats.stats.pending_replace + materialStats.stats.replaced}
+                    title="На замене"
+                    value={materialStats.stats.pending_replace}
                     valueStyle={{ color: '#faad14' }}
                   />
                 </Col>
@@ -530,7 +530,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
                     'available': 'Доступен',
                     'used': 'Использован',
                     'pending_replace': 'На замене',
-                    'replaced': 'Заменён'
+                    'replaced': 'Использован'
                   }
                   return (
                     <Tag color={statusColors[status] || 'default'}>
@@ -552,6 +552,42 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
                 key: 'added_date',
                 width: 120,
                 render: (date) => date ? new Date(date).toLocaleDateString('ru-RU') : '-'
+              },
+              {
+                title: 'Дата использования',
+                dataIndex: 'used_date',
+                key: 'used_date',
+                width: 140,
+                render: (date, record) => {
+                  if (record.status === 'used' || record.status === 'replaced' || record.status === 'pending_replace') {
+                    return date ? new Date(date).toLocaleString('ru-RU', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    }) : '-'
+                  }
+                  return '-'
+                }
+              },
+              {
+                title: 'Дата запроса замены',
+                dataIndex: 'replacement_requested_date',
+                key: 'replacement_requested_date',
+                width: 150,
+                render: (date, record) => {
+                  if (record.status === 'pending_replace') {
+                    return date ? new Date(date).toLocaleString('ru-RU', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    }) : '-'
+                  }
+                  return '-'
+                }
               }
             ]}
           />

@@ -4,7 +4,8 @@ import {
   getMyMaterials,
   getMaterialsForOrder,
   useMaterial,
-  getMaterialsStats
+  getMaterialsStats,
+  requestMaterialReplacement
 } from '../../service/ServiceExecuter/executerMaterialService.js';
 
 export const executerMaterialRoute = express.Router();
@@ -138,6 +139,25 @@ executerMaterialRoute.post('/get-by-order', authExecuterMiddleware, async (req, 
     });
   } catch (error) {
     console.error('Ошибка получения материала по заказу:', error.message);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Запросить замену материала
+executerMaterialRoute.post('/request-replacement/:materialId', authExecuterMiddleware, async (req, res) => {
+  try {
+    const executerId = req.user.executerId;
+    const materialId = req.params.materialId;
+    const { reason } = req.body;
+
+    const result = await requestMaterialReplacement(materialId, executerId, reason);
+
+    res.json(result);
+  } catch (error) {
+    console.error('Ошибка запроса замены материала:', error.message);
     res.status(400).json({
       success: false,
       error: error.message

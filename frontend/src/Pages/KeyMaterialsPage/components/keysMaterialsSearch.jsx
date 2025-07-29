@@ -45,7 +45,6 @@ export function KeysMaterialsSearch({
               { value: '', label: 'Все статусы' },
               { value: 'available', label: 'Доступен' },
               { value: 'used', label: 'Использован' },
-              { value: 'reserved', label: 'Зарезервирован' },
               { value: 'pending_replace', label: 'На замене' }
             ]}
             allowClear
