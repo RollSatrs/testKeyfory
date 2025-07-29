@@ -15,50 +15,34 @@ export function Review() {
       try {
         setLoading(true)
 
-        // Получаем данные с разных эндпоинтов
-        const [servicesRes, executersRes, ordersRes] = await Promise.all([
-          fetch('http://localhost:3000/api/admin/services'),
-          fetch('http://localhost:3000/api/admin/executers'),
-          fetch('http://localhost:3000/api/admin/orders')
-        ])
+        const token = localStorage.getItem('admin_token')
+        if (!token) {
+          console.error('Токен авторизации не найден')
+          return
+        }
 
-        const services = await servicesRes.json()
-        const executers = await executersRes.json()
-        const orders = await ordersRes.json()
+        // Получаем данные со статистики API
+        const statsResponse = await fetch('/api/admin/stats', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
 
-        // Подсчитываем статистику
-        const totalServices = services.length
-        const totalExecuters = executers.length
-        const totalOrders = orders.length
+        if (!statsResponse.ok) {
+          throw new Error('Ошибка загрузки статистики')
+        }
 
-        // Активные исполнители (статус active)
-        const activeExecuters = executers.filter(e => e.status === 'active').length
-
-        // Завершенные заказы
-        const completedOrders = orders.filter(o => o.status === 'completed').length
-        const completedOrdersPercent = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0
-
-        // Общая выручка
-        const totalRevenue = orders
-          .filter(o => o.status === 'completed')
-          .reduce((sum, order) => sum + (order.total_sum || 0), 0)
-
-        // Новые услуги (добавленные за последние 30 дней)
-        const thirtyDaysAgo = new Date()
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-        const newServices = services.filter(s =>
-          new Date(s.createdAt || s.create_date_service) > thirtyDaysAgo
-        ).length
+        const statsData = await statsResponse.json()
 
         setStats({
-          totalServices,
-          totalExecuters,
-          totalOrders,
-          totalRevenue,
-          newServices,
-          activeExecuters,
-          completedOrdersPercent,
-          revenueGrowth: 12.5 // Пока статичное значение, можно будет рассчитать позже
+          totalServices: statsData.services?.total || 0,
+          totalExecuters: statsData.executers?.total || 0,
+          totalOrders: statsData.orders?.total || 0,
+          totalRevenue: statsData.revenue?.total || 0,
+          newServices: statsData.services?.new || 0,
+          activeExecuters: statsData.executers?.active || 0,
+          completedOrdersPercent: statsData.orders?.conversion || 0,
+          revenueGrowth: statsData.revenue?.growth || 0
         })
       } catch (error) {
         console.error('Ошибка загрузки данных дашборда:', error)

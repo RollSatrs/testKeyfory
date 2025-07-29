@@ -7,6 +7,7 @@ import {
   updateExecuterProfile,
   updateExecuterStatus,
   getExecuterOrders,
+  getExecuterActiveOrders,
   getExecuterServices,
   getExecuterStats,
   getExecuterBalance,
@@ -17,6 +18,7 @@ import {
   acceptOrder,
   requestMaterialReplacement,
   writeExecuterLog,
+  getAvailableMaterialsForReplacement,
   updateExecuterActivity,
   createExecuterLog
 } from '../../service/ServiceExecuter/executerService.js'
@@ -82,6 +84,18 @@ executerRoute.get('/completed-orders/:executerId', async (req, res) => {
     res.json(orders);
   } catch (error) {
     console.error('Ошибка получения выполненных заказов:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получить активные (текущие) заказы исполнителя
+executerRoute.get('/active-orders/:executerId', async (req, res) => {
+  try {
+    const { executerId } = req.params;
+    const orders = await getExecuterActiveOrders(executerId);
+    res.json(orders);
+  } catch (error) {
+    console.error('Ошибка получения активных заказов:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
@@ -213,8 +227,8 @@ executerRoute.post('/log', async (req, res) => {
 // Запросить замену материала
 executerRoute.post('/request-replacement', async (req, res) => {
   try {
-    const { order_id, executer_id, reason } = req.body;
-    const result = await requestMaterialReplacement(order_id, executer_id, reason);
+    const { order_id, executer_id, reason, material_id } = req.body;
+    const result = await requestMaterialReplacement(order_id, executer_id, reason, material_id);
     res.json(result);
   } catch (error) {
     console.error('Ошибка запроса замены:', error);
@@ -497,5 +511,17 @@ executerRoute.get('/verify', authExecuterMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Ошибка проверки токена:', err.message);
     res.status(401).json({ valid: false, error: 'Токен недействителен' });
+  }
+});
+
+// Получить доступные материалы для замены
+executerRoute.get('/available-materials/:orderId/:executerId', async (req, res) => {
+  try {
+    const { orderId, executerId } = req.params;
+    const materials = await getAvailableMaterialsForReplacement(orderId, executerId);
+    res.json(materials);
+  } catch (error) {
+    console.error('Ошибка получения доступных материалов:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 });

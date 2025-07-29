@@ -196,11 +196,13 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
         <Tag color={
           status === 'available' ? 'green' :
           status === 'used' ? 'red' :
-          status === 'reserved' ? 'orange' : 'default'
+          status === 'reserved' ? 'orange' :
+          status === 'pending_replace' ? 'purple' : 'default'
         }>
           {status === 'available' ? 'ДОСТУПЕН' :
            status === 'used' ? 'ИСПОЛЬЗОВАН' :
-           status === 'reserved' ? 'ЗАРЕЗЕРВИРОВАН' : status}
+           status === 'reserved' ? 'ЗАРЕЗЕРВИРОВАН' :
+           status === 'pending_replace' ? 'НА ЗАМЕНУ' : status}
         </Tag>
       )
     },

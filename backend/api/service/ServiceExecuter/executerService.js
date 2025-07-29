@@ -54,6 +54,33 @@ export const completeOrder = async (orderId, executerId) => {
       payment_status: 'paid'
     });
 
+    // Обновляем статус всех материалов заказа на "использован"
+    await Material.update(
+      {
+        status: 'used',
+        used_date: new Date()
+      },
+      {
+        where: { order_id: orderId }
+      }
+    );
+
+    // Обновляем статус материалов в details заказа
+    if (order.details && order.details.materials) {
+      const updatedDetails = {
+        ...order.details,
+        materials: order.details.materials.map(material => ({
+          ...material,
+          status: 'used',
+          used_date: new Date()
+        }))
+      };
+
+      await order.update({
+        details: updatedDetails
+      });
+    }
+
     // Обновляем баланс исполнителя
     const executer = await Executer.findByPk(executerId);
     if (executer) {
@@ -66,7 +93,7 @@ export const completeOrder = async (orderId, executerId) => {
     await createExecuterLog(
       executerId,
       'order_completed',
-      `Заказ #${orderId} завершен`,
+      `Заказ #${orderId} завершен, материалы помечены как использованные`,
       orderId,
       order.service_id
     );
@@ -253,6 +280,45 @@ export const getExecuterOrders = async (executerId, status = null) => {
   }
 };
 
+// Получить активные заказы исполнителя
+export const getExecuterActiveOrders = async (executerId) => {
+  try {
+    const logAction = 'get_orders';
+    const logDescription = `Получение активных заказов исполнителем ID: ${executerId}`;
+
+    const orders = await Order.findAll({
+      where: {
+        executer_id: executerId,
+        status: 'in_progress'
+      },
+      include: [
+        {
+          model: Services,
+          attributes: ['name', 'description', 'price']
+        },
+        {
+          model: Material,
+          attributes: ['id', 'type_key', 'contents', 'status', 'source']
+        }
+      ],
+      order: [['created_at', 'DESC']]
+    });
+
+    await createExecuterLog(
+      executerId,
+      logAction,
+      logDescription
+    );
+
+    await updateExecuterActivity(executerId);
+
+    return orders;
+  } catch (err) {
+    console.error('Ошибка при получении активных заказов:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
 // Получить доступные услуги для исполнителя
 export const getExecuterServices = async (executerId) => {
   try {
@@ -416,11 +482,17 @@ export const getMaterialsByOrder = async (orderId) => {
 };
 
 // Запросить замену материала
-export const requestMaterialReplacement = async (orderId, executerId, reason) => {
+export const requestMaterialReplacement = async (orderId, executerId, reason, materialId = null) => {
   try {
     // Проверяем, что заказ существует и принадлежит исполнителю
     const order = await Order.findOne({
-      where: { id: orderId, executer_id: executerId }
+      where: { id: orderId, executer_id: executerId },
+      include: [
+        {
+          model: Services,
+          attributes: ['name']
+        }
+      ]
     });
 
     if (!order) {
@@ -431,9 +503,18 @@ export const requestMaterialReplacement = async (orderId, executerId, reason) =>
     const replacementRequest = await MaterialReplacement.create({
       order_id: orderId,
       executer_id: executerId,
+      material_id: materialId,
       reason: reason,
       status: 'pending'
     });
+
+    // Меняем статус материала на "замену"
+    if (materialId) {
+      await Material.update(
+        { status: 'pending_replace' },
+        { where: { id: materialId } }
+      );
+    }
 
     // Записываем лог запроса
     await createExecuterLog(
@@ -579,6 +660,34 @@ export const updateExecuterStatus = async (telegramId, status) => {
   } catch (err) {
     console.error('Ошибка при обновлении статуса исполнителя:', err);
     throw new Error(err.message || 'Ошибка сервера');
+  }
+};
+
+// Получить доступные материалы для замены
+export const getAvailableMaterialsForReplacement = async (orderId, executerId) => {
+  try {
+    // Проверяем доступ к заказу
+    const order = await Order.findOne({
+      where: { id: orderId, executer_id: executerId }
+    });
+
+    if (!order) {
+      throw new Error('Заказ не найден');
+    }
+
+    // Получаем доступные материалы того же типа услуги
+    const availableMaterials = await Material.findAll({
+      where: {
+        service_id: order.service_id,
+        status: 'available'
+      },
+      order: [['added_date', 'DESC']]
+    });
+
+    return availableMaterials;
+  } catch (err) {
+    console.error('Ошибка при получении доступных материалов:', err);
+    throw new Error('Ошибка сервера');
   }
 };
 

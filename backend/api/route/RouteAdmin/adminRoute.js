@@ -1,5 +1,6 @@
 import express from 'express'
-import { addAdmin, checkAdmin, login } from '../../service/ServiceAdmim/adminService.js'
+import { MaterialReplacement, Order } from '../../../database/dbTables.js'
+import { addAdmin, checkAdmin, login, getAllMaterialReplacements, updateReplacementStatus, getAdminStats, processReplacementWithNewMaterial, getAvailableMaterialsForReplacementAdmin } from '../../service/ServiceAdmim/adminService.js'
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
@@ -149,6 +150,87 @@ adminRoute.post('/simple-reset-password', async (req, res) => {
     res.json({ success: true, message: 'Пароль успешно изменен!' });
   } catch (err) {
     console.error('Ошибка при смене пароля:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Получить все заявки на замену материалов
+adminRoute.get('/material-replacements', authMiddleware, async (req, res) => {
+  try {
+    const replacements = await getAllMaterialReplacements();
+    res.json(replacements);
+  } catch (err) {
+    console.error('Ошибка при получении заявок на замену:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Обновить статус заявки на замену
+adminRoute.put('/material-replacements/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, admin_comment } = req.body;
+
+    const replacement = await updateReplacementStatus(id, status, admin_comment);
+    res.json(replacement);
+  } catch (err) {
+    console.error('Ошибка при обновлении статуса заявки:', err);
+    res.status(500).json({ error: err.message || 'Ошибка сервера' });
+  }
+});
+
+// Обработать замену материала с выбором нового материала
+adminRoute.post('/material-replacements/:id/replace', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newMaterialId, admin_comment } = req.body;
+
+    if (!newMaterialId) {
+      return res.status(400).json({ error: 'Не указан новый материал' });
+    }
+
+    const result = await processReplacementWithNewMaterial(id, newMaterialId, admin_comment);
+    res.json(result);
+  } catch (err) {
+    console.error('Ошибка при обработке замены материала:', err);
+    res.status(500).json({ error: err.message || 'Ошибка сервера' });
+  }
+});
+
+// Получить доступные материалы для замены
+adminRoute.get('/material-replacements/:id/available-materials', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Сначала получаем заявку, чтобы узнать service_id
+    const replacement = await MaterialReplacement.findByPk(id, {
+      include: [
+        {
+          model: Order,
+          attributes: ['service_id']
+        }
+      ]
+    });
+
+    if (!replacement) {
+      return res.status(404).json({ error: 'Заявка не найдена' });
+    }
+
+    const materials = await getAvailableMaterialsForReplacementAdmin(replacement.Order.service_id);
+    res.json(materials);
+  } catch (err) {
+    console.error('Ошибка при получении доступных материалов:', err);
+    res.status(500).json({ error: err.message || 'Ошибка сервера' });
+  }
+});
+
+// Получить статистику для админ-панели
+adminRoute.get('/stats', authMiddleware, async (req, res) => {
+  try {
+    const stats = await getAdminStats();
+    res.json(stats);
+  } catch (err) {
+    console.error('Ошибка при получении статистики:', err);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });

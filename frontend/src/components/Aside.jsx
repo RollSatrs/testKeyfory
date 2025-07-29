@@ -10,7 +10,6 @@ const menu = [
   { path: '/orders', label: 'Заказы', icon: <MdShoppingCart size={20} /> },
   { path: '/materials', label: 'Расходные материалы', icon: <FaBoxOpen size={20} /> },
   { path: '/logs', label: 'Логи системы', icon: <FaFileAlt size={20} /> },
-  { path: '/settings', label: 'Настройки', icon: <MdSettings size={20} /> },
 ]
 
 export function Aside(){

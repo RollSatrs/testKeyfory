@@ -10,7 +10,13 @@ const API_URL = process.env.API_URL;
 
 // Проверяем наличие токена
 if (!BOT_TOKEN) {
-  console.error('❌ Не найден токен бота! Установите BOT_TOKEN в переменных окружения');
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('🚀 Начать работу', `start_work_${orderNumber}`)],
+      [Markup.button.callback('📦 Получить материалы', `get_materials_${orderNumber}`)],
+      [Markup.button.callback('🔄 Заменить материал', `replace_material_${orderNumber}`)],
+      [Markup.button.callback('✅ Завершить заказ', `complete_order_${orderNumber}`)],
+      [Markup.button.callback('🔄 Запросить замену', `request_replacement_${orderNumber}`)]
+    ]);error('❌ Не найден токен бота! Установите BOT_TOKEN в переменных окружения');
   process.exit(1);
 }
 
@@ -21,6 +27,9 @@ const bot = new Telegraf(BOT_TOKEN);
 
 // Хранение сессий пользователей (временно в памяти)
 const userSessions = {};
+
+// Хранение состояний ожидания ввода причины замены
+const waitingForReason = {};
 
 // Функция для перевода статуса на русский язык
 const translateStatus = (status) => {
@@ -108,9 +117,9 @@ const authorizeExecuter = async (telegramId) => {
 // Главное меню
 const getMainMenu = () => {
   return Markup.keyboard([
-    ['📋 Мои заказы', '✅ Выполненные заказы'],
-    ['📊 Статистика', '💰 Баланс'],
-    ['🔧 Начать работу']
+    ['📋 Мои заказы', '⏳ Текущие заказы'],
+    ['✅ Выполненные заказы', '📊 Статистика'],
+    ['💰 Баланс', '🔧 Начать работу']
   ]).resize();
 };
 
@@ -118,13 +127,19 @@ const getMainMenu = () => {
 bot.start(async (ctx) => {
   const chatId = ctx.chat.id;
   const telegramId = ctx.from.id.toString();
+  const userName = ctx.from.first_name || ctx.from.username || 'Неизвестно';
   console.log(`✅ Начало работы исполнителя ${telegramId}`);
 
   // Авторизация исполнителя
   const executerData = await authorizeExecuter(telegramId);
 
   if (!executerData) {
-    return ctx.reply('❌ Доступ запрещен. Вы не зарегистрированы как исполнитель.');
+    return ctx.reply(
+      `❌ Доступ запрещен. Вы не зарегистрированы как исполнитель.\n\n` +
+      `👤 Ваше имя: ${userName}\n` +
+      `🆔 Ваш Telegram ID: ${telegramId}\n\n` +
+      `Обратитесь к администратору для регистрации с указанием вашего Telegram ID.`
+    );
   }
 
   userSessions[chatId] = {
@@ -143,21 +158,55 @@ bot.start(async (ctx) => {
   );
 });
 
+// Команда для получения своего Telegram ID
+bot.command('id', async (ctx) => {
+  const telegramId = ctx.from.id.toString();
+  const userName = ctx.from.first_name || ctx.from.username || 'Неизвестно';
+  const chatId = ctx.chat.id;
+
+  return ctx.reply(
+    `👤 Ваша информация:\n\n` +
+    `🆔 Telegram ID: ${telegramId}\n` +
+    `📱 Chat ID: ${chatId}\n` +
+    `👤 Имя: ${userName}\n\n` +
+    `Эта информация может потребоваться для регистрации в системе.`
+  );
+});
+
 // Обработка текстовых сообщений
 bot.on('text', async (ctx) => {
   const chatId = ctx.chat.id;
   const text = ctx.message.text;
+  const telegramId = ctx.from.id.toString();
+  const userName = ctx.from.first_name || ctx.from.username || 'Неизвестно';
 
   // Проверка авторизации
   if (!userSessions[chatId]) {
-    return ctx.reply('❌ Сначала нажмите /start для авторизации');
+    return ctx.reply(
+      `❌ Сначала нажмите /start для авторизации\n\n` +
+      `👤 Ваше имя: ${userName}\n` +
+      `🆔 Ваш Telegram ID: ${telegramId}\n\n` +
+      `Если вы не зарегистрированы, обратитесь к администратору.`
+    );
   }
 
   const session = userSessions[chatId];
 
+  // Проверяем, ожидается ли ввод причины замены
+  if (waitingForReason[chatId]) {
+    const { orderId, materialId } = waitingForReason[chatId];
+    await processReplacementReason(ctx, orderId, materialId, text, session.executer_id);
+    delete waitingForReason[chatId];
+    return;
+  }
+
   switch (text) {
     case '📋 Мои заказы':
       await showMyOrders(ctx, session.executer_id);
+      break;
+
+    case '⏳ Текущие заказы':
+      await showActiveOrders(ctx, session.executer_id);
       break;
 
     case '✅ Выполненные заказы':
@@ -215,6 +264,40 @@ const showMyOrders = async (ctx, executerId) => {
     return ctx.reply(message);
   } catch (error) {
     return ctx.reply('❌ Ошибка при получении заказов');
+  }
+};
+
+// Показать текущие заказы (не завершенные)
+const showActiveOrders = async (ctx, executerId) => {
+  try {
+    // Логируем действие и обновляем активность
+    await logActivity(executerId, 'view_active_orders', 'Просмотр текущих заказов');
+
+    const response = await fetch(`${API_URL}/executer/active-orders/${executerId}`);
+
+    if (!response.ok) {
+      return ctx.reply('❌ Ошибка при получении текущих заказов');
+    }
+
+    const orders = await response.json();
+
+    if (orders.length === 0) {
+      return ctx.reply('⏳ У вас пока нет текущих заказов');
+    }
+
+    let message = '⏳ Ваши текущие заказы:\n\n';
+    orders.forEach(order => {
+      message += `🔸 Заказ #${order.id}\n`;
+      message += `📝 Услуга: ${order.Service?.name || 'Не указана'}\n`;
+      message += `📅 Статус: ${translateStatus(order.status)}\n`;
+      message += `💰 Сумма: ${order.total_sum} руб.\n`;
+      message += `📆 Дата: ${new Date(order.created_at).toLocaleDateString()}\n`;
+      message += `➡️ Для работы введите: ${order.id}\n\n`;
+    });
+
+    return ctx.reply(message);
+  } catch (error) {
+    return ctx.reply('❌ Ошибка при получении текущих заказов');
   }
 };
 
@@ -394,7 +477,21 @@ bot.action(/request_replacement_(\d+)/, async (ctx) => {
   }
 
   const session = userSessions[chatId];
-  await requestReplacement(ctx, orderId, session.executer_id);
+  // Запускаем процесс выбора материала для замены
+  await replaceMaterial(ctx, orderId, session.executer_id);
+});
+
+bot.action(/select_material_(\d+)_(.+)/, async (ctx) => {
+  const orderId = ctx.match[1];
+  const materialId = ctx.match[2];
+  const chatId = ctx.chat.id;
+
+  if (!userSessions[chatId]) {
+    return ctx.answerCbQuery('Сессия истекла. Нажмите /start');
+  }
+
+  const session = userSessions[chatId];
+  await requestSpecificMaterialReplacement(ctx, orderId, materialId, session.executer_id);
 });
 
 // Получить материалы
@@ -438,13 +535,24 @@ const getMaterials = async (ctx, orderId, executerId) => {
     }
 
     let message = '📦 Материалы для заказа:\n\n';
+
+    let availableCount = 0;
+    let usedCount = 0;
+
     materials.forEach((material, index) => {
+      const status = material.status || 'available';
+      if (status === 'available') availableCount++;
+      if (status === 'used') usedCount++;
+
       message += `🔸 Материал ${index + 1}:\n`;
       message += `📝 Тип: ${material.type_key || 'Не указан'}\n`;
       message += `📋 Содержимое: ${material.contents || 'Нет данных'}\n`;
-      message += `📊 Статус: ${translateMaterialStatus(material.status) || 'Неизвестен'}\n`;
+      message += `📊 Статус: ${translateMaterialStatus(status)}\n`;
       message += `📌 Источник: ${material.source || 'Не указан'}\n\n`;
     });
+
+    // Добавляем статистику
+    message = `📊 Статистика материалов:\n✅ Доступно: ${availableCount} | ❌ Использовано: ${usedCount}\n\n` + message;
 
     await ctx.answerCbQuery();
     await ctx.reply(message);
@@ -514,6 +622,71 @@ const completeOrder = async (ctx, orderId, executerId) => {
   }
 };
 
+// Заменить материал (с выбором конкретного материала)
+const replaceMaterial = async (ctx, orderId, executerId) => {
+  try {
+    // Сначала получаем материалы для заказа
+    const response = await fetch(`${API_URL}/executer/order/${orderId}/${executerId}`);
+
+    if (!response.ok) {
+      await ctx.answerCbQuery();
+      return ctx.reply('❌ Ошибка при получении информации о заказе');
+    }
+
+    const order = await response.json();
+    let allMaterials = [];
+
+    if (order.details && order.details.materials) {
+      allMaterials = order.details.materials;
+    }
+
+    if (!allMaterials || allMaterials.length === 0) {
+      await ctx.answerCbQuery();
+      return ctx.reply('📦 Материалы для замены не найдены');
+    }
+
+    // Фильтруем только доступные (неиспользованные) материалы
+    const availableMaterials = allMaterials.filter(material =>
+      material.status === 'available' || !material.status
+    );
+
+    if (availableMaterials.length === 0) {
+      await ctx.answerCbQuery();
+      return ctx.reply('📦 Нет доступных материалов для замены. Все материалы уже использованы.');
+    }
+
+    // Создаем inline клавиатуру с выбором материала
+    const keyboard = Markup.inlineKeyboard(
+      availableMaterials.map((material, index) => [
+        Markup.button.callback(
+          `${material.type_key || 'Материал'} - ${material.contents?.substring(0, 20) || 'Нет данных'}...`,
+          `select_material_${orderId}_${material.id || index}`
+        )
+      ])
+    );
+
+    await ctx.answerCbQuery();
+
+    let statusInfo = `📊 Статистика материалов:\n`;
+    statusInfo += `✅ Доступно: ${availableMaterials.length}\n`;
+    statusInfo += `❌ Использовано: ${allMaterials.length - availableMaterials.length}\n\n`;
+
+    await ctx.reply(
+      statusInfo +
+      '🔄 Выберите доступный материал для замены:\n\n' +
+      availableMaterials.map((material, index) =>
+        `${index + 1}. ${material.type_key || 'Материал'}: ${material.contents || 'Нет данных'} (${translateMaterialStatus(material.status || 'available')})`
+      ).join('\n'),
+      keyboard
+    );
+
+    await logActivity(executerId, 'view_materials_for_replacement', `Просмотр материалов для замены в заказе #${orderId}`, orderId);
+  } catch (error) {
+    await ctx.answerCbQuery();
+    return ctx.reply('❌ Ошибка при получении материалов для замены');
+  }
+};
+
 // Запросить замену материала
 const requestReplacement = async (ctx, orderId, executerId) => {
   try {
@@ -543,6 +716,55 @@ const requestReplacement = async (ctx, orderId, executerId) => {
   }
 };
 
+// Запросить замену конкретного материала
+const requestSpecificMaterialReplacement = async (ctx, orderId, materialId, executerId) => {
+  try {
+    const chatId = ctx.chat.id;
+
+    // Сохраняем состояние ожидания ввода причины
+    waitingForReason[chatId] = {
+      orderId: orderId,
+      materialId: materialId
+    };
+
+    await ctx.answerCbQuery();
+    await ctx.reply('📝 Укажите причину замены материала:\n\nНапример: "Материал поврежден", "Неподходящий ключ", "Истек срок действия" и т.д.');
+
+    await logActivity(executerId, 'request_replacement_start', `Начало запроса замены материала ID: ${materialId} для заказа #${orderId}`, orderId);
+  } catch (error) {
+    await ctx.answerCbQuery();
+    return ctx.reply('❌ Ошибка при запросе замены');
+  }
+};
+
+// Обработка введенной причины замены
+const processReplacementReason = async (ctx, orderId, materialId, reason, executerId) => {
+  try {
+    const response = await fetch(`${API_URL}/executer/request-replacement`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        order_id: orderId,
+        executer_id: executerId,
+        material_id: materialId,
+        reason: reason
+      })
+    });
+
+    if (!response.ok) {
+      return ctx.reply('❌ Ошибка при отправке запроса на замену');
+    }
+
+    await ctx.reply(`✅ Запрос на замену материала отправлен!\n\n📝 Причина: ${reason}\n\n⏳ Ожидайте решения администратора.`);
+
+    await logActivity(executerId, 'request_specific_replacement', `Запрос замены материала ID: ${materialId} для заказа #${orderId}. Причина: ${reason}`, orderId);
+  } catch (error) {
+    return ctx.reply('❌ Ошибка при отправке запроса на замену');
+  }
+};
+
 // Функция для отправки уведомлений исполнителю
 const sendNotificationToExecuter = async (telegramId, message) => {
   try {
@@ -559,6 +781,34 @@ const sendNotificationToExecuter = async (telegramId, message) => {
     }
   } catch (error) {
     console.error('Ошибка отправки уведомления:', error.message);
+  }
+};
+
+// Функция для уведомления о замене материала
+const notifyMaterialReplacement = async (data) => {
+  try {
+    const { telegramId, orderId, serviceName, oldMaterial, newMaterial, adminComment } = data;
+
+    let message = `🔄 Материал заменен!\n\n`;
+    message += `📦 Заказ: #${orderId}\n`;
+    message += `🔧 Услуга: ${serviceName}\n\n`;
+
+    if (oldMaterial && oldMaterial !== 'Не указан') {
+      message += `❌ Старый материал: ${oldMaterial}\n`;
+    }
+
+    message += `✅ Новый материал: ${newMaterial}\n\n`;
+
+    if (adminComment) {
+      message += `💬 Комментарий администратора: ${adminComment}\n\n`;
+    }
+
+    message += `Теперь вы можете использовать новый материал для выполнения заказа.`;
+
+    await sendNotificationToExecuter(telegramId, message);
+    console.log(`✅ Уведомление о замене материала отправлено исполнителю ${telegramId}`);
+  } catch (error) {
+    console.error('Ошибка отправки уведомления о замене:', error.message);
   }
 };
 
@@ -580,5 +830,5 @@ bot.launch()
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
-// Экспорт функции для отправки уведомлений
-export { sendNotificationToExecuter };
+// Экспорт функций для использования в других модулях
+export { notifyMaterialReplacement };
