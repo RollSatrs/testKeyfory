@@ -20,7 +20,8 @@ import {
   writeExecuterLog,
   getAvailableMaterialsForReplacement,
   updateExecuterActivity,
-  createExecuterLog
+  createExecuterLog,
+  createExecuterOrder
 } from '../../service/ServiceExecuter/executerService.js'
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken'
@@ -220,6 +221,23 @@ executerRoute.post('/log', async (req, res) => {
     res.json({ success: true, message: 'Лог создан' });
   } catch (error) {
     console.error('Ошибка создания лога:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Создать новый заказ
+executerRoute.post('/create-order', async (req, res) => {
+  try {
+    const { order_number, executer_id } = req.body;
+
+    if (!order_number || !executer_id) {
+      return res.status(400).json({ error: 'Номер заказа и ID исполнителя обязательны' });
+    }
+
+    const result = await createExecuterOrder(order_number, executer_id);
+    res.json(result);
+  } catch (error) {
+    console.error('Ошибка создания заказа:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });

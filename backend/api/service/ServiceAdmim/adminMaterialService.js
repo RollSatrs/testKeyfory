@@ -1,4 +1,8 @@
 import { Material, Services, MaterialReplacement, Order, Executer } from "../../../database/dbTables.js";
+import fs from 'fs';
+import path from 'path';
+import csv from 'csv-parser';
+import * as XLSX from 'xlsx';
 
 export async function getAllMaterials() {
     try {
@@ -211,5 +215,112 @@ export async function processReplacementRequest(requestId, adminId, decision, ad
         return request;
     } catch (error) {
         throw new Error(`Error processing replacement request: ${error.message}`);
+    }
+}
+
+// Загрузить материалы из файла
+export async function uploadMaterialsFromFile(file, serviceId) {
+    try {
+        // Проверяем существование услуги
+        const service = await Services.findByPk(serviceId);
+        if (!service) {
+            throw new Error('Услуга не найдена');
+        }
+
+        const filePath = file.path;
+        const fileName = file.originalname.toLowerCase();
+        const materials = [];
+
+        if (fileName.endsWith('.csv') || fileName.endsWith('.txt')) {
+            // Обработка CSV/TXT файлов
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+            const lines = fileContent.split('\n').filter(line => line.trim() !== '');
+
+            for (const line of lines) {
+                const content = line.trim();
+                if (content) {
+                    materials.push({
+                        service_id: serviceId,
+                        contents: content,
+                        type_key: 'imported',
+                        status: 'available',
+                        source: 'file_upload',
+                        added_date: new Date()
+                    });
+                }
+            }
+        } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+            // Обработка Excel файлов
+            const workbook = XLSX.readFile(filePath);
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+            for (const row of data) {
+                if (row[0] && typeof row[0] === 'string') {
+                    const content = row[0].trim();
+                    if (content) {
+                        materials.push({
+                            service_id: serviceId,
+                            contents: content,
+                            type_key: 'imported',
+                            status: 'available',
+                            source: 'file_upload',
+                            added_date: new Date()
+                        });
+                    }
+                }
+            }
+        } else {
+            throw new Error('Неподдерживаемый формат файла. Используйте .csv, .txt, .xlsx или .xls');
+        }
+
+        // Сохраняем материалы в базу данных
+        if (materials.length > 0) {
+            await Material.bulkCreate(materials);
+        }
+
+        // Удаляем временный файл
+        fs.unlinkSync(filePath);
+
+        return {
+            success: true,
+            count: materials.length,
+            message: `Загружено ${materials.length} материалов`
+        };
+    } catch (error) {
+        // Удаляем временный файл в случае ошибки
+        if (file && file.path && fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+        }
+        throw new Error(`Error uploading materials: ${error.message}`);
+    }
+}
+
+// Добавить один материал вручную
+export async function addSingleMaterial(serviceId, contents, typeKey = 'manual') {
+    try {
+        // Проверяем существование услуги
+        const service = await Services.findByPk(serviceId);
+        if (!service) {
+            throw new Error('Услуга не найдена');
+        }
+
+        const material = await Material.create({
+            service_id: serviceId,
+            contents: contents.trim(),
+            type_key: typeKey,
+            status: 'available',
+            source: 'manual_input',
+            added_date: new Date()
+        });
+
+        return {
+            success: true,
+            material,
+            message: 'Материал добавлен'
+        };
+    } catch (error) {
+        throw new Error(`Error adding material: ${error.message}`);
     }
 }

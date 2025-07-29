@@ -393,41 +393,72 @@ const startWork = async (ctx, executerId) => {
 // Обработка номера заказа
 const processOrderNumber = async (ctx, orderNumber, executerId) => {
   try {
+    // Сначала пытаемся найти существующий заказ
     const response = await fetch(`${API_URL}/executer/order/${orderNumber}/${executerId}`);
 
-    if (!response.ok) {
-      return ctx.reply('❌ Заказ не найден или недоступен для вас');
+    if (response.ok) {
+      const order = await response.json();
+
+      if (order) {
+        // Проверяем, не завершён ли уже заказ
+        if (order.status === 'completed') {
+          return ctx.reply('✅ Этот заказ уже выполнен! Вы не можете работать с ним повторно.');
+        }
+
+        const keyboard = Markup.inlineKeyboard([
+          [Markup.button.callback('🚀 Начать работу', `start_work_${orderNumber}`)],
+          [Markup.button.callback('📦 Получить материалы', `get_materials_${orderNumber}`)],
+          [Markup.button.callback('✅ Завершить заказ', `complete_order_${orderNumber}`)],
+          [Markup.button.callback('🔄 Запросить замену', `request_replacement_${orderNumber}`)]
+        ]);
+
+        const message = `📋 Заказ #${orderNumber}\n\n` +
+          `📝 Услуга: ${order.Service?.name}\n` +
+          `💰 Сумма: ${order.total_sum} руб.\n` +
+          `📅 Статус: ${translateStatus(order.status)}\n\n` +
+          `Выберите действие:`;
+
+        await ctx.reply(message, keyboard);
+        await logActivity(executerId, 'view_order', `Просмотр заказа #${orderNumber}`, orderNumber);
+        return;
+      }
     }
 
-    const order = await response.json();
+    // Если заказ не найден, создаём новый заказ с этим номером
+    const createResponse = await fetch(`${API_URL}/executer/create-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        order_number: orderNumber,
+        executer_id: executerId
+      })
+    });
 
-    if (!order) {
-      return ctx.reply('❌ Заказ не найден или недоступен для вас');
+    if (!createResponse.ok) {
+      return ctx.reply('❌ Ошибка при создании заказа. Попробуйте ещё раз.');
     }
 
-    // Проверяем, не завершён ли уже заказ
-    if (order.status === 'completed') {
-      return ctx.reply('✅ Этот заказ уже выполнен! Вы не можете работать с ним повторно.');
-    }
+    const newOrder = await createResponse.json();
 
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('� Начать работу', `start_work_${orderNumber}`)],
-      [Markup.button.callback('�📦 Получить материалы', `get_materials_${orderNumber}`)],
+      [Markup.button.callback('🚀 Начать работу', `start_work_${orderNumber}`)],
+      [Markup.button.callback('📦 Получить материалы', `get_materials_${orderNumber}`)],
       [Markup.button.callback('✅ Завершить заказ', `complete_order_${orderNumber}`)],
       [Markup.button.callback('🔄 Запросить замену', `request_replacement_${orderNumber}`)]
     ]);
 
-    const message = `📋 Заказ #${orderNumber}\n\n` +
-      `📝 Услуга: ${order.Service?.name}\n` +
-      `💰 Сумма: ${order.total_sum} руб.\n` +
-      `📅 Статус: ${translateStatus(order.status)}\n\n` +
+    const message = `✅ Создан новый заказ #${orderNumber}\n\n` +
+      `📅 Статус: ${translateStatus(newOrder.status)}\n\n` +
       `Выберите действие:`;
 
     await ctx.reply(message, keyboard);
+    await logActivity(executerId, 'create_order', `Создан заказ #${orderNumber}`, orderNumber);
 
-    await logActivity(executerId, 'view_order', `Просмотр заказа #${orderNumber}`, orderNumber);
   } catch (error) {
-    return ctx.reply('❌ Ошибка при получении информации о заказе');
+    console.error('Ошибка при обработке номера заказа:', error);
+    return ctx.reply('❌ Ошибка при обработке заказа');
   }
 };
 

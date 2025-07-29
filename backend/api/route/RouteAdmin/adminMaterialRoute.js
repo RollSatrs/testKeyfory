@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import {
     getAllMaterials,
     getMaterialById,
@@ -9,8 +10,13 @@ import {
     getMaterialsByService,
     getAllReplacementRequests,
     getReplacementRequestsByStatus,
-    processReplacementRequest
+    processReplacementRequest,
+    uploadMaterialsFromFile,
+    addSingleMaterial
 } from '../../service/ServiceAdmim/adminMaterialService.js';
+
+// Настройка multer для загрузки файлов
+const upload = multer({ dest: 'uploads/' });
 
 export const materialRoute = express.Router();
 
@@ -126,5 +132,44 @@ materialRoute.post('/replacement-requests/:id/process', async (req, res) => {
     } catch (error) {
         console.error('Error processing replacement request:', error);
         res.status(400).json({ error: error.message });
+    }
+});
+
+// POST /materials/upload - загрузить материалы из файла
+materialRoute.post('/upload', upload.single('file'), async (req, res) => {
+    try {
+        const { service_id } = req.body;
+        const file = req.file;
+
+        if (!file) {
+            return res.status(400).json({ error: 'Файл не загружен' });
+        }
+
+        if (!service_id) {
+            return res.status(400).json({ error: 'ID услуги обязателен' });
+        }
+
+        const result = await uploadMaterialsFromFile(file, service_id);
+        res.json(result);
+    } catch (error) {
+        console.error('Error uploading materials:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /materials/add-single - добавить один материал вручную
+materialRoute.post('/add-single', async (req, res) => {
+    try {
+        const { service_id, contents, type_key } = req.body;
+
+        if (!service_id || !contents) {
+            return res.status(400).json({ error: 'ID услуги и содержимое обязательны' });
+        }
+
+        const result = await addSingleMaterial(service_id, contents, type_key || 'manual');
+        res.json(result);
+    } catch (error) {
+        console.error('Error adding material:', error);
+        res.status(500).json({ error: error.message });
     }
 });

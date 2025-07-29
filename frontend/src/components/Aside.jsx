@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { MdDashboard, MdKey, MdPeople, MdShoppingCart, MdSettings, MdLogout } from 'react-icons/md'
+import { MdDashboard, MdKey, MdPeople, MdLogout } from 'react-icons/md'
 import { FaBoxOpen, FaFileAlt } from 'react-icons/fa'
 
 
@@ -7,7 +7,6 @@ const menu = [
   { path: '/overview', label: 'Обзор', icon: <MdDashboard size={20} /> },
   { path: '/services', label: 'Цифровые услуги', icon: <MdKey size={20} /> },
   { path: '/users', label: 'Исполнители', icon: <MdPeople size={20} /> },
-  { path: '/orders', label: 'Заказы', icon: <MdShoppingCart size={20} /> },
   { path: '/materials', label: 'Расходные материалы', icon: <FaBoxOpen size={20} /> },
   { path: '/logs', label: 'Логи системы', icon: <FaFileAlt size={20} /> },
 ]

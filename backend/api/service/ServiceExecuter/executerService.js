@@ -719,3 +719,55 @@ export const getAllExecuters = async (filters = {}) => {
     throw new Error('Ошибка сервера');
   }
 };
+
+// Создать новый заказ
+export const createExecuterOrder = async (orderNumber, executerId) => {
+  try {
+    // Проверяем, что исполнитель существует
+    const executer = await Executer.findByPk(executerId);
+    if (!executer) {
+      throw new Error('Исполнитель не найден');
+    }
+
+    // Проверяем, не существует ли уже заказ с таким номером для этого исполнителя
+    const existingOrder = await Order.findOne({
+      where: {
+        id: orderNumber,
+        executer_id: executerId
+      }
+    });
+
+    if (existingOrder) {
+      return existingOrder;
+    }
+
+    // Создаём новый заказ
+    const newOrder = await Order.create({
+      id: orderNumber, // Используем номер заказа как ID
+      executer_id: executerId,
+      status: 'pending',
+      payment_status: 'pending',
+      total_sum: 0, // Сумма будет устанавливаться позже
+      details: {
+        created_by_executer: true,
+        order_number: orderNumber
+      }
+    });
+
+    // Обновляем активность исполнителя
+    await updateExecuterActivity(executerId);
+
+    // Записываем лог
+    await createExecuterLog(
+      executerId,
+      'create_order',
+      `Создан заказ #${orderNumber}`,
+      orderNumber
+    );
+
+    return newOrder;
+  } catch (err) {
+    console.error('Ошибка при создании заказа:', err);
+    throw new Error('Ошибка сервера');
+  }
+};

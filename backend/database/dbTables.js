@@ -164,6 +164,22 @@ MaterialReplacement.belongsTo(Material, {foreignKey: 'material_id'});
 Admin.hasMany(MaterialReplacement, {foreignKey: 'processed_by'});
 MaterialReplacement.belongsTo(Admin, {foreignKey: 'processed_by'});
 
+// Индивидуальное ценообразование для исполнителей
+export const ExecuterPricing = sequelize.define('ExecuterPricing', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  executer_id: { type: DataTypes.INTEGER, references: { model: 'executers', key: 'id' }, allowNull: false },
+  service_id: { type: DataTypes.INTEGER, references: { model: 'services', key: 'id' }, allowNull: false },
+  custom_price: { type: DataTypes.FLOAT, allowNull: false }, // индивидуальная цена для исполнителя
+  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, { tableName: 'executer_pricing', timestamps: false });
+
+// Связи для ценообразования
+Executer.hasMany(ExecuterPricing, {foreignKey: 'executer_id'});
+ExecuterPricing.belongsTo(Executer, {foreignKey: 'executer_id'});
+
+Services.hasMany(ExecuterPricing, {foreignKey: 'service_id'});
+ExecuterPricing.belongsTo(Services, {foreignKey: 'service_id'});
+
 // Связи для логов
 Executer.hasMany(Log, {foreignKey: 'user_id', constraints: false, scope: { user_type: 'executer' }});
 Log.belongsTo(Executer, {foreignKey: 'user_id', constraints: false});
