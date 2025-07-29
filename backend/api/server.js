@@ -6,6 +6,8 @@ import { sercesRoute } from './route/RouteAdmin/adminServicesRoute.js'
 import { materialRoute } from './route/RouteAdmin/adminMaterialRoute.js'
 import { orderRoute } from './route/RouteAdmin/adminOrderRoute.js'
 import { executerRoute as adminExecuterRoute } from './route/RouteAdmin/adminExecuterRoute.js'
+import adminPricingRoute from './route/RouteAdmin/adminPricingRoute.js'
+import adminEarningsRoute from './route/RouteAdmin/adminEarningsRoute.js'
 import { executerRoute } from './route/RouteExecuter/executerRoute.js'
 import { executerOrderRoute } from './route/RouteExecuter/executerOrderRoute.js'
 import { executerMaterialRoute } from './route/RouteExecuter/executerMaterialRoute.js'
@@ -37,6 +39,8 @@ app.use('/api/services/admin', authMiddleware, sercesRoute)
 app.use('/api/materials/admin', authMiddleware, materialRoute)
 app.use('/api/orders/admin', authMiddleware, orderRoute)
 app.use('/api/executers/admin', authMiddleware, adminExecuterRoute)
+app.use('/api/pricing/admin', authMiddleware, adminPricingRoute)
+app.use('/api/earnings/admin', authMiddleware, adminEarningsRoute)
 
 app.get('/', (req, res) => {
   res.send('👋 Сервер работает!');

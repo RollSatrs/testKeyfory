@@ -46,7 +46,7 @@ export async function getServiceById(id) {
 
 export async function addServiices(data) {
     try {
-        const { name, category, required_keys, price, status } = data;
+        const { name, category, price, status } = data;
 
         if (!name || !category) {
             throw new Error('Name and category are required');
@@ -65,7 +65,6 @@ export async function addServiices(data) {
             name,
             category,
             price: validPrice,
-            required_keys: required_keys || 0,
             status,
             admin_id: 1
         });

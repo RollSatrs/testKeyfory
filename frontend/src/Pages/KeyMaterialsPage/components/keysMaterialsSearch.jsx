@@ -6,9 +6,7 @@ export function KeysMaterialsSearch({
   search,
   setSearch,
   statusFilter,
-  setStatusFilter,
-  typeFilter,
-  setTypeFilter
+  setStatusFilter
 }) {
   const [showFilters, setShowFilters] = useState(false);
 
@@ -17,7 +15,7 @@ export function KeysMaterialsSearch({
       <div className="flex gap-3 items-center">
         <Input
           allowClear
-          placeholder="Поиск по типу или содержимому..."
+          placeholder="Поиск по содержимому..."
           className="flex-1"
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -40,19 +38,6 @@ export function KeysMaterialsSearch({
         <div className="flex flex-col gap-2 md:flex-row md:gap-6 items-center">
           <Select
             className="w-full md:w-56"
-            value={typeFilter}
-            onChange={value => setTypeFilter(value)}
-            placeholder="Все типы"
-            options={[
-              { value: '', label: 'Все типы' },
-              { value: 'Ключ', label: 'Ключ' },
-              { value: 'Лицензия', label: 'Лицензия' },
-              { value: 'Код', label: 'Код' }
-            ]}
-            allowClear
-          />
-          <Select
-            className="w-full md:w-56"
             value={statusFilter}
             onChange={value => setStatusFilter(value)}
             placeholder="Все статусы"
@@ -60,7 +45,8 @@ export function KeysMaterialsSearch({
               { value: '', label: 'Все статусы' },
               { value: 'available', label: 'Доступен' },
               { value: 'used', label: 'Использован' },
-              { value: 'reserved', label: 'Зарезервирован' }
+              { value: 'reserved', label: 'Зарезервирован' },
+              { value: 'pending_replace', label: 'На замене' }
             ]}
             allowClear
           />

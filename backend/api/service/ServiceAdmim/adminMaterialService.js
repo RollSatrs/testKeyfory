@@ -44,10 +44,10 @@ export async function getMaterialById(id) {
 
 export async function addMaterial(data) {
     try {
-        const { type_key, contents, source = 'manual', service_id, status = 'available' } = data;
+        const { type_key = 'key', contents, source = 'manual', service_id, status = 'available' } = data;
 
-        if (!type_key || !contents || !service_id) {
-            throw new Error('Type key, contents and service ID are required');
+        if (!contents || !service_id) {
+            throw new Error('Contents and service ID are required');
         }
 
         // Проверяем существование услуги
@@ -81,6 +81,20 @@ export async function updateMaterial(id, data) {
         return updatedMaterial;
     } catch (error) {
         throw new Error(`Error updating material: ${error.message}`);
+    }
+}
+
+export async function updateMaterialStatus(id, status) {
+    try {
+        const material = await Material.findByPk(id);
+        if (!material) {
+            throw new Error('Material not found');
+        }
+
+        const updatedMaterial = await material.update({ status });
+        return updatedMaterial;
+    } catch (error) {
+        throw new Error(`Error updating material status: ${error.message}`);
     }
 }
 
@@ -123,7 +137,7 @@ export async function getMaterialsByService(serviceId) {
             include: [
                 {
                     model: Services,
-                    as: 'service',
+                    as: 'Service',
                     attributes: ['name', 'category']
                 }
             ],
@@ -242,7 +256,6 @@ export async function uploadMaterialsFromFile(file, serviceId) {
                     materials.push({
                         service_id: serviceId,
                         contents: content,
-                        type_key: 'imported',
                         status: 'available',
                         source: 'file_upload',
                         added_date: new Date()
@@ -263,7 +276,6 @@ export async function uploadMaterialsFromFile(file, serviceId) {
                         materials.push({
                             service_id: serviceId,
                             contents: content,
-                            type_key: 'imported',
                             status: 'available',
                             source: 'file_upload',
                             added_date: new Date()
@@ -298,7 +310,7 @@ export async function uploadMaterialsFromFile(file, serviceId) {
 }
 
 // Добавить один материал вручную
-export async function addSingleMaterial(serviceId, contents, typeKey = 'manual') {
+export async function addSingleMaterial(serviceId, contents, typeKey = null) {
     try {
         // Проверяем существование услуги
         const service = await Services.findByPk(serviceId);
@@ -306,14 +318,20 @@ export async function addSingleMaterial(serviceId, contents, typeKey = 'manual')
             throw new Error('Услуга не найдена');
         }
 
-        const material = await Material.create({
+        const materialData = {
             service_id: serviceId,
             contents: contents.trim(),
-            type_key: typeKey,
             status: 'available',
             source: 'manual_input',
             added_date: new Date()
-        });
+        };
+
+        // Добавляем type_key только если он указан
+        if (typeKey) {
+            materialData.type_key = typeKey;
+        }
+
+        const material = await Material.create(materialData);
 
         return {
             success: true,
@@ -322,5 +340,84 @@ export async function addSingleMaterial(serviceId, contents, typeKey = 'manual')
         };
     } catch (error) {
         throw new Error(`Error adding material: ${error.message}`);
+    }
+}
+
+// Получить статистику материалов по конкретной услуге
+export async function getMaterialStatsByService(serviceId) {
+    try {
+        // Проверяем существование услуги
+        const service = await Services.findByPk(serviceId);
+        if (!service) {
+            throw new Error('Услуга не найдена');
+        }
+
+        const total = await Material.count({ where: { service_id: serviceId } });
+        const available = await Material.count({
+            where: {
+                service_id: serviceId,
+                status: 'available'
+            }
+        });
+        const used = await Material.count({
+            where: {
+                service_id: serviceId,
+                status: 'used'
+            }
+        });
+        const pending_replace = await Material.count({
+            where: {
+                service_id: serviceId,
+                status: 'pending_replace'
+            }
+        });
+        const replaced = await Material.count({
+            where: {
+                service_id: serviceId,
+                status: 'replaced'
+            }
+        });
+
+        // Статистика по источникам
+        const sourceStats = await Material.findAll({
+            where: { service_id: serviceId },
+            attributes: [
+                'source',
+                [Material.sequelize.fn('COUNT', Material.sequelize.col('id')), 'count']
+            ],
+            group: ['source'],
+            raw: true
+        });
+
+        // Статистика по типам ключей
+        const typeStats = await Material.findAll({
+            where: { service_id: serviceId },
+            attributes: [
+                'type_key',
+                [Material.sequelize.fn('COUNT', Material.sequelize.col('id')), 'count']
+            ],
+            group: ['type_key'],
+            raw: true
+        });
+
+        return {
+            service: {
+                id: service.id,
+                name: service.name,
+                category: service.category
+            },
+            stats: {
+                total,
+                available,
+                used,
+                pending_replace,
+                replaced,
+                unused: available + pending_replace + replaced
+            },
+            sourceBreakdown: sourceStats,
+            typeBreakdown: typeStats
+        };
+    } catch (error) {
+        throw new Error(`Error fetching material stats by service: ${error.message}`);
     }
 }

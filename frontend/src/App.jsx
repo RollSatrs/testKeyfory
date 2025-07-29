@@ -6,6 +6,7 @@ import { Orders } from './Pages/OrdersPage/Orders'
 import { KeysMaterials } from './Pages/KeyMaterialsPage/KeysMaterials'
 import { Analytics } from './Pages/AnalyticsPage/Analytics'
 import { Pricing } from './Pages/PricingPage/Pricing'
+import { ExecuterPricing } from './Pages/ExecuterPricingPage/ExecuterPricing'
 import { SystemLogs } from './Pages/SystemLogsPage/SystemLogs'
 import { Setting } from './Pages/SettingPage/Setting'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -40,6 +41,7 @@ export function App() {
           <Route path="materials" element={<KeysMaterials />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="pricing" element={<Pricing />} />
+          <Route path="executer-pricing" element={<ExecuterPricing />} />
           <Route path="logs" element={<SystemLogs />} />
           <Route path="settings" element={<Setting />} />
         </Route>

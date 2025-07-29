@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { MdDashboard, MdKey, MdPeople, MdLogout } from 'react-icons/md'
-import { FaBoxOpen, FaFileAlt } from 'react-icons/fa'
+import { FaBoxOpen, FaFileAlt, FaMoneyBillAlt } from 'react-icons/fa'
 
 
 const menu = [
@@ -8,6 +8,7 @@ const menu = [
   { path: '/services', label: 'Цифровые услуги', icon: <MdKey size={20} /> },
   { path: '/users', label: 'Исполнители', icon: <MdPeople size={20} /> },
   { path: '/materials', label: 'Расходные материалы', icon: <FaBoxOpen size={20} /> },
+  { path: '/executer-pricing', label: 'Ценообразование', icon: <FaMoneyBillAlt size={20} /> },
   { path: '/logs', label: 'Логи системы', icon: <FaFileAlt size={20} /> },
 ]
 

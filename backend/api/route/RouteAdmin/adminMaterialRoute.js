@@ -5,9 +5,11 @@ import {
     getMaterialById,
     addMaterial,
     updateMaterial,
+    updateMaterialStatus,
     deleteMaterial,
     getMaterialStats,
     getMaterialsByService,
+    getMaterialStatsByService,
     getAllReplacementRequests,
     getReplacementRequestsByStatus,
     processReplacementRequest,
@@ -53,6 +55,17 @@ materialRoute.get('/service/:serviceId', async (req, res) => {
     }
 });
 
+// GET /materials/service/:serviceId/stats - получить статистику материалов по услуге
+materialRoute.get('/service/:serviceId/stats', async (req, res) => {
+    try {
+        const stats = await getMaterialStatsByService(req.params.serviceId);
+        res.json(stats);
+    } catch (error) {
+        console.error('Error fetching material stats by service:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // GET /materials/get/:id - получить материал по ID
 materialRoute.get('/get/:id', async (req, res) => {
     try {
@@ -82,6 +95,18 @@ materialRoute.put('/update/:id', async (req, res) => {
         res.json(updatedMaterial);
     } catch (error) {
         console.error('Error updating material:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// PATCH /materials/update-status/:id - обновить только статус материала
+materialRoute.patch('/update-status/:id', async (req, res) => {
+    try {
+        const { status } = req.body;
+        const updatedMaterial = await updateMaterialStatus(req.params.id, status);
+        res.json(updatedMaterial);
+    } catch (error) {
+        console.error('Error updating material status:', error);
         res.status(400).json({ error: error.message });
     }
 });

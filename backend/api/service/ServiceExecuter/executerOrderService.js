@@ -9,7 +9,7 @@ export const getMyOrders = async (executerId) => {
       include: [
         {
           model: Services,
-          attributes: ['id', 'name', 'description', 'category', 'required_keys']
+          attributes: ['id', 'name', 'description', 'category']
         },
         {
           model: Material,
@@ -37,7 +37,7 @@ export const getAvailableOrders = async () => {
       include: [
         {
           model: Services,
-          attributes: ['id', 'name', 'description', 'category', 'required_keys']
+          attributes: ['id', 'name', 'description', 'category']
         }
       ],
       order: [['created_at', 'DESC']]
@@ -87,7 +87,7 @@ export const takeOrder = async (orderId, executerId) => {
       include: [
         {
           model: Services,
-          attributes: ['id', 'name', 'description', 'category', 'required_keys']
+          attributes: ['id', 'name', 'description', 'category']
         }
       ]
     });
@@ -129,7 +129,7 @@ export const updateOrderStatus = async (orderId, executerId, status) => {
       include: [
         {
           model: Services,
-          attributes: ['id', 'name', 'description', 'category', 'required_keys']
+          attributes: ['id', 'name', 'description', 'category']
         },
         {
           model: Material,

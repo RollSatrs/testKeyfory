@@ -16,7 +16,7 @@ export const Services = sequelize.define('Services',{
   description: { type: DataTypes.TEXT }, // описание услуги
   category: { type: DataTypes.STRING },
   price: { type: DataTypes.FLOAT, defaultValue: 0 }, // цена услуги
-  required_keys: { type: DataTypes.INTEGER, defaultValue: 1 }, // сколько ключей нужно для услуги
+  loading_method: { type: DataTypes.STRING, defaultValue: 'manual' }, // способ загрузки материалов
   status: { type: DataTypes.STRING },
   admin_id: {
     type: DataTypes.INTEGER,
@@ -133,7 +133,7 @@ Admin.hasMany(Services, {foreignKey: 'admin_id'});
 Services.belongsTo(Admin, {foreignKey: 'admin_id'});
 
 Services.hasMany(Material, {foreignKey: 'service_id'});
-Material.belongsTo(Services, {foreignKey: 'service_id'});
+Material.belongsTo(Services, {foreignKey: 'service_id', as: 'Service'});
 
 Order.hasMany(Material, {foreignKey: 'order_id'});
 Material.belongsTo(Order, {foreignKey: 'order_id'});
@@ -164,6 +164,19 @@ MaterialReplacement.belongsTo(Material, {foreignKey: 'material_id'});
 Admin.hasMany(MaterialReplacement, {foreignKey: 'processed_by'});
 MaterialReplacement.belongsTo(Admin, {foreignKey: 'processed_by'});
 
+// Заработок исполнителей
+export const ExecuterEarnings = sequelize.define('ExecuterEarnings', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  executer_id: { type: DataTypes.INTEGER, references: { model: 'executers', key: 'id' }, allowNull: false },
+  order_id: { type: DataTypes.INTEGER, references: { model: 'orders', key: 'id' }, allowNull: false },
+  service_id: { type: DataTypes.INTEGER, references: { model: 'services', key: 'id' }, allowNull: false },
+  amount: { type: DataTypes.FLOAT, allowNull: false }, // сумма заработка
+  base_price: { type: DataTypes.FLOAT, allowNull: false }, // базовая цена услуги
+  custom_price: { type: DataTypes.FLOAT, allowNull: true }, // индивидуальная цена (если есть)
+  status: { type: DataTypes.STRING, defaultValue: 'pending' }, // pending, paid, cancelled
+  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, { tableName: 'executer_earnings', timestamps: false });
+
 // Индивидуальное ценообразование для исполнителей
 export const ExecuterPricing = sequelize.define('ExecuterPricing', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -179,6 +192,16 @@ ExecuterPricing.belongsTo(Executer, {foreignKey: 'executer_id'});
 
 Services.hasMany(ExecuterPricing, {foreignKey: 'service_id'});
 ExecuterPricing.belongsTo(Services, {foreignKey: 'service_id'});
+
+// Связи для заработка исполнителей
+Executer.hasMany(ExecuterEarnings, {foreignKey: 'executer_id'});
+ExecuterEarnings.belongsTo(Executer, {foreignKey: 'executer_id'});
+
+Order.hasMany(ExecuterEarnings, {foreignKey: 'order_id'});
+ExecuterEarnings.belongsTo(Order, {foreignKey: 'order_id'});
+
+Services.hasMany(ExecuterEarnings, {foreignKey: 'service_id'});
+ExecuterEarnings.belongsTo(Services, {foreignKey: 'service_id'});
 
 // Связи для логов
 Executer.hasMany(Log, {foreignKey: 'user_id', constraints: false, scope: { user_type: 'executer' }});

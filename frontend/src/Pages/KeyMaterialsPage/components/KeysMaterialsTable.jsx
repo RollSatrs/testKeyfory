@@ -38,13 +38,12 @@ async function addMaterialls(row) {
   }
 }
 
-export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilter = '', typeFilter = '' }) {
+export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilter = '' }) {
   const [materials, setMaterials] = useState([])
   const [services, setServices] = useState([])
   const [editForm, setEditForm] = useState(false)
   const [form, setForm] = useState({
     id: null,
-    type_key: '',
     service_id: '',
     contents: '',
     status: ''
@@ -100,10 +99,27 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
     }
   }
 
+  async function handleStatusChange(id, newStatus) {
+    try {
+      await fetch(`http://localhost:3000/api/materials/admin/update-status/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      })
+      fetchMaterials()
+      if (onChange) onChange()
+      message.success('Статус материала обновлен')
+    } catch (error) {
+      message.error('Ошибка при обновлении статуса')
+    }
+  }
+
   function openEditModal(material) {
     setForm({
       id: material.id,
-      type_key: material.type_key,
       service_id: material.service_id,
       contents: material.contents,
       status: material.status
@@ -124,7 +140,6 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         },
         body: JSON.stringify({
-          type_key: form.type_key,
           service_id: form.service_id,
           contents: form.contents,
           status: form.status
@@ -141,9 +156,8 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   // Фильтрация перед отображением
   const filteredMaterials = materials.filter(m =>
-    (m.contents?.toLowerCase().includes(search.toLowerCase()) ||m.type_key?.toLowerCase().includes(search.toLowerCase())) &&
-    (statusFilter ? m.status === statusFilter : true) &&
-    (typeFilter ? m.type_key === typeFilter : true)
+    m.contents?.toLowerCase().includes(search.toLowerCase()) &&
+    (statusFilter ? m.status === statusFilter : true)
   );
   console.log(filteredMaterials)
 
@@ -152,8 +166,35 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
     return service ? service.name : 'Неизвестная услуга';
   }
 
+  // Функция для перевода источника на русский
+  const getSourceLabel = (source) => {
+    const sourceLabels = {
+      'manual': 'Ручной ввод',
+      'manual_input': 'Ручной ввод',
+      'api': 'API',
+      'file': 'Файл',
+      'file_upload': 'Загрузка файла',
+      'upload': 'Загрузка'
+    }
+    return sourceLabels[source] || source || 'Ручной ввод'
+  }
+
+  // Функция для перевода типа ключа на русский
+  const getTypeLabel = (type) => {
+    const typeLabels = {
+      'key': 'Ключ',
+      'license': 'Лицензия',
+      'code': 'Код',
+      'password': 'Пароль',
+      'account': 'Аккаунт',
+      'token': 'Токен',
+      'imported': 'Импортирован',
+      'manual': 'Ручной'
+    }
+    return typeLabels[type] || type || 'Ключ'
+  }
+
   const headers = [
-    { label: 'Тип матриала', key: 'type_key' },
     { label: 'Название услуги', key: 'service_name' },
     { label: 'Содержимое', key: 'contents' },
     { label: 'Статус', key: 'status' },
@@ -167,11 +208,6 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
   }))
 
   const columns = [
-    {
-      title: 'Тип',
-      dataIndex: 'type_key',
-      key: 'type_key',
-    },
     {
       title: 'Услуга',
       dataIndex: 'service_id',
@@ -192,25 +228,33 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
       title: 'Статус',
       dataIndex: 'status',
       key: 'status',
-      render: (status) => (
-        <Tag color={
-          status === 'available' ? 'green' :
-          status === 'used' ? 'red' :
-          status === 'reserved' ? 'orange' :
-          status === 'pending_replace' ? 'purple' : 'default'
-        }>
-          {status === 'available' ? 'ДОСТУПЕН' :
-           status === 'used' ? 'ИСПОЛЬЗОВАН' :
-           status === 'reserved' ? 'ЗАРЕЗЕРВИРОВАН' :
-           status === 'pending_replace' ? 'НА ЗАМЕНУ' : status}
-        </Tag>
+      render: (status, record) => (
+        <Select
+          value={status}
+          style={{ width: 140 }}
+          size="small"
+          onChange={(newStatus) => handleStatusChange(record.id, newStatus)}
+        >
+          <Select.Option value="available">
+            <Tag color="green">ДОСТУПЕН</Tag>
+          </Select.Option>
+          <Select.Option value="used">
+            <Tag color="red">ИСПОЛЬЗОВАН</Tag>
+          </Select.Option>
+          <Select.Option value="reserved">
+            <Tag color="orange">ЗАРЕЗЕРВИРОВАН</Tag>
+          </Select.Option>
+          <Select.Option value="pending_replace">
+            <Tag color="purple">НА ЗАМЕНУ</Tag>
+          </Select.Option>
+        </Select>
       )
     },
     {
       title: 'Источник',
       dataIndex: 'source',
       key: 'source',
-      render: (source) => source || 'manual'
+      render: (source) => getSourceLabel(source)
     },
     {
       title: 'Действия',
@@ -307,19 +351,6 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
         okText="Сохранить"
         cancelText="Отмена"
       >
-        <Select
-          name="type_key"
-          value={form.type_key || undefined}
-          onChange={value => handleChange('type_key', value)}
-          placeholder="Тип материала"
-          className="w-full"
-          style={{ marginBottom: 16 }}
-        >
-          <Select.Option value="Ключ">Ключ</Select.Option>
-          <Select.Option value="Лицензия">Лицензия</Select.Option>
-          <Select.Option value="Код">Код</Select.Option>
-        </Select>
-
         <Select
           name="service_id"
           value={form.service_id || undefined}

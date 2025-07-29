@@ -1,6 +1,6 @@
-import { FaEdit, FaTrash, FaUpload } from 'react-icons/fa'
+import { FaEdit, FaTrash, FaUpload, FaBoxOpen } from 'react-icons/fa'
 import { useEffect, useState } from 'react'
-import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message, Upload } from 'antd'
+import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message, Upload, Card, Row, Col, Statistic, Divider } from 'antd'
 
 const categories = [
   "Игры", "Программное обеспечение", "Образование", "Развлечения", "Услуги", "Другое", "Музыка",
@@ -15,14 +15,19 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   const [services, setServices] = useState([])
   const [editForm, setEditForm] = useState(false)
   const [uploadModal, setUploadModal] = useState(false)
+  const [apiModal, setApiModal] = useState(false)
+  const [manualModal, setManualModal] = useState(false)
+  const [materialsModal, setMaterialsModal] = useState(false)
   const [selectedService, setSelectedService] = useState(null)
+  const [serviceMaterials, setServiceMaterials] = useState([])
+  const [materialStats, setMaterialStats] = useState(null)
   const [fileList, setFileList] = useState([])
   const [manualInput, setManualInput] = useState('')
+  const [apiConfig, setApiConfig] = useState({ url: '', headers: '', method: 'GET' })
   const [form, setForm] = useState({
     id: null,
     name: '',
     category: '',
-    required_keys: 1,
     status: '',
     price: 0
   })
@@ -59,7 +64,6 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       id: service.id,
       name: service.name,
       category: service.category,
-      required_keys: service.required_keys,
       status: service.status,
       price: service.price || 0
     })
@@ -80,7 +84,6 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       body: JSON.stringify({
         name: form.name,
         category: form.category,
-        required_keys: form.required_keys,
         status: form.status,
         price: parseFloat(form.price) || 0
       })
@@ -94,9 +97,62 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   // Функция для открытия модального окна загрузки расходников
   function openUploadModal(service) {
     setSelectedService(service)
-    setUploadModal(true)
-    setFileList([])
-    setManualInput('')
+
+    // Определяем какое окно открыть в зависимости от способа загрузки услуги
+    const loadingMethod = service.loadingMethod || 'file' // по умолчанию файл
+
+    switch(loadingMethod) {
+      case 'file':
+        setUploadModal(true)
+        setFileList([])
+        break
+      case 'api':
+        setApiModal(true)
+        setApiConfig({ url: '', headers: '', method: 'GET' })
+        break
+      case 'manual':
+      default:
+        setManualModal(true)
+        setManualInput('')
+        break
+    }
+  }
+
+  // Функция для открытия модального окна с материалами
+  async function openMaterialsModal(service) {
+    setSelectedService(service)
+    setMaterialsModal(true)
+
+    try {
+      // Загружаем материалы
+      const materialsResponse = await fetch(`http://localhost:3000/api/materials/admin/service/${service.id}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        }
+      })
+
+      // Загружаем статистику
+      const statsResponse = await fetch(`http://localhost:3000/api/materials/admin/service/${service.id}/stats`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        }
+      })
+
+      if (materialsResponse.ok && statsResponse.ok) {
+        const materials = await materialsResponse.json()
+        const stats = await statsResponse.json()
+        setServiceMaterials(materials)
+        setMaterialStats(stats)
+      } else {
+        message.error('Ошибка при загрузке материалов')
+        setServiceMaterials([])
+        setMaterialStats(null)
+      }
+    } catch (error) {
+      message.error('Ошибка при загрузке материалов')
+      setServiceMaterials([])
+      setMaterialStats(null)
+    }
   }
 
   // Функция загрузки расходников из файла
@@ -177,6 +233,34 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
     (categoryFilter ? s.category === categoryFilter : true)
   );
 
+  // Функция для перевода источника на русский
+  const getSourceLabel = (source) => {
+    const sourceLabels = {
+      'manual': 'Ручной ввод',
+      'manual_input': 'Ручной ввод',
+      'api': 'API',
+      'file': 'Файл',
+      'file_upload': 'Загрузка файла',
+      'upload': 'Загрузка'
+    }
+    return sourceLabels[source] || source || 'Ручной ввод'
+  }
+
+  // Функция для перевода типа ключа на русский
+  const getTypeLabel = (type) => {
+    const typeLabels = {
+      'key': 'Ключ',
+      'license': 'Лицензия',
+      'code': 'Код',
+      'password': 'Пароль',
+      'account': 'Аккаунт',
+      'token': 'Токен',
+      'imported': 'Импортирован',
+      'manual': 'Ручной'
+    }
+    return typeLabels[type] || type || 'Ключ'
+  }
+
   const columns = [
     {
       title: 'Название услуги',
@@ -189,23 +273,17 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       key: 'category',
     },
     {
-      title: 'Ключи',
-      dataIndex: 'keys',
-      key: 'keys',
-      render: (_, record) => {
-        const required = record.required_keys ?? 0;
-        const available = record.available_keys ?? 0; // это поле должно приходить с бэка!
-        let color = available >= required ? 'green' : available > 0 ? 'red' : 'gray';
-
-        return (
-          <div>
-            <div style={{ marginBottom: 4, color: '#666' }}>Требуются ключи</div>
-            <div style={{ color, fontWeight: 500, fontSize: '14px' }}>
-              Доступно: {available} из {required} ключей
-            </div>
-          </div>
-        );
-      }
+      title: 'Расходники',
+      key: 'materials',
+      render: (_, record) => (
+        <Button
+          size="small"
+          onClick={() => openMaterialsModal(record)}
+          icon={<FaBoxOpen />}
+        >
+          Посмотреть ключи
+        </Button>
+      )
     },
     {
       title: 'Цена',
@@ -300,15 +378,6 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           ))}
         </Select>
         <Input
-          name="required_keys"
-          type="number"
-          min={1}
-          value={form.required_keys}
-          onChange={e => handleChange('required_keys', e.target.value)}
-          placeholder="Требуется ключей"
-          style={{ marginBottom: 16 }}
-        />
-        <Input
           name="price"
           type="number"
           min={0}
@@ -370,6 +439,216 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
             type="primary"
             onClick={handleManualAdd}
             disabled={!manualInput.trim()}
+          >
+            Добавить расходник
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Модальное окно просмотра материалов */}
+      <Modal
+        open={materialsModal}
+        title={`Расходники для "${selectedService?.name}"`}
+        onCancel={() => {
+          setMaterialsModal(false)
+          setMaterialStats(null)
+        }}
+        footer={null}
+        width={1000}
+      >
+        {/* Статистика материалов */}
+        {materialStats && (
+          <div style={{ marginBottom: 24 }}>
+            <Card>
+              <Row gutter={16}>
+                <Col span={6}>
+                  <Statistic
+                    title="Всего материалов"
+                    value={materialStats.stats.total}
+                    valueStyle={{ color: '#1890ff' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Доступно"
+                    value={materialStats.stats.available}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Использовано"
+                    value={materialStats.stats.used}
+                    valueStyle={{ color: '#ff4d4f' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="На замене/заменено"
+                    value={materialStats.stats.pending_replace + materialStats.stats.replaced}
+                    valueStyle={{ color: '#faad14' }}
+                  />
+                </Col>
+              </Row>
+            </Card>
+          </div>
+        )}
+
+        {/* Таблица материалов */}
+        {serviceMaterials.length > 0 ? (
+          <Table
+            dataSource={serviceMaterials}
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+            size="small"
+            columns={[
+              {
+                title: 'ID',
+                dataIndex: 'id',
+                key: 'id',
+                width: 60
+              },
+              {
+                title: 'Содержимое (Ключ/Код)',
+                dataIndex: 'contents',
+                key: 'contents',
+                ellipsis: true
+              },
+              {
+                title: 'Статус',
+                dataIndex: 'status',
+                key: 'status',
+                width: 120,
+                render: (status) => {
+                  const statusColors = {
+                    'available': 'green',
+                    'used': 'red',
+                    'pending_replace': 'orange',
+                    'replaced': 'gray'
+                  }
+                  const statusTexts = {
+                    'available': 'Доступен',
+                    'used': 'Использован',
+                    'pending_replace': 'На замене',
+                    'replaced': 'Заменён'
+                  }
+                  return (
+                    <Tag color={statusColors[status] || 'default'}>
+                      {statusTexts[status] || status}
+                    </Tag>
+                  )
+                }
+              },
+              {
+                title: 'Источник',
+                dataIndex: 'source',
+                key: 'source',
+                width: 120,
+                render: (source) => getSourceLabel(source)
+              },
+              {
+                title: 'Дата добавления',
+                dataIndex: 'added_date',
+                key: 'added_date',
+                width: 120,
+                render: (date) => date ? new Date(date).toLocaleDateString('ru-RU') : '-'
+              }
+            ]}
+          />
+        ) : (
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <p>Нет расходников для этой услуги</p>
+            <Button type="primary" onClick={() => {
+              setMaterialsModal(false)
+              openUploadModal(selectedService)
+            }}>
+              Добавить расходники
+            </Button>
+          </div>
+        )}
+      </Modal>
+
+      {/* Модальное окно для API загрузки */}
+      <Modal
+        open={apiModal}
+        title={`Настройка API для "${selectedService?.name}"`}
+        onCancel={() => setApiModal(false)}
+        footer={null}
+        width={600}
+      >
+        <div style={{ marginBottom: 24 }}>
+          <h4>Настройки API</h4>
+          <p style={{ color: '#666', marginBottom: 16 }}>
+            Настройте API для автоматической загрузки расходников
+          </p>
+
+          <div style={{ marginBottom: 16 }}>
+            <label>URL API:</label>
+            <Input
+              value={apiConfig.url}
+              onChange={(e) => setApiConfig({...apiConfig, url: e.target.value})}
+              placeholder="https://api.example.com/materials"
+              style={{ marginTop: 8 }}
+            />
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label>Метод:</label>
+            <Select
+              value={apiConfig.method}
+              onChange={(value) => setApiConfig({...apiConfig, method: value})}
+              style={{ width: '100%', marginTop: 8 }}
+            >
+              <Select.Option value="GET">GET</Select.Option>
+              <Select.Option value="POST">POST</Select.Option>
+            </Select>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label>Заголовки (JSON):</label>
+            <Input.TextArea
+              value={apiConfig.headers}
+              onChange={(e) => setApiConfig({...apiConfig, headers: e.target.value})}
+              placeholder='{"Authorization": "Bearer your-token", "Content-Type": "application/json"}'
+              rows={3}
+              style={{ marginTop: 8 }}
+            />
+          </div>
+
+          <Button type="primary" onClick={() => {
+            message.info('API настройка сохранена (функция в разработке)')
+            setApiModal(false)
+          }}>
+            Сохранить настройки API
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Модальное окно для ручного ввода */}
+      <Modal
+        open={manualModal}
+        title={`Добавить расходники для "${selectedService?.name}"`}
+        onCancel={() => setManualModal(false)}
+        footer={null}
+        width={500}
+      >
+        <div style={{ marginBottom: 24 }}>
+          <h4>Ручное добавление</h4>
+          <p style={{ color: '#666', marginBottom: 16 }}>
+            Введите содержимое расходника (ключ, код и т.д.)
+          </p>
+          <Input.TextArea
+            value={manualInput}
+            onChange={(e) => setManualInput(e.target.value)}
+            placeholder="Введите содержимое расходника (ключ, код и т.д.)"
+            rows={4}
+            style={{ marginBottom: 16 }}
+          />
+          <Button
+            type="primary"
+            onClick={handleManualAdd}
+            disabled={!manualInput.trim()}
+            block
           >
             Добавить расходник
           </Button>

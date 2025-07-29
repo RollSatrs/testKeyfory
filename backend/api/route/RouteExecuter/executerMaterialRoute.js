@@ -97,3 +97,50 @@ executerMaterialRoute.get('/stats', authExecuterMiddleware, async (req, res) => 
     });
   }
 });
+
+// Получить статистику материалов по услуге
+executerMaterialRoute.get('/stats/:serviceId', authExecuterMiddleware, async (req, res) => {
+  try {
+    const executerId = req.user.executerId;
+    const serviceId = req.params.serviceId;
+
+    const stats = await getServiceMaterialsStats(serviceId, executerId);
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Ошибка получения статистики материалов:', error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Получить материал по номеру заказа
+executerMaterialRoute.post('/get-by-order', authExecuterMiddleware, async (req, res) => {
+  try {
+    const executerId = req.user.executerId;
+    const { service_id, order_number } = req.body;
+
+    if (!service_id || !order_number) {
+      return res.status(400).json({
+        success: false,
+        error: 'Необходимо указать service_id и order_number'
+      });
+    }
+
+    const material = await getMaterialByOrder(service_id, order_number, executerId);
+
+    res.json({
+      success: true,
+      material: material.contents,
+      order_number: order_number
+    });
+  } catch (error) {
+    console.error('Ошибка получения материала по заказу:', error.message);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});

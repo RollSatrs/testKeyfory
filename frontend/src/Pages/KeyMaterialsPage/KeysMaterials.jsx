@@ -10,8 +10,6 @@ export function KeysMaterials() {
   const [refresh, setRefresh] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-
 
   const handleRefresh = useCallback(() => setRefresh(r => !r), []);
 
@@ -25,22 +23,19 @@ export function KeysMaterials() {
 
   return (
     <>
-      <KeysMaterialsHeader onAdd={handleRefresh} />
+      <KeysMaterialsHeader />
       <KeysMaterialsStats refresh={refresh} />
       <KeysMaterialsSearch
         search={search}
         setSearch={setSearch}
         statusFilter={statusFilter}
         setStatusFilter={setStatusFilter}
-        typeFilter={typeFilter}
-        setTypeFilter={setTypeFilter}
       />
       <KeysMaterialsTable
         refresh={refresh}
         onChange={handleRefresh}
         search={search}
         statusFilter={statusFilter}
-        typeFilter={typeFilter}
       />
       <ReplacementRequests />
     </>
