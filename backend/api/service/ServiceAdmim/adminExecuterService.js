@@ -70,7 +70,37 @@ export async function getAllExecuters() {
         const executers = await Executer.findAll({
             order: [['create_date_executer', 'DESC']] // исправлено поле
         });
-        return executers;
+
+        const result = [];
+
+        for (const executer of executers) {
+            // Получаем назначенные услуги для каждого исполнителя
+            const assignedServices = await ServiceAccess.findAll({
+                where: { executer_id: executer.id },
+                include: [
+                    {
+                        model: Services,
+                        attributes: ['id', 'name', 'category', 'status', 'price']
+                    }
+                ]
+            });
+
+            result.push({
+                ...executer.dataValues,
+                assigned_services: assignedServices.map(access => ({
+                    service_id: access.service_id,
+                    service_name: access.Service?.name || `ID: ${access.service_id}`,
+                    service_category: access.Service?.category,
+                    service_status: access.Service?.status,
+                    service_price: access.Service?.price,
+                    has_access: access.has_access,
+                    can_replace_materials: access.can_replace_materials,
+                    assigned_at: access.created_at
+                }))
+            });
+        }
+
+        return result;
     } catch (error) {
         throw new Error(`Error fetching executers: ${error.message}`);
     }

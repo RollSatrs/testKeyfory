@@ -1,4 +1,4 @@
-import { Services, Material, ExecuterPricing, Executer } from "../../../database/dbTables.js";
+import { Services, Material, ExecuterPricing, Executer, ServiceAccess } from "../../../database/dbTables.js";
 
 
 export async function getAllServices() {
@@ -31,6 +31,17 @@ export async function getAllServices() {
                 ]
             });
 
+            // Получаем назначенных исполнителей
+            const assignedExecuters = await ServiceAccess.findAll({
+                where: { service_id: service.id },
+                include: [
+                    {
+                        model: Executer,
+                        attributes: ['id', 'name', 'telegram_id', 'status']
+                    }
+                ]
+            });
+
             result.push({
                 ...service.dataValues,
                 source: sources.join(', ') || '-',
@@ -39,6 +50,13 @@ export async function getAllServices() {
                     executer_id: pricing.executer_id,
                     executer_name: pricing.Executer?.name || `Исполнитель ${pricing.executer_id}`,
                     custom_price: pricing.custom_price
+                })),
+                assigned_executers: assignedExecuters.map(access => ({
+                    executer_id: access.executer_id,
+                    executer_name: access.Executer?.name || `ID: ${access.executer_id}`,
+                    telegram_id: access.Executer?.telegram_id,
+                    status: access.Executer?.status,
+                    has_access: access.has_access
                 }))
             });
         }
@@ -144,5 +162,86 @@ export async function getServiceStats() {
         };
     } catch (error) {
         throw new Error(`Error fetching service stats: ${error.message}`);
+    }
+}
+
+// Назначить исполнителей на услугу
+export async function assignExecutersToService(serviceId, executerIds) {
+    try {
+        const service = await Services.findByPk(serviceId);
+        if (!service) {
+            throw new Error('Услуга не найдена');
+        }
+
+        // Удаляем старые связи
+        await ServiceAccess.destroy({ where: { service_id: serviceId } });
+
+        // Создаем новые связи
+        const accessPromises = executerIds.map(executerId =>
+            ServiceAccess.create({
+                service_id: serviceId,
+                executer_id: executerId,
+                has_access: true,
+                can_replace_materials: false,
+                requires_approval: true
+            })
+        );
+
+        await Promise.all(accessPromises);
+
+        return { message: 'Исполнители успешно назначены на услугу' };
+    } catch (error) {
+        throw new Error(`Error assigning executers to service: ${error.message}`);
+    }
+}
+
+// Получить исполнителей услуги
+export async function getServiceExecuters(serviceId) {
+    try {
+        const serviceAccess = await ServiceAccess.findAll({
+            where: { service_id: serviceId },
+            include: [
+                {
+                    model: Executer,
+                    attributes: ['id', 'name', 'telegram_id', 'rating', 'status', 'balance']
+                }
+            ]
+        });
+
+        return serviceAccess.map(access => ({
+            access_id: access.id,
+            executer_id: access.executer_id,
+            executer_name: access.Executer?.name || `ID: ${access.executer_id}`,
+            telegram_id: access.Executer?.telegram_id,
+            rating: access.Executer?.rating || 0,
+            status: access.Executer?.status || 'inactive',
+            balance: access.Executer?.balance || 0,
+            has_access: access.has_access,
+            can_replace_materials: access.can_replace_materials,
+            requires_approval: access.requires_approval,
+            assigned_at: access.created_at
+        }));
+    } catch (error) {
+        throw new Error(`Error fetching service executers: ${error.message}`);
+    }
+}
+
+// Убрать исполнителя с услуги
+export async function removeExecuterFromService(serviceId, executerId) {
+    try {
+        const result = await ServiceAccess.destroy({
+            where: {
+                service_id: serviceId,
+                executer_id: executerId
+            }
+        });
+
+        if (result === 0) {
+            throw new Error('Связь исполнителя с услугой не найдена');
+        }
+
+        return { message: 'Исполнитель успешно убран с услуги' };
+    } catch (error) {
+        throw new Error(`Error removing executer from service: ${error.message}`);
     }
 }

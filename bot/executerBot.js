@@ -10,13 +10,7 @@ const API_URL = process.env.API_URL;
 
 // Проверяем наличие токена
 if (!BOT_TOKEN) {
-    const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('🚀 Начать работу', `start_work_${orderNumber}`)],
-      [Markup.button.callback('📦 Получить материалы', `get_materials_${orderNumber}`)],
-      [Markup.button.callback('🔄 Заменить материал', `replace_material_${orderNumber}`)],
-      [Markup.button.callback('✅ Завершить заказ', `complete_order_${orderNumber}`)],
-      [Markup.button.callback('🔄 Запросить замену', `request_replacement_${orderNumber}`)]
-    ]);error('❌ Не найден токен бота! Установите BOT_TOKEN в переменных окружения');
+  console.error('❌ Не найден токен бота! Установите BOT_TOKEN в переменных окружения');
   process.exit(1);
 }
 
@@ -59,7 +53,7 @@ const translateMaterialStatus = (status) => {
 const logActivity = async (executerId, action, description, orderId = null, serviceId = null) => {
   try {
     // Записываем лог
-    const logResponse = await fetch(`${API_URL}/executer/log`, {
+    const logResponse = await fetch(`${API_URL}/api/executer/log`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -75,7 +69,7 @@ const logActivity = async (executerId, action, description, orderId = null, serv
     });
 
     // Обновляем активность исполнителя
-    const activityResponse = await fetch(`${API_URL}/executer/activity`, {
+    const activityResponse = await fetch(`${API_URL}/api/executer/activity`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -92,7 +86,10 @@ const logActivity = async (executerId, action, description, orderId = null, serv
 // Функция авторизации исполнителя
 const authorizeExecuter = async (telegramId) => {
   try {
-    const response = await fetch(`${API_URL}/executer/auth`, {
+    console.log('🔄 Попытка авторизации для Telegram ID:', telegramId);
+    console.log('🌐 API URL:', `${API_URL}/api/executer/auth`); // ИСПРАВЛЕНО: добавлен /api
+
+    const response = await fetch(`${API_URL}/api/executer/auth`, { // ИСПРАВЛЕНО: добавлен /api
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -102,14 +99,20 @@ const authorizeExecuter = async (telegramId) => {
       })
     });
 
+    console.log('📡 Статус ответа:', response.status);
+
     if (!response.ok) {
+      const errorText = await response.text();
+      console.log('❌ Ошибка ответа:', errorText);
       return null;
     }
 
     const data = await response.json();
-    console.log('✅ Исполнитель авторизован:', data.name);
+    console.log('✅ Исполнитель авторизован:', data);
     return data;
   } catch (error) {
+    console.error('❌ Ошибка при авторизации:', error.message);
+    console.error('❌ Полная ошибка:', error);
     return null;
   }
 };
@@ -128,12 +131,21 @@ bot.start(async (ctx) => {
   const chatId = ctx.chat.id;
   const telegramId = ctx.from.id.toString();
   const userName = ctx.from.first_name || ctx.from.username || 'Неизвестно';
-  console.log(`✅ Начало работы исполнителя ${telegramId}`);
+
+  console.log(`\n🚀 === НАЧАЛО АВТОРИЗАЦИИ ===`);
+  console.log(`👤 Пользователь: ${userName}`);
+  console.log(`🆔 Telegram ID: ${telegramId}`);
+  console.log(`💬 Chat ID: ${chatId}`);
+  console.log(`🌐 API URL: ${API_URL}`);
+  console.log(`=================================\n`);
 
   // Авторизация исполнителя
   const executerData = await authorizeExecuter(telegramId);
 
+  console.log('\n📝 Результат авторизации:', executerData ? 'УСПЕХ' : 'НЕУДАЧА');
+
   if (!executerData) {
+    console.log('❌ Отправляем сообщение об отказе в доступе');
     return ctx.reply(
       `❌ Доступ запрещен. Вы не зарегистрированы как исполнитель.\n\n` +
       `👤 Ваше имя: ${userName}\n` +
@@ -142,6 +154,7 @@ bot.start(async (ctx) => {
     );
   }
 
+  console.log('✅ Создаем сессию пользователя');
   userSessions[chatId] = {
     executer_id: executerData.id,
     telegram_id: telegramId,
@@ -151,6 +164,7 @@ bot.start(async (ctx) => {
   // Логируем вход и обновляем активность
   await logActivity(executerData.id, 'login', `Исполнитель ${executerData.name} вошел в систему`);
 
+  console.log('✅ Отправляем приветственное сообщение');
   return ctx.reply(
     `👋 Добро пожаловать, ${executerData.name}!\n\n` +
     `Выберите действие из меню:`,
@@ -240,7 +254,7 @@ const showMyOrders = async (ctx, executerId) => {
     // Логируем действие и обновляем активность
     await logActivity(executerId, 'view_orders', 'Просмотр списка заказов');
 
-    const response = await fetch(`${API_URL}/executer/orders/${executerId}`);
+    const response = await fetch(`${API_URL}/api/executer/orders/${executerId}`);
 
     if (!response.ok) {
       return ctx.reply('❌ Ошибка при получении заказов');
@@ -273,7 +287,7 @@ const showActiveOrders = async (ctx, executerId) => {
     // Логируем действие и обновляем активность
     await logActivity(executerId, 'view_active_orders', 'Просмотр текущих заказов');
 
-    const response = await fetch(`${API_URL}/executer/active-orders/${executerId}`);
+    const response = await fetch(`${API_URL}/api/executer/active-orders/${executerId}`);
 
     if (!response.ok) {
       return ctx.reply('❌ Ошибка при получении текущих заказов');
@@ -307,7 +321,7 @@ const showCompletedOrders = async (ctx, executerId) => {
     // Логируем действие и обновляем активность
     await logActivity(executerId, 'view_completed_orders', 'Просмотр выполненных заказов');
 
-    const response = await fetch(`${API_URL}/executer/completed-orders/${executerId}`);
+    const response = await fetch(`${API_URL}/api/executer/completed-orders/${executerId}`);
 
     if (!response.ok) {
       return ctx.reply('❌ Ошибка при получении выполненных заказов');
@@ -340,7 +354,7 @@ const showStatistics = async (ctx, executerId) => {
     // Логируем действие и обновляем активность
     await logActivity(executerId, 'view_statistics', 'Просмотр статистики');
 
-    const response = await fetch(`${API_URL}/executer/stats/${executerId}`);
+    const response = await fetch(`${API_URL}/api/executer/stats/${executerId}`);
 
     if (!response.ok) {
       return ctx.reply('❌ Ошибка при получении статистики');
@@ -367,7 +381,7 @@ const showBalance = async (ctx, executerId) => {
     // Логируем действие и обновляем активность
     await logActivity(executerId, 'view_balance', 'Просмотр баланса');
 
-    const response = await fetch(`${API_URL}/executer/balance/${executerId}`);
+    const response = await fetch(`${API_URL}/api/executer/balance/${executerId}`);
 
     if (!response.ok) {
       return ctx.reply('❌ Ошибка при получении баланса');
@@ -394,7 +408,7 @@ const startWork = async (ctx, executerId) => {
 const processOrderNumber = async (ctx, orderNumber, executerId) => {
   try {
     // Сначала пытаемся найти существующий заказ
-    const response = await fetch(`${API_URL}/executer/order/${orderNumber}/${executerId}`);
+    const response = await fetch(`${API_URL}/api/executer/order/${orderNumber}/${executerId}`);
 
     if (response.ok) {
       const order = await response.json();
@@ -425,7 +439,7 @@ const processOrderNumber = async (ctx, orderNumber, executerId) => {
     }
 
     // Если заказ не найден, создаём новый заказ с этим номером
-    const createResponse = await fetch(`${API_URL}/executer/create-order`, {
+    const createResponse = await fetch(`${API_URL}/api/executer/create-order`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -529,10 +543,10 @@ bot.action(/select_material_(\d+)_(.+)/, async (ctx) => {
 const getMaterials = async (ctx, orderId, executerId) => {
   try {
     console.log(`🔍 Запрос материалов для заказа ${orderId}, исполнитель ${executerId}`);
-    console.log(`🌐 URL запроса: ${API_URL}/executer/order/${orderId}/${executerId}`);
+    console.log(`🌐 URL запроса: ${API_URL}/api/executer/order/${orderId}/${executerId}`);
 
     // Получаем данные заказа вместо прямого запроса материалов
-    const response = await fetch(`${API_URL}/executer/order/${orderId}/${executerId}`);
+    const response = await fetch(`${API_URL}/api/executer/order/${orderId}/${executerId}`);
 
     console.log(`📡 Статус ответа: ${response.status}`);
 
@@ -598,7 +612,7 @@ const getMaterials = async (ctx, orderId, executerId) => {
 // Начать работу по заказу (изменить статус на "в работе")
 const startOrderWork = async (ctx, orderId, executerId) => {
   try {
-    const response = await fetch(`${API_URL}/executer/start-order`, {
+    const response = await fetch(`${API_URL}/api/executer/start-order`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -627,7 +641,7 @@ const startOrderWork = async (ctx, orderId, executerId) => {
 // Завершить заказ
 const completeOrder = async (ctx, orderId, executerId) => {
   try {
-    const response = await fetch(`${API_URL}/executer/complete-order`, {
+    const response = await fetch(`${API_URL}/api/executer/complete-order`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -657,7 +671,7 @@ const completeOrder = async (ctx, orderId, executerId) => {
 const replaceMaterial = async (ctx, orderId, executerId) => {
   try {
     // Сначала получаем материалы для заказа
-    const response = await fetch(`${API_URL}/executer/order/${orderId}/${executerId}`);
+    const response = await fetch(`${API_URL}/api/executer/order/${orderId}/${executerId}`);
 
     if (!response.ok) {
       await ctx.answerCbQuery();
@@ -721,7 +735,7 @@ const replaceMaterial = async (ctx, orderId, executerId) => {
 // Запросить замену материала
 const requestReplacement = async (ctx, orderId, executerId) => {
   try {
-    const response = await fetch(`${API_URL}/executer/request-replacement`, {
+    const response = await fetch(`${API_URL}/api/executer/request-replacement`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -771,7 +785,7 @@ const requestSpecificMaterialReplacement = async (ctx, orderId, materialId, exec
 // Обработка введенной причины замены
 const processReplacementReason = async (ctx, orderId, materialId, reason, executerId) => {
   try {
-    const response = await fetch(`${API_URL}/executer/request-replacement`, {
+    const response = await fetch(`${API_URL}/api/executer/request-replacement`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

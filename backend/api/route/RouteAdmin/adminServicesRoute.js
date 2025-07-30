@@ -5,7 +5,10 @@ import {
     getServiceById,
     updateService,
     deleteService,
-    getServiceStats
+    getServiceStats,
+    assignExecutersToService,
+    removeExecuterFromService,
+    getServiceExecuters
 } from '../../service/ServiceAdmim/adminServicesService.js';
 import dotenv from 'dotenv';
 
@@ -75,6 +78,40 @@ sercesRoute.delete('/delete/:id', async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error deleting service:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// POST /services/:id/executers - назначить исполнителей на услугу
+sercesRoute.post('/:id/executers', async (req, res) => {
+    try {
+        const { executerIds } = req.body;
+        const result = await assignExecutersToService(req.params.id, executerIds);
+        res.json(result);
+    } catch (error) {
+        console.error('Error assigning executers to service:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// GET /services/:id/executers - получить исполнителей услуги
+sercesRoute.get('/:id/executers', async (req, res) => {
+    try {
+        const executers = await getServiceExecuters(req.params.id);
+        res.json(executers);
+    } catch (error) {
+        console.error('Error fetching service executers:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// DELETE /services/:id/executers/:executerId - убрать исполнителя с услуги
+sercesRoute.delete('/:id/executers/:executerId', async (req, res) => {
+    try {
+        const result = await removeExecuterFromService(req.params.id, req.params.executerId);
+        res.json(result);
+    } catch (error) {
+        console.error('Error removing executer from service:', error);
         res.status(400).json({ error: error.message });
     }
 });

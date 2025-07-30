@@ -1,6 +1,6 @@
 import { FaEdit, FaTrash, FaBan } from 'react-icons/fa'
 import { useEffect, useState } from 'react'
-import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, Rate, message } from 'antd'
+import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, Rate, message, Tooltip } from 'antd'
 
 const token = localStorage.getItem("admin_token");
 
@@ -201,6 +201,45 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
             : 'НЕАКТИВЕН'}
         </Tag>
       )
+    },
+    {
+      title: 'Назначенные услуги',
+      key: 'services',
+      width: 200,
+      render: (_, record) => {
+        const assignedServices = record.assigned_services || [];
+
+        if (assignedServices.length === 0) {
+          return <Tag color="default">Не назначены</Tag>;
+        }
+
+        if (assignedServices.length === 1) {
+          const service = assignedServices[0];
+          return (
+            <Tag color={service.service_status === 'active' ? 'green' : 'orange'}>
+              {service.service_name}
+            </Tag>
+          );
+        }
+
+        return (
+          <Tooltip
+            title={
+              <div>
+                {assignedServices.map((service, index) => (
+                  <div key={index}>
+                    • {service.service_name} ({service.service_category})
+                  </div>
+                ))}
+              </div>
+            }
+          >
+            <Tag color="blue">
+              {assignedServices.length} услуг{assignedServices.length === 1 ? 'а' : assignedServices.length < 5 ? 'и' : ''}
+            </Tag>
+          </Tooltip>
+        );
+      }
     },
     {
       title: 'Действия',

@@ -13,6 +13,7 @@ const categories = [
 
 export function ServicesTable({ refresh, onChange, search = '', statusFilter = '', categoryFilter = '' }) {
   const [services, setServices] = useState([])
+  const [executers, setExecuters] = useState([])
   const [editForm, setEditForm] = useState(false)
   const [uploadModal, setUploadModal] = useState(false)
   const [apiModal, setApiModal] = useState(false)
@@ -24,6 +25,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   const [fileList, setFileList] = useState([])
   const [manualInput, setManualInput] = useState('')
   const [apiConfig, setApiConfig] = useState({ url: '', headers: '', method: 'GET' })
+  const [selectedExecuters, setSelectedExecuters] = useState([])
   const [form, setForm] = useState({
     id: null,
     name: '',
@@ -34,6 +36,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
 
   useEffect(() => {
     fetchServices()
+    fetchExecuters()
   }, [refresh])
 
   async function fetchServices() {
@@ -44,6 +47,20 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
     })
     const data = await res.json()
     setServices(data)
+  }
+
+  async function fetchExecuters() {
+    try {
+      const res = await fetch('http://localhost:3000/api/executers/admin/get', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        }
+      })
+      const data = await res.json()
+      setExecuters(data)
+    } catch (error) {
+      console.error('Ошибка загрузки исполнителей:', error)
+    }
   }
 
   async function handleDelete(id) {
@@ -67,6 +84,11 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       status: service.status,
       price: service.price || 0
     })
+
+    // Загружаем текущих исполнителей услуги
+    const currentExecuters = (service.assigned_executers || []).map(ex => ex.executer_id)
+    setSelectedExecuters(currentExecuters)
+
     setEditForm(true)
   }
 
@@ -75,23 +97,45 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   }
 
   async function handleEditSubmit() {
-    await fetch(`http://localhost:3000/api/services/admin/update/${form.id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-      },
-      body: JSON.stringify({
-        name: form.name,
-        category: form.category,
-        status: form.status,
-        price: parseFloat(form.price) || 0
+    try {
+      // Обновляем данные услуги
+      await fetch(`http://localhost:3000/api/services/admin/update/${form.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: JSON.stringify({
+          name: form.name,
+          category: form.category,
+          status: form.status,
+          price: parseFloat(form.price) || 0
+        })
       })
-    })
-    setEditForm(false)
-    fetchServices()
-    if (onChange) onChange()
-    message.success('Услуга обновлена')
+
+      // Обновляем назначенных исполнителей
+      if (selectedExecuters.length > 0) {
+        await fetch(`http://localhost:3000/api/services/admin/${form.id}/executers`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+          },
+          body: JSON.stringify({
+            executerIds: selectedExecuters
+          })
+        })
+      }
+
+      setEditForm(false)
+      setSelectedExecuters([])
+      fetchServices()
+      if (onChange) onChange()
+      message.success('Услуга обновлена')
+    } catch (error) {
+      console.error('Ошибка обновления услуги:', error)
+      message.error('Ошибка при обновлении услуги')
+    }
   }
 
   // Функция для открытия модального окна загрузки расходников
@@ -329,6 +373,45 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       }
     },
     {
+      title: 'Исполнители',
+      key: 'executers',
+      width: 200,
+      render: (_, record) => {
+        const assignedExecuters = record.assigned_executers || [];
+
+        if (assignedExecuters.length === 0) {
+          return <Tag color="default">Не назначены</Tag>;
+        }
+
+        if (assignedExecuters.length === 1) {
+          const executer = assignedExecuters[0];
+          return (
+            <Tag color={executer.status === 'active' ? 'green' : 'orange'}>
+              {executer.executer_name}
+            </Tag>
+          );
+        }
+
+        return (
+          <Tooltip
+            title={
+              <div>
+                {assignedExecuters.map((executer, index) => (
+                  <div key={index}>
+                    • {executer.executer_name} ({executer.status === 'active' ? 'Активен' : 'Неактивен'})
+                  </div>
+                ))}
+              </div>
+            }
+          >
+            <Tag color="blue">
+              {assignedExecuters.length} исполнител{assignedExecuters.length === 1 ? 'ь' : assignedExecuters.length < 5 ? 'я' : 'ей'}
+            </Tag>
+          </Tooltip>
+        );
+      }
+    },
+    {
       title: 'Статус',
       dataIndex: 'status',
       key: 'status',
@@ -430,10 +513,29 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           onChange={value => handleChange('status', value)}
           placeholder="Выберите статус"
           className="w-full"
-          style={{ marginBottom: 8 }}
+          style={{ marginBottom: 16 }}
         >
           <Select.Option value="active">АКТИВНА</Select.Option>
           <Select.Option value="inactive">НЕАКТИВНА</Select.Option>
+        </Select>
+        <Select
+          mode="multiple"
+          value={selectedExecuters}
+          onChange={setSelectedExecuters}
+          placeholder="Выберите исполнителей"
+          className="w-full"
+          style={{ marginBottom: 8 }}
+          showSearch
+          filterOption={(input, option) =>
+            option.children.toLowerCase().includes(input.toLowerCase())
+          }
+        >
+          {executers.map(executer => (
+            <Select.Option key={executer.id} value={executer.id}>
+              {executer.name || `ID: ${executer.id}`}
+              {executer.telegram_id && ` (${executer.telegram_id})`}
+            </Select.Option>
+          ))}
         </Select>
       </Modal>
 
