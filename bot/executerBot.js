@@ -25,6 +25,9 @@ const userSessions = {};
 // Хранение состояний ожидания ввода причины замены
 const waitingForReason = {};
 
+// Хранение состояний ожидания ввода номера заказа
+const waitingForOrderNumber = {};
+
 // Функция для перевода статуса на русский язык
 const translateStatus = (status) => {
   const statusTranslations = {
@@ -120,9 +123,10 @@ const authorizeExecuter = async (telegramId) => {
 // Главное меню
 const getMainMenu = () => {
   return Markup.keyboard([
-    ['📋 Мои заказы', '⏳ Текущие заказы'],
-    ['✅ Выполненные заказы', '📊 Статистика'],
-    ['💰 Баланс', '🔧 Начать работу']
+    ['🎯 Мои услуги', '📋 Мои заказы'],
+    ['⏳ Текущие заказы', '✅ Выполненные заказы'],
+    ['📊 Статистика', '💰 Баланс'],
+    ['🔧 Начать работу']
   ]).resize();
 };
 
@@ -214,7 +218,23 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // Проверяем, ожидается ли ввод номера заказа
+  if (waitingForOrderNumber[chatId]) {
+    const { serviceId, serviceName } = waitingForOrderNumber[chatId];
+    await processOrderNumberForService(ctx, text, session.executer_id, serviceId, serviceName);
+    delete waitingForOrderNumber[chatId];
+    return;
+  }
+
   switch (text) {
+    case '🔙 Назад в меню':
+      ctx.reply('🏠 Главное меню', { reply_markup: getMainMenu() });
+      break;
+
+    case '🎯 Мои услуги':
+      await showMyServices(ctx, session.executer_id);
+      break;
+
     case '📋 Мои заказы':
       await showMyOrders(ctx, session.executer_id);
       break;
@@ -240,13 +260,87 @@ bot.on('text', async (ctx) => {
       break;
 
     default:
+      // Проверяем, выбрал ли пользователь услугу
+      if (text.startsWith('🎯 ')) {
+        const serviceName = text.replace('🎯 ', '');
+        await selectService(ctx, session.executer_id, serviceName);
+        break;
+      }
+
       // Проверяем, не ввел ли пользователь номер заказа
       if (/^\d+$/.test(text)) {
         await processOrderNumber(ctx, text, session.executer_id);
+      } else {
+        ctx.reply('❓ Неизвестная команда. Воспользуйтесь меню.', { reply_markup: getMainMenu() });
       }
       break;
   }
 });
+
+// Показать мои услуги
+const showMyServices = async (ctx, executerId) => {
+  try {
+    console.log(`\n🎯 === ЗАПРОС УСЛУГ ИСПОЛНИТЕЛЯ ===`);
+    console.log(`👤 Executer ID: ${executerId}`);
+
+    const response = await fetch(`${API_URL}/api/executers/services/${executerId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log(`📡 Ответ API: ${response.status}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Ошибка API: ${errorText}`);
+      return ctx.reply('❌ Ошибка при получении списка услуг');
+    }
+
+    const services = await response.json();
+    console.log(`📋 Найдено услуг: ${services.length}`);
+
+    if (!services || services.length === 0) {
+      return ctx.reply(
+        '📋 *Мои услуги*\n\n' +
+        '❌ У вас пока нет доступных услуг.\n' +
+        'Обратитесь к администратору для получения доступа к услугам.',
+        { parse_mode: 'Markdown', reply_markup: getMainMenu() }
+      );
+    }
+
+    // Создаем кнопки для каждой услуги
+    const serviceButtons = services.map(service => [
+      `🎯 ${service.name}`
+    ]);
+
+    // Добавляем кнопку "Назад"
+    serviceButtons.push(['🔙 Назад в меню']);
+
+    const keyboard = Markup.keyboard(serviceButtons).resize();
+
+    let message = '🎯 *Мои услуги*\n\n';
+    message += 'Выберите услугу для работы:\n\n';
+
+    services.forEach((service, index) => {
+      message += `${index + 1}. *${service.name}*\n`;
+      message += `   💰 Цена: ${service.price}₽\n`;
+      message += `   📂 Категория: ${service.category}\n\n`;
+    });
+
+    message += '👆 Выберите услугу из списка ниже';
+
+    ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: keyboard
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка при получении услуг:', error);
+    ctx.reply('❌ Произошла ошибка при получении списка услуг');
+  }
+};
 
 // Показать мои заказы
 const showMyOrders = async (ctx, executerId) => {
@@ -393,6 +487,127 @@ const showBalance = async (ctx, executerId) => {
     return ctx.reply(`💰 Ваш баланс: ${balance} руб.`);
   } catch (error) {
     return ctx.reply('❌ Ошибка при получении баланса');
+  }
+};
+
+// Выбор услуги для работы
+const selectService = async (ctx, executerId, serviceName) => {
+  try {
+    console.log(`\n🎯 === ВЫБОР УСЛУГИ ===`);
+    console.log(`👤 Executer ID: ${executerId}`);
+    console.log(`🎯 Услуга: ${serviceName}`);
+
+    // Получаем список услуг исполнителя
+    const response = await fetch(`${API_URL}/api/executers/services/${executerId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      return ctx.reply('❌ Ошибка при получении списка услуг');
+    }
+
+    const services = await response.json();
+    const selectedService = services.find(service => service.name === serviceName);
+
+    if (!selectedService) {
+      return ctx.reply('❌ Услуга не найдена');
+    }
+
+    // Сохраняем состояние ожидания номера заказа
+    waitingForOrderNumber[ctx.chat.id] = {
+      serviceId: selectedService.id,
+      serviceName: selectedService.name
+    };
+
+    ctx.reply(
+      `🎯 *Услуга: ${selectedService.name}*\n\n` +
+      `💰 Цена: ${selectedService.price}₽\n` +
+      `📂 Категория: ${selectedService.category}\n\n` +
+      `📝 *Введите номер заказа:*\n` +
+      `Пожалуйста, введите номер заказа для начала работы с этой услугой.`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: Markup.keyboard([['🔙 Назад в меню']]).resize()
+      }
+    );
+
+  } catch (error) {
+    console.error('❌ Ошибка при выборе услуги:', error);
+    ctx.reply('❌ Произошла ошибка при выборе услуги');
+  }
+};
+
+// Обработка номера заказа для выбранной услуги
+const processOrderNumberForService = async (ctx, orderNumber, executerId, serviceId, serviceName) => {
+  try {
+    console.log(`\n📝 === СОЗДАНИЕ ВЫПОЛНЕНИЯ УСЛУГИ ===`);
+    console.log(`👤 Executer ID: ${executerId}`);
+    console.log(`🎯 Service ID: ${serviceId}`);
+    console.log(`📋 Номер заказа: ${orderNumber}`);
+
+    // Проверяем, что номер заказа является числом
+    if (!/^\d+$/.test(orderNumber)) {
+      return ctx.reply(
+        '❌ Номер заказа должен содержать только цифры.\n\n' +
+        '📝 Введите корректный номер заказа:'
+      );
+    }
+
+    // Создаем выполнение услуги через новый API
+    const response = await fetch(`${API_URL}/api/executers/service-execution`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        service_id: serviceId,
+        executer_id: executerId,
+        order_number: orderNumber
+      })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error(`❌ Ошибка API: ${result.message}`);
+      return ctx.reply(
+        `❌ Ошибка при создании заказа:\n${result.message}\n\n` +
+        '📝 Попробуйте ввести другой номер заказа:'
+      );
+    }
+
+    console.log(`✅ Заказ создан успешно: ID ${result.id}`);
+
+    // Очищаем состояние ожидания
+    delete waitingForOrderNumber[ctx.chat.id];
+
+    ctx.reply(
+      `✅ *Заказ успешно создан!*\n\n` +
+      `🎯 Услуга: *${serviceName}*\n` +
+      `📋 Номер заказа: *${orderNumber}*\n` +
+      `📊 Статус: *В работе*\n\n` +
+      `🎉 Теперь вы можете приступить к выполнению заказа!\n` +
+      `Используйте меню для управления заказами.`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: getMainMenu()
+      }
+    );
+
+  } catch (error) {
+    console.error('❌ Ошибка при создании заказа:', error);
+
+    // Очищаем состояние ожидания при ошибке
+    delete waitingForOrderNumber[ctx.chat.id];
+
+    ctx.reply(
+      '❌ Произошла ошибка при создании заказа.\n\n' +
+      'Попробуйте еще раз или обратитесь к администратору.',
+      { reply_markup: getMainMenu() }
+    );
   }
 };
 

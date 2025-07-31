@@ -18,6 +18,14 @@ export const Services = sequelize.define('Services',{
   price: { type: DataTypes.FLOAT, defaultValue: 0 }, // цена услуги
   loading_method: { type: DataTypes.STRING, defaultValue: 'manual' }, // способ загрузки материалов
   status: { type: DataTypes.STRING },
+  executer_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'executers',
+      key: 'id'
+    }
+  },
   admin_id: {
     type: DataTypes.INTEGER,
     references: {
@@ -169,7 +177,6 @@ MaterialReplacement.belongsTo(Admin, {foreignKey: 'processed_by'});
 export const ExecuterEarnings = sequelize.define('ExecuterEarnings', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   executer_id: { type: DataTypes.INTEGER, references: { model: 'executers', key: 'id' }, allowNull: false },
-  order_id: { type: DataTypes.INTEGER, references: { model: 'orders', key: 'id' }, allowNull: false },
   service_id: { type: DataTypes.INTEGER, references: { model: 'services', key: 'id' }, allowNull: false },
   amount: { type: DataTypes.FLOAT, allowNull: false }, // сумма заработка
   base_price: { type: DataTypes.FLOAT, allowNull: false }, // базовая цена услуги
@@ -193,6 +200,10 @@ ExecuterPricing.belongsTo(Executer, {foreignKey: 'executer_id'});
 
 Services.hasMany(ExecuterPricing, {foreignKey: 'service_id'});
 ExecuterPricing.belongsTo(Services, {foreignKey: 'service_id'});
+
+// Связь Services с Executer (назначенный исполнитель)
+Services.belongsTo(Executer, {foreignKey: 'executer_id', as: 'assignedExecuter'});
+Executer.hasMany(Services, {foreignKey: 'executer_id', as: 'assignedServices'});
 
 // Связи для заработка исполнителей
 Executer.hasMany(ExecuterEarnings, {foreignKey: 'executer_id'});

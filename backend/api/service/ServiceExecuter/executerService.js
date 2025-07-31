@@ -345,26 +345,35 @@ export const getExecuterServices = async (executerId) => {
 // Получить статистику исполнителя
 export const getExecuterStats = async (executerId) => {
   try {
-    const completedOrders = await Order.count({
+    const completedExecutions = await ServiceExecution.count({
       where: {
         executer_id: executerId,
         status: 'completed'
       }
     });
 
-    const activeOrders = await Order.count({
+    const activeExecutions = await ServiceExecution.count({
       where: {
         executer_id: executerId,
         status: 'in_progress'
       }
     });
 
-    const totalEarningsResult = await Order.sum('total_sum', {
+    // Подсчитываем общий заработок через цены услуг
+    const completedServices = await ServiceExecution.findAll({
       where: {
         executer_id: executerId,
         status: 'completed'
-      }
+      },
+      include: [{
+        model: Services,
+        attributes: ['price']
+      }]
     });
+
+    const totalEarnings = completedServices.reduce((sum, execution) => {
+      return sum + (execution.Service?.price || 0);
+    }, 0);
 
     const executer = await Executer.findByPk(executerId);
 
@@ -377,9 +386,9 @@ export const getExecuterStats = async (executerId) => {
     });
 
     return {
-      completedOrders: completedOrders || 0,
-      activeOrders: activeOrders || 0,
-      totalEarnings: totalEarningsResult || 0,
+      completedOrders: completedExecutions || 0,
+      activeOrders: activeExecutions || 0,
+      totalEarnings: totalEarnings || 0,
       rating: executer?.rating || 0,
       replacementRequests: replacementRequests || 0
     };
@@ -769,5 +778,66 @@ export const createExecuterOrder = async (orderNumber, executerId) => {
   } catch (err) {
     console.error('Ошибка при создании заказа:', err);
     throw new Error('Ошибка сервера');
+  }
+};
+
+// Функция для создания выполнения услуги
+export const createServiceExecution = async (serviceId, executerId, orderNumber) => {
+  try {
+    console.log('\n🎯 === СОЗДАНИЕ ВЫПОЛНЕНИЯ УСЛУГИ ===');
+    console.log('📊 Параметры:', { serviceId, executerId, orderNumber });
+
+    // Импортируем ServiceExecution
+    const { ServiceExecution } = await import('../../../database/dbTables.js');
+
+    // Проверяем существование услуги
+    const service = await Services.findByPk(serviceId);
+    if (!service) {
+      throw new Error('Услуга не найдена');
+    }
+
+    // Проверяем существование исполнителя
+    const executer = await Executer.findByPk(executerId);
+    if (!executer) {
+      throw new Error('Исполнитель не найден');
+    }
+
+    // Проверяем, есть ли уже выполнение с таким номером заказа
+    const existingExecution = await ServiceExecution.findOne({
+      where: { order_number: orderNumber }
+    });
+
+    if (existingExecution) {
+      throw new Error(`Заказ с номером ${orderNumber} уже существует`);
+    }
+
+    // Создаём выполнение услуги
+    const execution = await ServiceExecution.create({
+      service_id: serviceId,
+      executer_id: executerId,
+      order_number: orderNumber,
+      status: 'in_progress',
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+
+    console.log('✅ Выполнение услуги создано:', execution.id);
+
+    // Обновляем активность исполнителя
+    await updateExecuterActivity(executerId);
+
+    // Записываем лог
+    await createExecuterLog(
+      executerId,
+      'create_service_execution',
+      `Создано выполнение услуги "${service.name}" для заказа #${orderNumber}`,
+      null,
+      serviceId
+    );
+
+    return execution;
+  } catch (err) {
+    console.error('❌ Ошибка при создании выполнения услуги:', err);
+    throw new Error(err.message || 'Ошибка сервера');
   }
 };

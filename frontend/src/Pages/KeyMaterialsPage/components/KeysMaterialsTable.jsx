@@ -172,11 +172,12 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
       'manual': 'Ручной ввод',
       'manual_input': 'Ручной ввод',
       'api': 'API',
-      'file': 'Файл',
-      'file_upload': 'Загрузка файла',
-      'upload': 'Загрузка'
+      'file': 'Со склада',
+      'file_upload': 'Со склада',
+      'upload': 'Со склада',
+      'warehouse': 'Со склада'
     }
-    return sourceLabels[source] || source || 'Ручной ввод'
+    return sourceLabels[source] || source || 'Со склада'
   }
 
   // Функция для перевода типа ключа на русский
@@ -245,6 +246,19 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
             <Tag color="volcano">На замене</Tag>
           </Select.Option>
         </Select>
+      )
+    },
+    {
+      title: 'Номер заказа',
+      dataIndex: 'order_number',
+      key: 'order_number',
+      width: 120,
+      render: (order_number) => (
+        order_number ? (
+          <Tag color="blue">{order_number}</Tag>
+        ) : (
+          <Tag color="default">Не назначен</Tag>
+        )
       )
     },
     {

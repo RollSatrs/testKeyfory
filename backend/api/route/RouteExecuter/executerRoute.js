@@ -21,7 +21,8 @@ import {
   getAvailableMaterialsForReplacement,
   updateExecuterActivity,
   createExecuterLog,
-  createExecuterOrder
+  createExecuterOrder,
+  createServiceExecution
 } from '../../service/ServiceExecuter/executerService.js'
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken'
@@ -541,5 +542,37 @@ executerRoute.get('/available-materials/:orderId/:executerId', async (req, res) 
   } catch (error) {
     console.error('Ошибка получения доступных материалов:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Создать выполнение услуги
+executerRoute.post('/service-execution', async (req, res) => {
+  try {
+    const { service_id, executer_id, order_number } = req.body;
+
+    console.log('\n📋 === СОЗДАНИЕ ВЫПОЛНЕНИЯ УСЛУГИ ===');
+    console.log('📊 Данные:', { service_id, executer_id, order_number });
+
+    if (!service_id || !executer_id || !order_number) {
+      return res.status(400).json({
+        error: 'Все поля обязательны',
+        details: 'service_id, executer_id и order_number должны быть указаны'
+      });
+    }
+
+    // Проверяем, что order_number является числом
+    if (!/^\d+$/.test(order_number)) {
+      return res.status(400).json({
+        error: 'Номер заказа должен содержать только цифры'
+      });
+    }
+
+    const execution = await createServiceExecution(service_id, executer_id, order_number);
+
+    console.log('✅ Выполнение услуги создано:', execution.id);
+    res.json(execution);
+  } catch (error) {
+    console.error('❌ Ошибка создания выполнения услуги:', error);
+    res.status(500).json({ error: error.message || 'Ошибка сервера' });
   }
 });

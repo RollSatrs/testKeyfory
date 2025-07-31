@@ -86,9 +86,18 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
     })
 
     // Загружаем текущих исполнителей услуги
-    const currentExecuters = (service.assigned_executers || []).map(ex => ex.executer_id)
-    setSelectedExecuters(currentExecuters)
+    let currentExecuters = [];
 
+    // Сначала проверяем прямое назначение через executer_id
+    if (service.assignedExecuter) {
+      currentExecuters.push(service.assignedExecuter.id);
+    }
+
+    // Затем добавляем исполнителей из ServiceAccess (если есть)
+    const serviceAccessExecuters = (service.assigned_executers || []).map(ex => ex.executer_id);
+    currentExecuters = [...new Set([...currentExecuters, ...serviceAccessExecuters])]; // убираем дубликаты
+
+    setSelectedExecuters(currentExecuters)
     setEditForm(true)
   }
 
@@ -98,7 +107,10 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
 
   async function handleEditSubmit() {
     try {
-      // Обновляем данные услуги
+      // Определяем основного исполнителя (первый в списке) для прямого назначения
+      const primaryExecuterId = selectedExecuters.length > 0 ? selectedExecuters[0] : null;
+
+      // Обновляем данные услуги включая executer_id
       await fetch(`http://localhost:3000/api/services/admin/update/${form.id}`, {
         method: 'PUT',
         headers: {
@@ -109,11 +121,12 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           name: form.name,
           category: form.category,
           status: form.status,
-          price: parseFloat(form.price) || 0
+          price: parseFloat(form.price) || 0,
+          executer_id: primaryExecuterId
         })
       })
 
-      // Обновляем назначенных исполнителей
+      // Обновляем назначенных исполнителей через ServiceAccess (для множественного назначения)
       if (selectedExecuters.length > 0) {
         await fetch(`http://localhost:3000/api/services/admin/${form.id}/executers`, {
           method: 'POST',
@@ -283,11 +296,12 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       'manual': 'Ручной ввод',
       'manual_input': 'Ручной ввод',
       'api': 'API',
-      'file': 'Файл',
-      'file_upload': 'Загрузка файла',
-      'upload': 'Загрузка'
+      'file': 'Со склада',
+      'file_upload': 'Со склада',
+      'upload': 'Со склада',
+      'warehouse': 'Со склада'
     }
-    return sourceLabels[source] || source || 'Ручной ввод'
+    return sourceLabels[source] || source || 'Со склада'
   }
 
   // Функция для перевода типа ключа на русский
@@ -377,38 +391,54 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       key: 'executers',
       width: 200,
       render: (_, record) => {
+        // Проверяем прямое назначение через executer_id
+        const directExecuter = record.assignedExecuter;
+
+        // Проверяем назначение через ServiceAccess (старая система)
         const assignedExecuters = record.assigned_executers || [];
 
-        if (assignedExecuters.length === 0) {
-          return <Tag color="default">Не назначены</Tag>;
-        }
-
-        if (assignedExecuters.length === 1) {
-          const executer = assignedExecuters[0];
+        // Если есть прямое назначение
+        if (directExecuter) {
           return (
-            <Tag color={executer.status === 'active' ? 'green' : 'orange'}>
-              {executer.executer_name}
+            <Tag color={directExecuter.status === 'active' ? 'green' : 'orange'}>
+              {directExecuter.name || `ID: ${directExecuter.id}`}
+              {directExecuter.telegram_id && ` (${directExecuter.telegram_id})`}
             </Tag>
           );
         }
 
-        return (
-          <Tooltip
-            title={
-              <div>
-                {assignedExecuters.map((executer, index) => (
-                  <div key={index}>
-                    • {executer.executer_name} ({executer.status === 'active' ? 'Активен' : 'Неактивен'})
-                  </div>
-                ))}
-              </div>
-            }
-          >
-            <Tag color="blue">
-              {assignedExecuters.length} исполнител{assignedExecuters.length === 1 ? 'ь' : assignedExecuters.length < 5 ? 'я' : 'ей'}
-            </Tag>
-          </Tooltip>
-        );
+        // Если есть назначения через ServiceAccess
+        if (assignedExecuters.length > 0) {
+          if (assignedExecuters.length === 1) {
+            const executer = assignedExecuters[0];
+            return (
+              <Tag color={executer.status === 'active' ? 'green' : 'orange'}>
+                {executer.executer_name}
+              </Tag>
+            );
+          }
+
+          return (
+            <Tooltip
+              title={
+                <div>
+                  {assignedExecuters.map((executer, index) => (
+                    <div key={index}>
+                      • {executer.executer_name} ({executer.status === 'active' ? 'Активен' : 'Неактивен'})
+                    </div>
+                  ))}
+                </div>
+              }
+            >
+              <Tag color="blue">
+                {assignedExecuters.length} исполнител{assignedExecuters.length === 1 ? 'ь' : assignedExecuters.length < 5 ? 'я' : 'ей'}
+              </Tag>
+            </Tooltip>
+          );
+        }
+
+        // Если никого не назначено
+        return <Tag color="default">Не назначены</Tag>;
       }
     },
     {
@@ -424,6 +454,19 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
         }>
           {status === 'active' ? 'АКТИВНА' : status === 'inactive' ? 'НЕАКТИВНА' : status}
         </Tag>
+      )
+    },
+    {
+      title: 'Номер заказа',
+      dataIndex: 'order_number',
+      key: 'order_number',
+      width: 120,
+      render: (order_number) => (
+        order_number ? (
+          <Tag color="blue">{order_number}</Tag>
+        ) : (
+          <Tag color="default">Не назначен</Tag>
+        )
       )
     },
     {

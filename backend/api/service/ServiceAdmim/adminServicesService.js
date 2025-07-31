@@ -4,6 +4,14 @@ import { Services, Material, ExecuterPricing, Executer, ServiceAccess } from "..
 export async function getAllServices() {
     try {
         const services = await Services.findAll({
+            include: [
+                {
+                    model: Executer,
+                    as: 'assignedExecuter',
+                    attributes: ['id', 'name', 'telegram_id', 'status'],
+                    required: false
+                }
+            ],
             order: [['createdAt', 'DESC']]
         });
         const result = [];
@@ -80,7 +88,7 @@ export async function getServiceById(id) {
 
 export async function addServiices(data) {
     try {
-        const { name, category, price, status } = data;
+        const { name, category, price, status, loading_method, executer_id } = data;
 
         if (!name || !category) {
             throw new Error('Name and category are required');
@@ -100,6 +108,8 @@ export async function addServiices(data) {
             category,
             price: validPrice,
             status,
+            loading_method: loading_method || 'manual',
+            executer_id: executer_id || null,
             admin_id: 1
         });
         return newService;

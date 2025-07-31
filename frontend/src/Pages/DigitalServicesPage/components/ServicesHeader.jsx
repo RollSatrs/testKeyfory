@@ -54,6 +54,7 @@ export function ServicesHeader({ onAdd, children }) {
     price: '',
     status: '',
     loadingMethod: 'manual',
+    executer_id: '',
     customPricing: [] // [{executer_id, executer_name, custom_price}]
   })
 
@@ -142,7 +143,8 @@ export function ServicesHeader({ onAdd, children }) {
           category: form.category,
           price: parseFloat(form.price) || 0,
           status: form.status,
-          loading_method: form.loadingMethod
+          loading_method: form.loadingMethod,
+          executer_id: form.executer_id || null
         })
       })
 
@@ -210,6 +212,7 @@ export function ServicesHeader({ onAdd, children }) {
       price: '',
       status: '',
       loadingMethod: 'manual',
+      executer_id: '',
       customPricing: []
     })
     setFileList([])
@@ -306,6 +309,21 @@ export function ServicesHeader({ onAdd, children }) {
                 </div>
               </div>
             )}
+            <Select
+              name="executer_id"
+              value={form.executer_id || undefined}
+              onChange={value => handleChange('executer_id', value)}
+              placeholder="Выберите исполнителя (опционально)"
+              className="w-full"
+              allowClear
+            >
+              {executers.map(executer => (
+                <Select.Option key={executer.id} value={executer.id}>
+                  {executer.name || 'Без имени'} (ID: {executer.telegram_id})
+                </Select.Option>
+              ))}
+            </Select>
+
             <Select
               name="status"
               value={form.status || undefined}
