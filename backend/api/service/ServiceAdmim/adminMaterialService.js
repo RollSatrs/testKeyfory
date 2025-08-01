@@ -23,14 +23,15 @@ export async function getAllMaterials() {
             materials.map(async (material) => {
                 const materialData = material.toJSON();
 
-                // Ищем ServiceExecution с тем же service_id, которые используют этот материал
-                if (material.status === 'used' && material.service_id) {
+                // Для любого материала ищем активные заказы для этой услуги
+                if (material.service_id) {
+                    // Ищем последний активный ServiceExecution для этой услуги
                     const serviceExecution = await ServiceExecution.findOne({
                         where: {
                             service_id: material.service_id,
-                            material_contents: material.contents
+                            status: ['pending', 'in_progress', 'completed']
                         },
-                        attributes: ['order_number'],
+                        attributes: ['order_number', 'material_contents', 'status'],
                         order: [['created_at', 'DESC']]
                     });
 
@@ -41,9 +42,7 @@ export async function getAllMaterials() {
 
                 return materialData;
             })
-        );
-
-        return materialsWithOrders;
+        );        return materialsWithOrders;
     } catch (error) {
         throw new Error(`Error fetching materials: ${error.message}`);
     }
