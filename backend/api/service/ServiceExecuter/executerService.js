@@ -1,4 +1,4 @@
-import { Executer, Order, Services, Material, Log, ServiceAccess, MaterialReplacement } from '../../../database/dbTables.js';
+import { Executer, Order, Services, Material, Log, ServiceAccess, MaterialReplacement, ServiceExecution } from '../../../database/dbTables.js';
 import { Op } from 'sequelize';
 
 // Функция для автоматического обновления активности исполнителя

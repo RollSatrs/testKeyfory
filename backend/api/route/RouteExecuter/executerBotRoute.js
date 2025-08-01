@@ -378,4 +378,162 @@ router.put('/cancel-execution/:executionId', async (req, res) => {
   }
 });
 
+// Создать новое выполнение услуги
+router.post('/create-service-execution', async (req, res) => {
+  try {
+    const { order_number, executer_id, service_id } = req.body;
+
+    console.log(`\n🔄 === СОЗДАНИЕ ВЫПОЛНЕНИЯ УСЛУГИ ===`);
+    console.log(`📝 Номер заказа: ${order_number}`);
+    console.log(`👤 ID исполнителя: ${executer_id}`);
+    console.log(`🎯 ID услуги: ${service_id}`);
+
+    // Проверяем обязательные поля
+    if (!order_number || !executer_id || !service_id) {
+      return res.status(400).json({
+        message: 'Отсутствуют обязательные поля: order_number, executer_id, service_id'
+      });
+    }
+
+    // Проверяем, существует ли исполнитель
+    const executer = await Executer.findByPk(executer_id);
+    if (!executer) {
+      return res.status(400).json({
+        message: 'Исполнитель не найден'
+      });
+    }
+
+    // Проверяем, существует ли услуга
+    const service = await Services.findByPk(service_id);
+    if (!service) {
+      return res.status(400).json({
+        message: 'Услуга не найдена'
+      });
+    }
+
+    // Создаем выполнение услуги
+    const serviceExecution = await ServiceExecution.create({
+      order_number,
+      executer_id,
+      service_id,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+
+    console.log(`✅ Выполнение услуги создано с ID: ${serviceExecution.id}`);
+
+    res.json({
+      id: serviceExecution.id,
+      order_number: serviceExecution.order_number,
+      serviceName: service.name,
+      executerName: executer.name,
+      created_at: serviceExecution.created_at
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка при создании выполнения услуги:', error);
+    res.status(500).json({
+      message: 'Ошибка при создании выполнения услуги',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/executer/stats/:executerId - Получить статистику исполнителя
+router.get('/stats/:executerId', async (req, res) => {
+  try {
+    const { executerId } = req.params;
+
+    console.log(`\n📊 === API: ПОЛУЧЕНИЕ СТАТИСТИКИ ИСПОЛНИТЕЛЯ ===`);
+    console.log(`👤 Executer ID: ${executerId}`);
+
+    // Проверяем существование исполнителя
+    const executer = await Executer.findByPk(executerId);
+    if (!executer) {
+      return res.status(404).json({
+        message: 'Исполнитель не найден'
+      });
+    }
+
+    // Получаем статистику из ServiceExecution
+    const completedOrders = await ServiceExecution.count({
+      where: {
+        executer_id: executerId,
+        status: 'completed'
+      }
+    });
+
+    const activeOrders = await ServiceExecution.count({
+      where: {
+        executer_id: executerId,
+        status: 'in_progress'
+      }
+    });
+
+    // Получаем запросы на замену
+    const replacementRequests = await MaterialReplacement.count({
+      where: {
+        executer_id: executerId
+      }
+    });
+
+    // Используем реальный баланс исполнителя как общий заработок
+    const totalEarnings = executer.balance || 0;
+
+    // Рейтинг из базы данных
+    const rating = executer.rating || 5.0;
+
+    const stats = {
+      completedOrders,
+      activeOrders,
+      totalEarnings,
+      rating,
+      replacementRequests
+    };
+
+    console.log(`✅ Статистика получена:`, stats);
+
+    res.json(stats);
+
+  } catch (error) {
+    console.error('❌ Ошибка при получении статистики:', error);
+    res.status(500).json({
+      message: 'Ошибка при получении статистики',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/executer/balance/:executerId - Получить баланс исполнителя
+router.get('/balance/:executerId', async (req, res) => {
+  try {
+    const { executerId } = req.params;
+
+    console.log(`\n💰 === API: ПОЛУЧЕНИЕ БАЛАНСА ИСПОЛНИТЕЛЯ ===`);
+    console.log(`👤 Executer ID: ${executerId}`);
+
+    // Проверяем существование исполнителя
+    const executer = await Executer.findByPk(executerId);
+    if (!executer) {
+      return res.status(404).json({
+        message: 'Исполнитель не найден'
+      });
+    }
+
+    // Получаем баланс исполнителя
+    const balance = executer.balance || 0;
+
+    console.log(`✅ Баланс получен: ${balance}`);
+
+    res.json({ balance });
+
+  } catch (error) {
+    console.error('❌ Ошибка при получении баланса:', error);
+    res.status(500).json({
+      message: 'Ошибка при получении баланса',
+      error: error.message
+    });
+  }
+});
+
 export default router;

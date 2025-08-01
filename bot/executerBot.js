@@ -144,7 +144,7 @@ const authorizeExecuter = async (telegramId) => {
 const getMainMenu = () => {
   return Markup.keyboard([
     ['🎯 Мои услуги', '📋 Активные заказы'],
-    ['📊 Статистика', '💰 Баланс']
+    ['📊 Статистика']
   ]).resize();
 };
 
@@ -261,12 +261,15 @@ bot.on('text', async (ctx) => {
       await showStatistics(ctx, session.executer_id);
       break;
 
-    case '💰 Баланс':
-      await showBalance(ctx, session.executer_id);
-      break;
-
     default:
-      // Проверяем, выбрал ли пользователь услугу
+      // Проверяем, выбрал ли пользователь услугу и ожидается номер заказа
+      if (session.selectedService && /^\d+$/.test(text)) {
+        await processOrderNumberForService(ctx, text, session.executer_id, session.selectedService);
+        delete session.selectedService;
+        break;
+      }
+
+      // Проверяем кнопочный выбор услуги (старая система)
       if (text.startsWith('🎯 ')) {
         const serviceName = text.replace('🎯 ', '');
         await selectService(ctx, session.executer_id, serviceName);
@@ -290,6 +293,8 @@ const showMyServices = async (ctx, executerId) => {
   try {
     console.log(`\n🎯 === ЗАПРОС УСЛУГ ИСПОЛНИТЕЛЯ ===`);
     console.log(`👤 Executer ID: ${executerId}`);
+    console.log(`🌐 API URL: ${API_URL}`);
+    console.log(`📡 Полный URL: ${API_URL}/api/executers/services/${executerId}`);
 
     const response = await fetch(`${API_URL}/api/executers/services/${executerId}`, {
       method: 'GET',
@@ -299,6 +304,7 @@ const showMyServices = async (ctx, executerId) => {
     });
 
     console.log(`📡 Ответ API: ${response.status}`);
+    console.log(`📡 Headers: ${JSON.stringify(response.headers.raw())}`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -308,8 +314,10 @@ const showMyServices = async (ctx, executerId) => {
 
     const services = await response.json();
     console.log(`📋 Найдено услуг: ${services.length}`);
+    console.log(`📋 Услуги:`, services);
 
     if (!services || services.length === 0) {
+      console.log('❌ Нет услуг для отображения');
       return ctx.reply(
         '📋 *Мои услуги*\n\n' +
         '❌ У вас пока нет доступных услуг.\n' +
@@ -318,15 +326,30 @@ const showMyServices = async (ctx, executerId) => {
       );
     }
 
-    // Создаем кнопки для каждой услуги
-    const serviceButtons = services.map(service => [
-      `🎯 ${service.name}`
-    ]);
+    console.log(`🔘 Создаем inline кнопки...`);
+    // Создаем INLINE кнопки для каждой услуги (АЛЬТЕРНАТИВНЫЙ СПОСОБ)
+    const serviceButtons = [];
+    services.forEach(service => {
+      const buttonText = `🎯 ${service.name}`;
+      const callbackData = `select_service_${service.id}`;
+      console.log(`🔘 Кнопка: "${buttonText}" -> ${callbackData}`);
 
-    // Добавляем кнопку "Назад"
-    serviceButtons.push(['🔙 Назад в меню']);
+      serviceButtons.push([{
+        text: buttonText,
+        callback_data: callbackData
+      }]);
+    });
 
-    const keyboard = Markup.keyboard(serviceButtons).resize();
+    console.log(`🔘 Создано кнопок: ${serviceButtons.length}`);
+
+    // Создаем keyboard напрямую через объект
+    const keyboard = {
+      reply_markup: {
+        inline_keyboard: serviceButtons
+      }
+    };
+
+    console.log(`🔘 Keyboard создан (новый способ):`, JSON.stringify(keyboard, null, 2));
 
     let message = '🎯 *Мои услуги*\n\n';
     message += 'Выберите услугу для работы:\n\n';
@@ -337,15 +360,23 @@ const showMyServices = async (ctx, executerId) => {
       message += `   📂 Категория: ${service.category}\n\n`;
     });
 
-    message += '👆 Выберите услугу из списка ниже';
+    message += '👆 Нажмите на кнопку услуги ниже';
 
-    ctx.reply(message, {
+    console.log(`📱 Отправляем сообщение в Telegram...`);
+    console.log(`📱 Message:`, message);
+    console.log(`📱 Keyboard:`, JSON.stringify(keyboard, null, 2));
+
+    // Отправляем сообщение с inline кнопками
+    await ctx.reply(message, {
       parse_mode: 'Markdown',
-      reply_markup: keyboard
+      ...keyboard  // Распаковываем объект keyboard
     });
+
+    console.log(`✅ Сообщение отправлено успешно!`);
 
   } catch (error) {
     console.error('❌ Ошибка при получении услуг:', error);
+    console.error('❌ Stack trace:', error.stack);
     ctx.reply('❌ Произошла ошибка при получении списка услуг');
   }
 };
@@ -456,7 +487,7 @@ const showStatistics = async (ctx, executerId) => {
     // Логируем действие и обновляем активность
     await logActivity(executerId, 'view_statistics', 'Просмотр статистики');
 
-    const response = await fetch(`${API_URL}/api/executer/stats/${executerId}`);
+    const response = await fetch(`${API_URL}/api/executers/stats/${executerId}`);
 
     if (!response.ok) {
       return ctx.reply('❌ Ошибка при получении статистики');
@@ -483,7 +514,7 @@ const showBalance = async (ctx, executerId) => {
     // Логируем действие и обновляем активность
     await logActivity(executerId, 'view_balance', 'Просмотр баланса');
 
-    const response = await fetch(`${API_URL}/api/executer/balance/${executerId}`);
+    const response = await fetch(`${API_URL}/api/executers/balance/${executerId}`);
 
     if (!response.ok) {
       return ctx.reply('❌ Ошибка при получении баланса');
@@ -601,6 +632,48 @@ const showServiceMaterials = async (ctx, executerId, service) => {
   } catch (error) {
     console.error('❌ Ошибка при получении материалов:', error);
     ctx.reply('❌ Произошла ошибка при получении материалов');
+  }
+};
+
+// Функция для обработки номера заказа для услуги
+const processOrderNumberForService = async (ctx, orderNumber, executerId, serviceId) => {
+  try {
+    // Создаем запись в ServiceExecution
+    const response = await fetch(`${API_URL}/api/executers/create-service-execution`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        order_number: orderNumber,
+        executer_id: executerId,
+        service_id: serviceId
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    ctx.reply(
+      `✅ Заказ №${orderNumber} успешно обработан!\n\n` +
+      `📋 Детали:\n` +
+      `• Услуга: ${result.serviceName}\n` +
+      `• Номер заказа: ${orderNumber}\n` +
+      `• Время: ${new Date().toLocaleString('ru-RU')}\n\n` +
+      `🎯 Можете выбрать следующую услугу или вернуться в главное меню.`,
+      { reply_markup: getMainMenu() }
+    );
+
+  } catch (error) {
+    console.error('Error creating service execution:', error);
+    ctx.reply(
+      `❌ Ошибка при обработке заказа №${orderNumber}.\n\n` +
+      `Пожалуйста, попrobуйте еще раз или обратитесь к администратору.`,
+      { reply_markup: getMainMenu() }
+    );
   }
 };
 
@@ -910,6 +983,43 @@ bot.action(/cancel_execution_(\d+)/, async (ctx) => {
 
   const session = userSessions[chatId];
   await requestCancelExecution(ctx, executionId, session.executer_id);
+});
+
+// Обработчик выбора услуги
+bot.action(/select_service_(\d+)/, async (ctx) => {
+  const serviceId = ctx.match[1];
+  const chatId = ctx.chat.id;
+
+  console.log(`\n🔘 === НАЖАТА INLINE КНОПКА ===`);
+  console.log(`🔘 Service ID: ${serviceId}`);
+  console.log(`🔘 Chat ID: ${chatId}`);
+  console.log(`🔘 Callback Data: ${ctx.callbackQuery.data}`);
+
+  if (!userSessions[chatId]) {
+    console.log(`❌ Сессия не найдена для Chat ID: ${chatId}`);
+    return ctx.answerCbQuery('Сессия истекла. Нажмите /start');
+  }
+
+  const session = userSessions[chatId];
+  console.log(`✅ Сессия найдена для исполнителя: ${session.executer_id}`);
+
+  // Сохраняем выбранную услугу в сессии
+  session.selectedService = serviceId;
+  console.log(`✅ Услуга ${serviceId} сохранена в сессии`);
+
+  await ctx.answerCbQuery();
+  console.log(`✅ Callback query отвечен`);
+
+  await ctx.reply(
+    '📝 *Введите номер заказа:*\n\n' +
+    'Пожалуйста, введите номер заказа для этой услуги.',
+    {
+      parse_mode: 'Markdown',
+      reply_markup: Markup.keyboard([['🔙 Назад в меню']]).resize()
+    }
+  );
+
+  console.log(`✅ Сообщение с запросом номера заказа отправлено`);
 });
 
 bot.action(/confirm_cancel_execution_(\d+)/, async (ctx) => {
