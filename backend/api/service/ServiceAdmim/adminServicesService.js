@@ -1,4 +1,4 @@
-import { Services, Material, ExecuterPricing, Executer, ServiceAccess } from "../../../database/dbTables.js";
+import { Services, Material, ExecuterPricing, Executer, ServiceAccess, ServiceExecution } from "../../../database/dbTables.js";
 
 
 export async function getAllServices() {
@@ -12,7 +12,7 @@ export async function getAllServices() {
                     required: false
                 }
             ],
-            order: [['createdAt', 'DESC']]
+            order: [['create_date_service', 'DESC']]
         });
         const result = [];
 
@@ -50,10 +50,18 @@ export async function getAllServices() {
                 ]
             });
 
+            // Получаем последний активный заказ для услуги
+            const latestOrder = await ServiceExecution.findOne({
+                where: { service_id: service.id },
+                attributes: ['order_number', 'status'],
+                order: [['created_at', 'DESC']]
+            });
+
             result.push({
                 ...service.dataValues,
                 source: sources.join(', ') || '-',
                 available_keys: availableKeys,
+                order_number: latestOrder?.order_number || null,
                 custom_pricing: customPricing.map(pricing => ({
                     executer_id: pricing.executer_id,
                     executer_name: pricing.Executer?.name || `Исполнитель ${pricing.executer_id}`,

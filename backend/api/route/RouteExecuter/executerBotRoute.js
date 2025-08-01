@@ -60,23 +60,53 @@ router.get('/materials/:serviceId', async (req, res) => {
     console.log(`\n📦 === API: ПОЛУЧЕНИЕ МАТЕРИАЛОВ УСЛУГИ ===`);
     console.log(`🎯 Service ID: ${serviceId}`);
 
-    // Получаем доступные материалы для услуги
+    // Получаем все материалы для услуги (не только доступные)
     const materials = await Material.findAll({
       where: {
-        service_id: serviceId,
-        status: 'available'
+        service_id: serviceId
       },
       attributes: ['id', 'contents', 'status', 'type_key'],
-      order: [['created_at', 'DESC']]
+      order: [['create_date_material', 'DESC']]
     });
 
-    console.log(`📦 Найдено доступных материалов: ${materials.length}`);
+    console.log(`📦 Найдено материалов: ${materials.length}`);
 
     res.json(materials);
   } catch (error) {
     console.error('❌ Ошибка при получении материалов услуги:', error);
     res.status(500).json({
       message: 'Ошибка при получении материалов услуги',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/executers/material/:materialId - Получить информацию о конкретном материале
+router.get('/material/:materialId', async (req, res) => {
+  try {
+    const { materialId } = req.params;
+
+    const material = await Material.findOne({
+      where: {
+        id: materialId,
+        status: 'available'
+      }
+    });
+
+    if (!material) {
+      return res.status(404).json({
+        success: false,
+        message: 'Материал не найден или недоступен'
+      });
+    }
+
+    res.json(material);
+
+  } catch (error) {
+    console.error('Ошибка при получении материала:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера',
       error: error.message
     });
   }
@@ -531,6 +561,150 @@ router.get('/balance/:executerId', async (req, res) => {
     console.error('❌ Ошибка при получении баланса:', error);
     res.status(500).json({
       message: 'Ошибка при получении баланса',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/executers/use-material-for-order - Пометить материал как использованный для заказа
+router.post('/use-material-for-order', async (req, res) => {
+  try {
+    const { material_id, service_id, executer_id, order_number } = req.body;
+
+    console.log(`\n🔄 === ИСПОЛЬЗОВАНИЕ МАТЕРИАЛА ДЛЯ ЗАКАЗА ===`);
+    console.log(`📦 Material ID: ${material_id}`);
+    console.log(`🎯 Service ID: ${service_id}`);
+    console.log(`👤 Executer ID: ${executer_id}`);
+    console.log(`📋 Order Number: ${order_number}`);
+
+    // Обновляем статус материала на "used" и добавляем номер заказа
+    const [updatedRows] = await Material.update({
+      status: 'used',
+      order_number: order_number,
+      used_date: new Date(),
+      executer_id: executer_id
+    }, {
+      where: {
+        id: material_id,
+        service_id: service_id
+      }
+    });
+
+    if (updatedRows === 0) {
+      return res.status(404).json({
+        message: 'Материал не найден или уже использован'
+      });
+    }
+
+    console.log(`✅ Материал ${material_id} помечен как использованный для заказа ${order_number}`);
+
+    res.json({
+      message: 'Материал успешно помечен как использованный',
+      material_id,
+      order_number,
+      status: 'used'
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка при использовании материала для заказа:', error);
+    res.status(500).json({
+      message: 'Ошибка при использовании материала для заказа',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/executers/complete-order - Завершение заказа (ожидает подтверждения админа)
+router.post('/complete-order', async (req, res) => {
+  try {
+    const { order_number, service_id, executer_id, status } = req.body;
+
+    console.log(`\n✅ === ЗАВЕРШЕНИЕ ЗАКАЗА ===`);
+    console.log(`📋 Order Number: ${order_number}`);
+    console.log(`🎯 Service ID: ${service_id}`);
+    console.log(`👤 Executer ID: ${executer_id}`);
+
+    // Обновляем статус ServiceExecution
+    const [updatedRows] = await ServiceExecution.update({
+      status: status || 'pending_approval',
+      completed_date: new Date()
+    }, {
+      where: {
+        order_number: order_number,
+        service_id: service_id,
+        executer_id: executer_id
+      }
+    });
+
+    if (updatedRows === 0) {
+      return res.status(404).json({
+        message: 'Заказ не найден'
+      });
+    }
+
+    console.log(`✅ Заказ ${order_number} отправлен на подтверждение`);
+
+    res.json({
+      message: 'Заказ отправлен на подтверждение администратора',
+      order_number,
+      status: status || 'pending_approval'
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка при завершении заказа:', error);
+    res.status(500).json({
+      message: 'Ошибка при завершении заказа',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/executers/cancel-order - Отмена заказа (возврат материалов в статус available)
+router.post('/cancel-order', async (req, res) => {
+  try {
+    const { order_number, service_id, executer_id } = req.body;
+
+    console.log(`\n❌ === ОТМЕНА ЗАКАЗА ===`);
+    console.log(`📋 Order Number: ${order_number}`);
+    console.log(`🎯 Service ID: ${service_id}`);
+    console.log(`👤 Executer ID: ${executer_id}`);
+
+    // Возвращаем все материалы данной услуги в статус "available"
+    const [updatedMaterialsRows] = await Material.update({
+      status: 'available',
+      used_date: null
+    }, {
+      where: {
+        service_id: service_id,
+        status: 'used'
+      }
+    });
+
+    // Удаляем или помечаем ServiceExecution как отмененный
+    const [updatedExecutionRows] = await ServiceExecution.update({
+      status: 'cancelled',
+      cancelled_date: new Date()
+    }, {
+      where: {
+        order_number: order_number,
+        service_id: service_id,
+        executer_id: executer_id
+      }
+    });
+
+    console.log(`✅ Заказ ${order_number} отменен, ${updatedMaterialsRows} материалов возвращено`);
+
+    res.json({
+      message: `Заказ отменен, ${updatedMaterialsRows} материалов возвращено в статус "Доступны"`,
+      order_number,
+      materials_restored: updatedMaterialsRows,
+      status: 'cancelled'
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка при отмене заказа:', error);
+    res.status(500).json({
+      message: 'Ошибка при отмене заказа',
       error: error.message
     });
   }

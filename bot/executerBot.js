@@ -28,6 +28,12 @@ const waitingForReason = {};
 // Хранение состояний для отмены заказов
 const waitingForCancelReason = {};
 
+// Хранение состояний ожидания ввода номера заказа
+const waitingForOrderNumber = {};
+
+// Хранение состояний ожидания причины замены материала
+const waitingForReplacementReason = {};
+
 // Функция для перевода статуса на русский язык
 const translateStatus = (status) => {
   const statusTranslations = {
@@ -244,6 +250,33 @@ bot.on('text', async (ctx) => {
     return;
   }
 
+  // Проверяем, ожидается ли номер заказа
+  if (waitingForOrderNumber[chatId] && /^\d+$/.test(text)) {
+    const orderData = waitingForOrderNumber[chatId];
+
+    if (orderData.action === 'use_material') {
+      // Использование материала с номером заказа
+      await processOrderNumberForMaterial(ctx, text, session.executer_id, orderData.materialId, orderData.serviceId);
+    } else if (orderData.action === 'create_service_execution') {
+      // Создание записи выполнения услуги
+      await processOrderNumberForService(ctx, text, session.executer_id, orderData.serviceId);
+    } else if (orderData.action === 'create_service_with_materials') {
+      // Создание ServiceExecution и показ материалов
+      await processOrderNumberAndShowMaterials(ctx, text, session.executer_id, orderData.serviceId);
+    }
+
+    delete waitingForOrderNumber[chatId];
+    return;
+  }
+
+  // Проверяем, ожидается ли причина замены
+  if (waitingForReplacementReason[chatId]) {
+    const reasonData = waitingForReplacementReason[chatId];
+    await processReplacementRequest(ctx, reasonData.materialId, reasonData.serviceId, text, session.executer_id);
+    delete waitingForReplacementReason[chatId];
+    return;
+  }
+
   switch (text) {
     case '🔙 Назад в меню':
       ctx.reply('🏠 Главное меню', { reply_markup: getMainMenu() });
@@ -276,9 +309,10 @@ bot.on('text', async (ctx) => {
         break;
       }
 
-      // Проверяем, ожидается ли номер заказа для использования материала
+      // Проверяем, ожидается ли номер заказа для использования материала (старая система)
       if (session.pendingMaterial && /^\d+$/.test(text)) {
-        await processOrderNumberForMaterial(ctx, text, session.executer_id, session.pendingMaterial);
+        const { materialId, serviceId } = session.pendingMaterial;
+        await processOrderNumberForMaterial(ctx, text, session.executer_id, materialId, serviceId);
         delete session.pendingMaterial;
         break;
       }
@@ -565,13 +599,45 @@ const selectService = async (ctx, executerId, serviceName) => {
 };
 
 // Показать материалы услуги с кнопками
-const showServiceMaterials = async (ctx, executerId, service) => {
+const showServiceMaterials = async (ctx, executerId, serviceOrId, orderNumber = null) => {
   try {
     console.log(`\n� === ПОЛУЧЕНИЕ МАТЕРИАЛОВ УСЛУГИ ===`);
-    console.log(`🎯 Service ID: ${service.id}`);
+    console.log(`🎯 Service ID: ${serviceOrId}`);
+
+    let service;
+    let serviceId;
+
+    // Определяем, передан объект service или только ID
+    if (typeof serviceOrId === 'object' && serviceOrId !== null) {
+      service = serviceOrId;
+      serviceId = service.id;
+    } else {
+      serviceId = serviceOrId;
+      // Получаем информацию об услуге
+      const serviceResponse = await fetch(`${API_URL}/api/executers/services/${executerId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!serviceResponse.ok) {
+        return ctx.reply('❌ Ошибка при получении информации об услуге');
+      }
+
+      const services = await serviceResponse.json();
+      service = services.find(s => s.id == serviceId);
+
+      if (!service) {
+        return ctx.reply('❌ Услуга не найдена');
+      }
+    }
+
+    console.log(`🎯 Final Service ID: ${serviceId}`);
+    console.log(`🎯 Service Name: ${service.name}`);
 
     // Получаем доступные материалы для услуги
-    const response = await fetch(`${API_URL}/api/executers/materials/${service.id}`, {
+    const response = await fetch(`${API_URL}/api/executers/materials/${serviceId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
@@ -585,49 +651,152 @@ const showServiceMaterials = async (ctx, executerId, service) => {
     const materials = await response.json();
     console.log(`📦 Найдено материалов: ${materials.length}`);
 
-    // Фильтруем только доступные материалы
-    const availableMaterials = materials.filter(m => m.status === 'available');
+    if (materials.length === 0) {
+      // Если нет материалов, показываем кнопки управления заказом
+      const orderButtons = orderNumber ? [
+        [{ text: '✅ Выполнил заказ', callback_data: `complete_order_${serviceId}_${orderNumber}` }],
+        [{ text: '❌ Не выполнил заказ', callback_data: `cancel_order_${serviceId}_${orderNumber}` }],
+        [{ text: '🔙 Назад к услугам', callback_data: 'back_to_services' }]
+      ] : [
+        [{ text: '📝 Ввести номер заказа', callback_data: `enter_order_${serviceId}` }],
+        [{ text: '🔙 Назад к услугам', callback_data: 'back_to_services' }]
+      ];
 
-    if (availableMaterials.length === 0) {
+      const keyboard = {
+        reply_markup: {
+          inline_keyboard: orderButtons
+        }
+      };
+
       return ctx.reply(
         `🎯 *${service.name}*\n\n` +
-        `❌ Нет доступных материалов для этой услуги.\n` +
-        `Обратитесь к администратору.`,
+        `${orderNumber ? `📋 Номер заказа: *${orderNumber}*\n` : ''}` +
+        `💰 Цена: ${service.price}₽\n` +
+        `📂 Категория: ${service.category}\n\n` +
+        `❌ Нет материалов для этой услуги.\n` +
+        `${orderNumber ? 'Выберите действие с заказом:' : 'Обратитесь к администратору или введите номер заказа.'}`,
         {
           parse_mode: 'Markdown',
-          reply_markup: Markup.keyboard([['🔙 Назад в меню']]).resize()
+          ...keyboard
         }
       );
     }
 
-    // Создаем inline кнопки для каждого материала
-    const materialButtons = availableMaterials.slice(0, 10).map(material => [
-      Markup.button.callback(
-        `📦 ${material.contents.substring(0, 30)}...`,
-        `use_material_${material.id}_${service.id}`
-      )
-    ]);
+    // Если есть orderNumber, то сразу помечаем все материалы как использованные
+    if (orderNumber) {
+      console.log('🔄 Помечаем все материалы как использованные...');
+      for (const material of materials) {
+        await fetch(`${API_URL}/api/executers/use-material-for-order`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            material_id: material.id,
+            service_id: serviceId,
+            executer_id: executerId,
+            order_number: orderNumber
+          })
+        });
+      }
 
-    // Добавляем кнопку "Запросить замену"
+      // Показываем список материалов и кнопки управления заказом
+      let materialsText = materials.slice(0, 10).map((material, index) =>
+        `${index + 1}. 📦 ${material.contents.substring(0, 40)}...`
+      ).join('\n');
+
+      const orderButtons = [
+        [{ text: '✅ Выполнил заказ', callback_data: `complete_order_${serviceId}_${orderNumber}` }],
+        [{ text: '❌ Не выполнил заказ', callback_data: `cancel_order_${serviceId}_${orderNumber}` }],
+        [{ text: '🔙 Назад к услугам', callback_data: 'back_to_services' }]
+      ];
+
+      const keyboard = {
+        reply_markup: {
+          inline_keyboard: orderButtons
+        }
+      };
+
+      ctx.reply(
+        `🎯 *${service.name}*\n\n` +
+        `📋 Номер заказа: *${orderNumber}*\n` +
+        `💰 Цена: ${service.price}₽\n` +
+        `📂 Категория: ${service.category}\n\n` +
+        `📦 *Материалы заказа:* ${materials.length}\n\n` +
+        `${materialsText}\n\n` +
+        `🔄 *Все материалы помечены как "В использовании"*\n\n` +
+        `Выберите действие с заказом:`,
+        {
+          parse_mode: 'Markdown',
+          ...keyboard
+        }
+      );
+
+      await logActivity(executerId, 'view_materials', `Просмотр материалов заказа ${orderNumber} для услуги "${service.name}"`, null, serviceId);
+      return;
+    }
+
+    // Если orderNumber нет, показываем старую логику (только доступные материалы)
+    const availableMaterials = materials.filter(m => m.status === 'available');
+
+    if (availableMaterials.length === 0) {
+      const orderButtons = [
+        [{ text: '📝 Ввести номер заказа', callback_data: `enter_order_${serviceId}` }],
+        [{ text: '🔙 Назад к услугам', callback_data: 'back_to_services' }]
+      ];
+
+      const keyboard = {
+        reply_markup: {
+          inline_keyboard: orderButtons
+        }
+      };
+
+      return ctx.reply(
+        `🎯 *${service.name}*\n\n` +
+        `💰 Цена: ${service.price}₽\n` +
+        `📂 Категория: ${service.category}\n\n` +
+        `❌ Нет доступных материалов для этой услуги.\n` +
+        `Обратитесь к администратору или введите номер заказа для работы без материалов.`,
+        {
+          parse_mode: 'Markdown',
+          ...keyboard
+        }
+      );
+    }
+
+    // Создаем inline кнопки для каждого доступного материала
+    const materialButtons = availableMaterials.slice(0, 8).map(material => [{
+      text: `📦 ${material.contents.substring(0, 25)}...`,
+      callback_data: `select_material_${material.id}_${serviceId}`
+    }]);
+
+    // Добавляем кнопки управления
     materialButtons.push([
-      Markup.button.callback('🔄 Запросить замену материала', `request_replacement_${service.id}`)
+      { text: '� Ввести номер заказа', callback_data: `enter_order_${serviceId}` }
+    ]);
+    materialButtons.push([
+      { text: '🔙 Назад к услугам', callback_data: 'back_to_services' }
     ]);
 
-    const keyboard = Markup.inlineKeyboard(materialButtons);
+    const keyboard = {
+      reply_markup: {
+        inline_keyboard: materialButtons
+      }
+    };
 
     ctx.reply(
       `🎯 *${service.name}*\n\n` +
-      `� Цена: ${service.price}₽\n` +
-      `� Категория: ${service.category}\n\n` +
+      `💰 Цена: ${service.price}₽\n` +
+      `📂 Категория: ${service.category}\n\n` +
       `📦 *Доступные материалы:* ${availableMaterials.length}\n\n` +
-      `Выберите материал для использования:`,
+      `Выберите материал для работы или введите номер заказа:`,
       {
         parse_mode: 'Markdown',
-        reply_markup: keyboard
+        ...keyboard
       }
     );
 
-    await logActivity(executerId, 'view_materials', `Просмотр материалов услуги "${service.name}"`, null, service.id);
+    await logActivity(executerId, 'view_materials', `Просмотр материалов услуги "${service.name}"`, null, serviceId);
 
   } catch (error) {
     console.error('❌ Ошибка при получении материалов:', error);
@@ -678,10 +847,8 @@ const processOrderNumberForService = async (ctx, orderNumber, executerId, servic
 };
 
 // Обработка номера заказа для использования материала
-const processOrderNumberForMaterial = async (ctx, orderNumber, executerId, pendingMaterial) => {
+const processOrderNumberForMaterial = async (ctx, orderNumber, executerId, materialId, serviceId) => {
   try {
-    const { materialId, serviceId } = pendingMaterial;
-
     console.log(`\n📝 === СОЗДАНИЕ ЗАКАЗА С МАТЕРИАЛОМ ===`);
     console.log(`👤 Executer ID: ${executerId}`);
     console.log(`🎯 Service ID: ${serviceId}`);
@@ -722,28 +889,166 @@ const processOrderNumberForMaterial = async (ctx, orderNumber, executerId, pendi
 
     console.log(`✅ Заказ создан и материал использован: ${result.message}`);
 
+    // Кнопки для дальнейших действий
+    const actionButtons = {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📋 Мои активные заказы', callback_data: 'show_active_orders' }],
+          [{ text: '🎯 Выбрать другую услугу', callback_data: 'back_to_services' }],
+          [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+        ]
+      }
+    };
+
     ctx.reply(
       `✅ *Заказ успешно создан!*\n\n` +
       `📋 Номер заказа: *${orderNumber}*\n` +
       `🎯 Услуга: *${result.serviceName || 'Услуга'}*\n` +
       `📦 Материал: *${result.materialContent || 'Материал'}*\n` +
-      `📊 Статус: *В работе*\n\n` +
-      `🎉 Материал успешно использован для заказа!`,
+      `📊 Статус материала: *В использовании*\n` +
+      `🔄 Статус заказа: *В работе*\n\n` +
+      `🎉 Материал успешно привязан к заказу!`,
       {
         parse_mode: 'Markdown',
-        reply_markup: getMainMenu()
+        ...actionButtons
       }
     );
 
-    await logActivity(executerId, 'use_material', `Использован материал ID:${materialId} для заказа #${orderNumber}`, null, serviceId);
+    await logActivity(executerId, 'material_used', `Материал ID:${materialId} использован для заказа ${orderNumber}`, materialId, serviceId);
 
   } catch (error) {
     console.error('❌ Ошибка при создании заказа с материалом:', error);
-
     ctx.reply(
       '❌ Произошла ошибка при создании заказа.\n\n' +
-      'Попробуйте еще раз или обратитесь к администратору.',
-      { reply_markup: getMainMenu() }
+      '📝 Попробуйте ввести номер заказа еще раз:'
+    );
+  }
+};
+
+// Обработка номера заказа и показ материалов с автоматическим использованием
+const processOrderNumberAndShowMaterials = async (ctx, orderNumber, executerId, serviceId) => {
+  try {
+    console.log(`\n📝 === СОЗДАНИЕ ЗАКАЗА И ПОКАЗ МАТЕРИАЛОВ ===`);
+    console.log(`👤 Executer ID: ${executerId}`);
+    console.log(`🎯 Service ID: ${serviceId}`);
+    console.log(`📋 Номер заказа: ${orderNumber}`);
+
+    // Проверяем, что номер заказа является числом
+    if (!/^\d+$/.test(orderNumber)) {
+      return ctx.reply(
+        '❌ Номер заказа должен содержать только цифры.\n\n' +
+        '📝 Введите корректный номер заказа:'
+      );
+    }
+
+    // Создаем ServiceExecution
+    const response = await fetch(`${API_URL}/api/executers/create-service-execution`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        order_number: orderNumber,
+        executer_id: executerId,
+        service_id: serviceId
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error(`❌ Ошибка API: ${errorData.message}`);
+      return ctx.reply(
+        `❌ Ошибка при создании заказа:\n${errorData.message}\n\n` +
+        '📝 Попробуйте ввести другой номер заказа:'
+      );
+    }
+
+    const result = await response.json();
+    console.log(`✅ ServiceExecution создан: ${result.id}`);
+
+    // Показываем материалы с автоматическим использованием
+    await showServiceMaterials(ctx, executerId, serviceId, orderNumber);
+
+    await logActivity(executerId, 'create_order_with_materials', `Заказ ${orderNumber} создан для услуги ID:${serviceId}`, null, serviceId);
+
+  } catch (error) {
+    console.error('❌ Ошибка при создании заказа с материалами:', error);
+    ctx.reply(
+      '❌ Произошла ошибка при создании заказа.\n\n' +
+      '📝 Попробуйте ввести номер заказа еще раз:'
+    );
+  }
+};
+
+// Обработка запроса замены материала
+const processReplacementRequest = async (ctx, materialId, serviceId, reason, executerId) => {
+  try {
+    console.log(`\n🔄 === ЗАПРОС ЗАМЕНЫ МАТЕРИАЛА ===`);
+    console.log(`👤 Executer ID: ${executerId}`);
+    console.log(`📦 Material ID: ${materialId}`);
+    console.log(`🎯 Service ID: ${serviceId}`);
+    console.log(`📝 Причина: ${reason}`);
+
+    // Отправляем запрос на замену материала
+    const response = await fetch(`${API_URL}/api/executers/request-replacement`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        material_id: materialId,
+        service_id: serviceId,
+        executer_id: executerId,
+        reason: reason,
+        request_date: new Date().toISOString()
+      })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error(`❌ Ошибка API: ${result.message}`);
+      return ctx.reply(
+        `❌ Ошибка при создании запроса на замену:\n${result.message}\n\n` +
+        'Попробуйте еще раз или обратитесь к администратору.'
+      );
+    }
+
+    console.log(`✅ Запрос на замену создан: ${result.message}`);
+
+    // Кнопки для дальнейших действий
+    const actionButtons = {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📦 Выбрать другой материал', callback_data: `back_to_materials_${serviceId}` }],
+          [{ text: '🎯 Назад к услугам', callback_data: 'back_to_services' }],
+          [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+        ]
+      }
+    };
+
+    ctx.reply(
+      `🔄 *Запрос на замену отправлен!*\n\n` +
+      `📦 Материал: *${result.materialContent || 'ID: ' + materialId}*\n` +
+      `📝 Причина замены: *${reason}*\n` +
+      `📅 Дата запроса: *${new Date().toLocaleDateString('ru-RU')}*\n` +
+      `📊 Статус: *Ожидает рассмотрения*\n\n` +
+      `✅ Администратор получил уведомление о вашем запросе.\n` +
+      `📱 Вы получите уведомление, когда запрос будет обработан.\n\n` +
+      `💡 Пока можете выбрать другой доступный материал или создать заказ без материала.`,
+      {
+        parse_mode: 'Markdown',
+        ...actionButtons
+      }
+    );
+
+    await logActivity(executerId, 'request_replacement', `Запрос замены материала ID:${materialId}. Причина: ${reason}`, materialId, serviceId);
+
+  } catch (error) {
+    console.error('❌ Ошибка при создании запроса на замену:', error);
+    ctx.reply(
+      '❌ Произошла ошибка при создании запроса на замену.\n\n' +
+      'Попробуйте еще раз или обратитесь к администратору.'
     );
   }
 };
@@ -1010,16 +1315,63 @@ bot.action(/select_service_(\d+)/, async (ctx) => {
   await ctx.answerCbQuery();
   console.log(`✅ Callback query отвечен`);
 
-  await ctx.reply(
-    '📝 *Введите номер заказа:*\n\n' +
-    'Пожалуйста, введите номер заказа для этой услуги.',
-    {
-      parse_mode: 'Markdown',
-      reply_markup: Markup.keyboard([['🔙 Назад в меню']]).resize()
-    }
-  );
+  // Запрашиваем номер заказа перед показом материалов
+  waitingForOrderNumber[chatId] = {
+    serviceId,
+    action: 'create_service_with_materials'
+  };
 
-  console.log(`✅ Сообщение с запросом номера заказа отправлено`);
+  const cancelButton = {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: '🔙 Назад к услугам', callback_data: 'back_to_services' }
+      ]]
+    }
+  };
+
+  // Получаем информацию об услуге для показа в сообщении
+  const serviceResponse = await fetch(`${API_URL}/api/executers/services/${session.executer_id}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (serviceResponse.ok) {
+    const services = await serviceResponse.json();
+    const service = services.find(s => s.id == serviceId);
+
+    if (service) {
+      ctx.reply(
+        `🎯 *${service.name}*\n\n` +
+        `💰 Цена: ${service.price}₽\n` +
+        `📂 Категория: ${service.category}\n\n` +
+        `📝 *Введите номер заказа для этой услуги:*`,
+        {
+          parse_mode: 'Markdown',
+          ...cancelButton
+        }
+      );
+    } else {
+      ctx.reply(
+        `📝 *Введите номер заказа для выбранной услуги:*`,
+        {
+          parse_mode: 'Markdown',
+          ...cancelButton
+        }
+      );
+    }
+  } else {
+    ctx.reply(
+      `📝 *Введите номер заказа для выбранной услуги:*`,
+      {
+        parse_mode: 'Markdown',
+        ...cancelButton
+      }
+    );
+  }
+
+  console.log(`✅ Запрос номера заказа для услуги ${serviceId} отправлен`);
 });
 
 bot.action(/confirm_cancel_execution_(\d+)/, async (ctx) => {
@@ -1562,6 +1914,466 @@ const requestMaterialReplacement = async (ctx, materialId, serviceId, executerId
     return ctx.reply('❌ Ошибка при запросе замены');
   }
 };
+
+// === НОВЫЕ ОБРАБОТЧИКИ МАТЕРИАЛОВ ===
+
+// Обработчик выбора материала
+bot.action(/select_material_(\d+)_(\d+)/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const materialId = ctx.match[1];
+    const serviceId = ctx.match[2];
+    const chatId = ctx.chat.id;
+
+    if (!userSessions[chatId]) {
+      return ctx.reply('Сессия истекла. Нажмите /start');
+    }
+
+    const session = userSessions[chatId];
+    const executerId = session.executer_id;
+
+    console.log(`\n📦 === ВЫБОР МАТЕРИАЛА ===`);
+    console.log(`🎯 Material ID: ${materialId}, Service ID: ${serviceId}`);
+
+    // Получаем информацию о материале
+    const materialResponse = await fetch(`${API_URL}/api/executers/material/${materialId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!materialResponse.ok) {
+      return ctx.reply('❌ Ошибка при получении информации о материале');
+    }
+
+    const material = await materialResponse.json();
+
+    // Создаем кнопки действий для материала
+    const actionButtons = [
+      [{ text: '📦 Использовать материал', callback_data: `use_material_${materialId}_${serviceId}` }],
+      [{ text: '🔄 Запросить замену', callback_data: `request_replacement_${materialId}_${serviceId}` }],
+      [{ text: '🔙 Назад к материалам', callback_data: `back_to_materials_${serviceId}` }]
+    ];
+
+    const keyboard = {
+      reply_markup: {
+        inline_keyboard: actionButtons
+      }
+    };
+
+    ctx.reply(
+      `📦 *Материал выбран*\n\n` +
+      `🔑 Содержание: ${material.contents}\n` +
+      `📊 Статус: ${material.status === 'available' ? '✅ Доступен' : '❌ Недоступен'}\n` +
+      `📅 Создан: ${new Date(material.createdAt).toLocaleDateString('ru-RU')}\n\n` +
+      `Выберите действие:`,
+      {
+        parse_mode: 'Markdown',
+        ...keyboard
+      }
+    );
+
+    await logActivity(executerId, 'select_material', `Выбор материала "${material.contents}"`, materialId, serviceId);
+
+  } catch (error) {
+    console.error('❌ Ошибка при выборе материала:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Произошла ошибка при выборе материала');
+  }
+});
+
+// Обработчик использования материала
+bot.action(/use_material_(\d+)_(\d+)/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const materialId = ctx.match[1];
+    const serviceId = ctx.match[2];
+    const chatId = ctx.chat.id;
+
+    if (!userSessions[chatId]) {
+      return ctx.reply('Сессия истекла. Нажмите /start');
+    }
+
+    const session = userSessions[chatId];
+    const executerId = session.executer_id;
+
+    // Сохраняем состояние ожидания номера заказа для использования материала
+    waitingForOrderNumber[chatId] = {
+      materialId,
+      serviceId,
+      action: 'use_material'
+    };
+
+    const cancelButton = {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '❌ Отмена', callback_data: `back_to_materials_${serviceId}` }
+        ]]
+      }
+    };
+
+    ctx.reply(
+      `📝 *Использование материала*\n\n` +
+      `Введите номер заказа для использования материала:`,
+      {
+        parse_mode: 'Markdown',
+        ...cancelButton
+      }
+    );
+
+    await logActivity(executerId, 'use_material_start', `Начало использования материала ID: ${materialId}`, materialId, serviceId);
+
+  } catch (error) {
+    console.error('❌ Ошибка при использовании материала:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Произошла ошибка при использовании материала');
+  }
+});
+
+// Обработчик запроса замены материала
+bot.action(/request_replacement_(\d+)_(\d+)/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const materialId = ctx.match[1];
+    const serviceId = ctx.match[2];
+    const chatId = ctx.chat.id;
+
+    if (!userSessions[chatId]) {
+      return ctx.reply('Сессия истекла. Нажмите /start');
+    }
+
+    const session = userSessions[chatId];
+    const executerId = session.executer_id;
+
+    // Сохраняем состояние ожидания причины замены
+    waitingForReplacementReason[chatId] = {
+      materialId,
+      serviceId
+    };
+
+    const cancelButton = {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '❌ Отмена', callback_data: `back_to_materials_${serviceId}` }
+        ]]
+      }
+    };
+
+    ctx.reply(
+      `🔄 *Запрос замены материала*\n\n` +
+      `Укажите причину замены материала:\n\n` +
+      `Например: "Материал поврежден", "Неподходящий ключ", "Истек срок действия" и т.д.`,
+      {
+        parse_mode: 'Markdown',
+        ...cancelButton
+      }
+    );
+
+    await logActivity(executerId, 'request_replacement_start', `Начало запроса замены материала ID: ${materialId}`, materialId, serviceId);
+
+  } catch (error) {
+    console.error('❌ Ошибка при запросе замены:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Произошла ошибка при запросе замены');
+  }
+});
+
+// Обработчик возврата к материалам
+bot.action(/back_to_materials_(\d+)/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const serviceId = ctx.match[1];
+    const chatId = ctx.chat.id;
+
+    if (!userSessions[chatId]) {
+      return ctx.reply('Сессия истекла. Нажмите /start');
+    }
+
+    const session = userSessions[chatId];
+    const executerId = session.executer_id;
+
+    // Очищаем состояния ожидания
+    delete waitingForOrderNumber[chatId];
+    delete waitingForReplacementReason[chatId];
+
+    // Получаем информацию об услуге и показываем материалы
+    const serviceResponse = await fetch(`${API_URL}/api/executers/services/${executerId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!serviceResponse.ok) {
+      return ctx.reply('❌ Ошибка при получении информации об услуге');
+    }
+
+    const services = await serviceResponse.json();
+    const service = services.find(s => s.id == serviceId);
+
+    if (!service) {
+      return ctx.reply('❌ Услуга не найдена');
+    }
+
+    await showServiceMaterials(ctx, executerId, service);
+
+  } catch (error) {
+    console.error('❌ Ошибка при возврате к материалам:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Произошла ошибка');
+  }
+});
+
+// Обработчик ввода номера заказа
+bot.action(/enter_order_(\d+)/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const serviceId = ctx.match[1];
+    const chatId = ctx.chat.id;
+
+    if (!userSessions[chatId]) {
+      return ctx.reply('Сессия истекла. Нажмите /start');
+    }
+
+    // Сохраняем состояние ожидания номера заказа для услуги
+    waitingForOrderNumber[chatId] = {
+      serviceId,
+      action: 'create_service_execution'
+    };
+
+    const cancelButton = {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 Назад к услугам', callback_data: 'back_to_services' }
+        ]]
+      }
+    };
+
+    ctx.reply(
+      `📝 *Ввод номера заказа*\n\n` +
+      `Введите номер заказа для создания записи выполнения услуги:`,
+      {
+        parse_mode: 'Markdown',
+        ...cancelButton
+      }
+    );
+
+  } catch (error) {
+    console.error('❌ Ошибка при вводе номера заказа:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Произошла ошибка');
+  }
+});
+
+// Обработчик возврата к услугам
+bot.action('back_to_services', async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const chatId = ctx.chat.id;
+
+    if (!userSessions[chatId]) {
+      return ctx.reply('Сессия истекла. Нажмите /start');
+    }
+
+    // Очищаем все состояния ожидания
+    delete waitingForOrderNumber[chatId];
+    delete waitingForReplacementReason[chatId];
+
+    const session = userSessions[chatId];
+    await showMyServices(ctx, session.executer_id);
+
+  } catch (error) {
+    console.error('❌ Ошибка при возврате к услугам:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Произошла ошибка');
+  }
+});
+
+// === ДОПОЛНИТЕЛЬНЫЕ ОБРАБОТЧИКИ ===
+
+// Обработчик завершения заказа
+bot.action(/complete_order_(\d+)_(\d+)/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const serviceId = ctx.match[1];
+    const orderNumber = ctx.match[2];
+    const chatId = ctx.chat.id;
+
+    if (!userSessions[chatId]) {
+      return ctx.reply('Сессия истекла. Нажмите /start');
+    }
+
+    const session = userSessions[chatId];
+    const executerId = session.executer_id;
+
+    console.log(`\n✅ === ЗАВЕРШЕНИЕ ЗАКАЗА ===`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`🎯 Service ID: ${serviceId}`);
+    console.log(`👤 Executer ID: ${executerId}`);
+
+    // Отправляем запрос на завершение заказа (ожидает подтверждения админа)
+    const response = await fetch(`${API_URL}/api/executers/complete-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        order_number: orderNumber,
+        service_id: serviceId,
+        executer_id: executerId,
+        status: 'pending_approval'
+      })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error(`❌ Ошибка API: ${result.message}`);
+      return ctx.reply(`❌ Ошибка при завершении заказа: ${result.message}`);
+    }
+
+    const actionButtons = {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🎯 Выбрать другую услугу', callback_data: 'back_to_services' }],
+          [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+        ]
+      }
+    };
+
+    ctx.reply(
+      `✅ *Заказ отправлен на подтверждение!*\n\n` +
+      `📋 Номер заказа: *${orderNumber}*\n` +
+      `📊 Статус: *Ожидает подтверждения администратора*\n\n` +
+      `📱 Вы получите уведомление, когда администратор подтвердит выполнение заказа.`,
+      {
+        parse_mode: 'Markdown',
+        ...actionButtons
+      }
+    );
+
+    await logActivity(executerId, 'complete_order', `Заказ ${orderNumber} отправлен на подтверждение`, null, serviceId);
+
+  } catch (error) {
+    console.error('❌ Ошибка при завершении заказа:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Произошла ошибка при завершении заказа');
+  }
+});
+
+// Обработчик отмены заказа
+bot.action(/cancel_order_(\d+)_(\d+)/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const serviceId = ctx.match[1];
+    const orderNumber = ctx.match[2];
+    const chatId = ctx.chat.id;
+
+    if (!userSessions[chatId]) {
+      return ctx.reply('Сессия истекла. Нажмите /start');
+    }
+
+    const session = userSessions[chatId];
+    const executerId = session.executer_id;
+
+    console.log(`\n❌ === ОТМЕНА ЗАКАЗА ===`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`🎯 Service ID: ${serviceId}`);
+    console.log(`👤 Executer ID: ${executerId}`);
+
+    // Возвращаем все материалы в статус "available"
+    const response = await fetch(`${API_URL}/api/executers/cancel-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        order_number: orderNumber,
+        service_id: serviceId,
+        executer_id: executerId
+      })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error(`❌ Ошибка API: ${result.message}`);
+      return ctx.reply(`❌ Ошибка при отмене заказа: ${result.message}`);
+    }
+
+    const actionButtons = {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🎯 Выбрать другую услугу', callback_data: 'back_to_services' }],
+          [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+        ]
+      }
+    };
+
+    ctx.reply(
+      `❌ *Заказ отменен*\n\n` +
+      `📋 Номер заказа: *${orderNumber}*\n` +
+      `📊 Статус: *Отменен*\n` +
+      `🔄 Все материалы возвращены в статус *"Доступны"*\n\n` +
+      `Можете выбрать другую услугу для работы.`,
+      {
+        parse_mode: 'Markdown',
+        ...actionButtons
+      }
+    );
+
+    await logActivity(executerId, 'cancel_order', `Заказ ${orderNumber} отменен, материалы возвращены`, null, serviceId);
+
+  } catch (error) {
+    console.error('❌ Ошибка при отмене заказа:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Произошла ошибка при отмене заказа');
+  }
+});
+
+// Обработчик показа активных заказов
+bot.action('show_active_orders', async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const chatId = ctx.chat.id;
+
+    if (!userSessions[chatId]) {
+      return ctx.reply('Сессия истекла. Нажмите /start');
+    }
+
+    const session = userSessions[chatId];
+    await showActiveExecutions(ctx, session.executer_id);
+
+  } catch (error) {
+    console.error('❌ Ошибка при показе активных заказов:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Произошла ошибка');
+  }
+});
+
+// Обработчик возврата в главное меню
+bot.action('main_menu', async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    ctx.reply('🏠 Главное меню', { reply_markup: getMainMenu() });
+
+  } catch (error) {
+    console.error('❌ Ошибка при возврате в меню:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Произошла ошибка');
+  }
+});
 
 // Запуск бота с обработкой ошибок
 bot.launch()

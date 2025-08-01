@@ -1,8 +1,9 @@
-import { Material, Services, MaterialReplacement, Order, Executer } from "../../../database/dbTables.js";
+import { Material, Services, MaterialReplacement, Order, Executer, ServiceExecution } from "../../../database/dbTables.js";
 import fs from 'fs';
 import path from 'path';
 import csv from 'csv-parser';
 import * as XLSX from 'xlsx';
+import { Sequelize } from 'sequelize';
 
 export async function getAllMaterials() {
     try {
@@ -14,9 +15,35 @@ export async function getAllMaterials() {
                     attributes: ['name', 'category']
                 }
             ],
-            order: [['createdAt', 'DESC']]
+            order: [['create_date_material', 'DESC']]
         });
-        return materials;
+
+        // Для каждого материала находим связанные заказы
+        const materialsWithOrders = await Promise.all(
+            materials.map(async (material) => {
+                const materialData = material.toJSON();
+
+                // Ищем ServiceExecution с тем же service_id, которые используют этот материал
+                if (material.status === 'used' && material.service_id) {
+                    const serviceExecution = await ServiceExecution.findOne({
+                        where: {
+                            service_id: material.service_id,
+                            material_contents: material.contents
+                        },
+                        attributes: ['order_number'],
+                        order: [['created_at', 'DESC']]
+                    });
+
+                    if (serviceExecution) {
+                        materialData.order_number = serviceExecution.order_number;
+                    }
+                }
+
+                return materialData;
+            })
+        );
+
+        return materialsWithOrders;
     } catch (error) {
         throw new Error(`Error fetching materials: ${error.message}`);
     }
