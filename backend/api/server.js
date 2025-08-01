@@ -12,6 +12,7 @@ import { executerRoute } from './route/RouteExecuter/executerRoute.js'
 import { executerOrderRoute } from './route/RouteExecuter/executerOrderRoute.js'
 import { executerMaterialRoute } from './route/RouteExecuter/executerMaterialRoute.js'
 import { executerServicesRoute } from './route/RouteExecuter/executerServicesRoute.js'
+import executerBotRoute from './route/RouteExecuter/executerBotRoute.js'
 import { authMiddleware, authExecuterMiddleware } from './middleware.js'
 import { sequelize } from '../database/databaseOn.js'
 import { checkInactiveExecuters } from './service/ServiceAdmim/adminExecuterService.js'
@@ -28,6 +29,7 @@ app.use(express.json())
 // Публичные роуты (НЕ требуют токен)
 app.use('/api/admin', adminRoute)
 app.use('/api/executer', executerRoute) // маршруты исполнителей (регистрация, вход, профиль)
+app.use('/api/executers', executerBotRoute) // новые маршруты для бота исполнителей
 
 // Защищённые роуты для исполнителей (ТРЕБУЮТ токен исполнителя)
 app.use('/api/executer/orders', authExecuterMiddleware, executerOrderRoute)

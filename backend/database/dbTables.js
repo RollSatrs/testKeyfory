@@ -194,6 +194,21 @@ export const ExecuterPricing = sequelize.define('ExecuterPricing', {
   created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'executer_pricing', timestamps: false });
 
+// Выполнение услуг (новая архитектура заказов)
+export const ServiceExecution = sequelize.define('ServiceExecution', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  service_id: { type: DataTypes.INTEGER, references: { model: 'services', key: 'id' }, allowNull: false },
+  executer_id: { type: DataTypes.INTEGER, references: { model: 'executers', key: 'id' }, allowNull: false },
+  order_number: { type: DataTypes.STRING, allowNull: false },
+  material_contents: { type: DataTypes.TEXT, allowNull: true }, // содержимое использованного материала
+  status: { type: DataTypes.STRING, defaultValue: 'pending' }, // pending, in_progress, completed, cancelled
+  started_at: { type: DataTypes.DATE, allowNull: true },
+  completed_at: { type: DataTypes.DATE, allowNull: true },
+  cancelled_at: { type: DataTypes.DATE, allowNull: true },
+  cancel_reason: { type: DataTypes.TEXT, allowNull: true },
+  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, { tableName: 'service_executions', timestamps: false });
+
 // Связи для ценообразования
 Executer.hasMany(ExecuterPricing, {foreignKey: 'executer_id'});
 ExecuterPricing.belongsTo(Executer, {foreignKey: 'executer_id'});
@@ -224,3 +239,14 @@ Log.belongsTo(Order, {foreignKey: 'order_id'});
 
 Services.hasMany(Log, {foreignKey: 'service_id'});
 Log.belongsTo(Services, {foreignKey: 'service_id'});
+
+// Связи для ServiceExecution
+Services.hasMany(ServiceExecution, {foreignKey: 'service_id', as: 'ServiceExecutions'});
+ServiceExecution.belongsTo(Services, {foreignKey: 'service_id', as: 'Service'});
+
+Executer.hasMany(ServiceExecution, {foreignKey: 'executer_id', as: 'ServiceExecutions'});
+ServiceExecution.belongsTo(Executer, {foreignKey: 'executer_id', as: 'Executer'});
+
+// Связи для MaterialReplacement с ServiceExecution
+ServiceExecution.hasMany(MaterialReplacement, {foreignKey: 'service_execution_id', as: 'MaterialReplacements'});
+MaterialReplacement.belongsTo(ServiceExecution, {foreignKey: 'service_execution_id', as: 'ServiceExecution'});

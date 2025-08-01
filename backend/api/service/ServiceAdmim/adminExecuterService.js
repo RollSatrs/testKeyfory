@@ -74,29 +74,63 @@ export async function getAllExecuters() {
         const result = [];
 
         for (const executer of executers) {
-            // Получаем назначенные услуги для каждого исполнителя
-            const assignedServices = await ServiceAccess.findAll({
+            // Получаем назначенные услуги для каждого исполнителя двумя способами:
+
+            // 1. Через ServiceAccess (доступ к услугам)
+            const serviceAccess = await ServiceAccess.findAll({
                 where: { executer_id: executer.id },
                 include: [
                     {
                         model: Services,
+                        as: 'Service',
                         attributes: ['id', 'name', 'category', 'status', 'price']
                     }
                 ]
             });
 
+            // 2. Через прямое назначение (executer_id в Services)
+            const directlyAssignedServices = await Services.findAll({
+                where: { executer_id: executer.id },
+                attributes: ['id', 'name', 'category', 'status', 'price']
+            });
+
+            // Объединяем услуги из ServiceAccess
+            const accessServices = serviceAccess.map(access => ({
+                service_id: access.service_id,
+                service_name: access.Service?.name || `ID: ${access.service_id}`,
+                service_category: access.Service?.category,
+                service_status: access.Service?.status,
+                service_price: access.Service?.price,
+                has_access: access.has_access,
+                can_replace_materials: access.can_replace_materials,
+                assigned_at: access.created_at,
+                assignment_type: 'access'
+            }));
+
+            // Добавляем прямо назначенные услуги
+            const directServices = directlyAssignedServices.map(service => ({
+                service_id: service.id,
+                service_name: service.name,
+                service_category: service.category,
+                service_status: service.status,
+                service_price: service.price,
+                has_access: true,
+                can_replace_materials: true, // предполагаем полные права для прямого назначения
+                assigned_at: service.created_at,
+                assignment_type: 'direct'
+            }));
+
+            // Объединяем и убираем дубликаты
+            const allServices = [...accessServices, ...directServices];
+            const uniqueServices = allServices.filter((service, index, self) =>
+                index === self.findIndex(s => s.service_id === service.service_id)
+            );
+
+            console.log(`👤 Исполнитель ${executer.id}: ServiceAccess: ${accessServices.length}, Direct: ${directServices.length}, Total: ${uniqueServices.length}`);
+
             result.push({
                 ...executer.dataValues,
-                assigned_services: assignedServices.map(access => ({
-                    service_id: access.service_id,
-                    service_name: access.Service?.name || `ID: ${access.service_id}`,
-                    service_category: access.Service?.category,
-                    service_status: access.Service?.status,
-                    service_price: access.Service?.price,
-                    has_access: access.has_access,
-                    can_replace_materials: access.can_replace_materials,
-                    assigned_at: access.created_at
-                }))
+                assigned_services: uniqueServices
             });
         }
 
