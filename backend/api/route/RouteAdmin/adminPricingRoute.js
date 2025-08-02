@@ -57,4 +57,16 @@ router.delete('/delete/:id', async (req, res) => {
     }
 });
 
+// Получить индивидуальную цену для исполнителя и услуги
+router.get('/get/:executer_id/:service_id', async (req, res) => {
+    try {
+        const { executer_id, service_id } = req.params;
+        const price = await adminPricingService.getPriceForExecuter(executer_id, service_id);
+        res.json({ custom_price: price });
+    } catch (error) {
+        console.error('Ошибка получения цены исполнителя:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 export default router;

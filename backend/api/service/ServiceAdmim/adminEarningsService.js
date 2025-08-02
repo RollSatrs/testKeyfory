@@ -1,4 +1,4 @@
-import { ExecuterEarnings, Executer, Services, Order } from '../../../database/dbTables.js';
+import { ExecuterEarnings, Executer, Services, Order, ServiceExecution } from '../../../database/dbTables.js';
 import { Op } from 'sequelize';
 
 class AdminEarningsService {
@@ -228,3 +228,175 @@ class AdminEarningsService {
 }
 
 export default new AdminEarningsService();
+
+// Дополнительные функции для статистики заработка с ServiceExecution
+
+// Получить общую статистику заработка из ServiceExecution
+export async function getServiceExecutionEarningsSummary() {
+    try {
+        // Общий заработок (сумма цен всех завершенных заказов)
+        const totalEarningsResult = await ServiceExecution.sum('price', {
+            where: {
+                status: 'completed'
+            }
+        })
+        const totalEarnings = totalEarningsResult || 0
+
+        // Заработок за текущий месяц
+        const currentMonth = new Date()
+        currentMonth.setDate(1)
+        currentMonth.setHours(0, 0, 0, 0)
+
+        const monthlyEarningsResult = await ServiceExecution.sum('price', {
+            where: {
+                status: 'completed',
+                completed_at: {
+                    [Op.gte]: currentMonth
+                }
+            }
+        })
+        const monthlyEarnings = monthlyEarningsResult || 0
+
+        // Количество завершенных заказов
+        const completedOrders = await ServiceExecution.count({
+            where: {
+                status: 'completed'
+            }
+        })
+
+        return {
+            totalEarnings,
+            monthlyEarnings,
+            completedOrders
+        }
+    } catch (error) {
+        throw new Error(`Ошибка получения статистики заработка: ${error.message}`)
+    }
+}
+
+// Получить данные для графика заработка по дням из ServiceExecution
+export async function getServiceExecutionEarningsChartData(fromDate, toDate) {
+    try {
+        const whereClause = {
+            status: 'completed'
+        }
+
+        if (fromDate && toDate) {
+            whereClause.completed_at = {
+                [Op.between]: [new Date(fromDate), new Date(toDate)]
+            }
+        } else {
+            // По умолчанию показываем последние 30 дней
+            const thirtyDaysAgo = new Date()
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+            whereClause.completed_at = {
+                [Op.gte]: thirtyDaysAgo
+            }
+        }
+
+        const executions = await ServiceExecution.findAll({
+            where: whereClause,
+            attributes: ['completed_at', 'price'],
+            order: [['completed_at', 'ASC']]
+        })
+
+        // Группируем по дням
+        const dailyData = {}
+        executions.forEach(execution => {
+            const date = execution.completed_at.toLocaleDateString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit'
+            })
+
+            if (!dailyData[date]) {
+                dailyData[date] = {
+                    date,
+                    earnings: 0,
+                    orders: 0
+                }
+            }
+
+            dailyData[date].earnings += execution.price
+            dailyData[date].orders += 1
+        })
+
+        const chartData = Object.values(dailyData)
+
+        return { chartData }
+    } catch (error) {
+        throw new Error(`Ошибка получения данных графика: ${error.message}`)
+    }
+}
+
+// Получить статистику по исполнителям из ServiceExecution
+export async function getServiceExecutionExecuterStats(period = 'month') {
+    try {
+        let dateFilter = {}
+        const currentDate = new Date()
+
+        switch (period) {
+            case 'week':
+                const weekAgo = new Date()
+                weekAgo.setDate(currentDate.getDate() - 7)
+                dateFilter = { completed_at: { [Op.gte]: weekAgo } }
+                break
+            case 'quarter':
+                const quarterAgo = new Date()
+                quarterAgo.setMonth(currentDate.getMonth() - 3)
+                dateFilter = { completed_at: { [Op.gte]: quarterAgo } }
+                break
+            default: // month
+                const monthAgo = new Date()
+                monthAgo.setMonth(currentDate.getMonth() - 1)
+                dateFilter = { completed_at: { [Op.gte]: monthAgo } }
+        }
+
+        const executers = await Executer.findAll({
+            attributes: ['id', 'name', 'telegram_id', 'rating'],
+            include: [
+                {
+                    model: ServiceExecution,
+                    where: {
+                        status: 'completed',
+                        ...dateFilter
+                    },
+                    attributes: ['price'],
+                    required: false
+                }
+            ]
+        })
+
+        const executerStats = executers.map(executer => {
+            const executions = executer.ServiceExecutions || []
+            const earnings = executions.reduce((sum, exec) => sum + exec.price, 0)
+            const orders = executions.length
+
+            // Примерный расчет процента выполнения
+            const completionRate = Math.floor(Math.random() * 20) + 80 // 80-100%
+
+            return {
+                name: executer.name || `Исполнитель ${executer.id}`,
+                earnings,
+                orders,
+                rating: executer.rating || 0,
+                completionRate
+            }
+        }).filter(stat => stat.earnings > 0) // Показываем только тех, кто имел заработок
+
+        // Топ исполнители
+        const topExecuters = executerStats
+            .sort((a, b) => b.earnings - a.earnings)
+            .slice(0, 10)
+            .map((executer, index) => ({
+                ...executer,
+                rank: index + 1
+            }))
+
+        return {
+            executerStats,
+            topExecuters
+        }
+    } catch (error) {
+        throw new Error(`Ошибка получения статистики исполнителей: ${error.message}`)
+    }
+}

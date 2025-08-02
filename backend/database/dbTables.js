@@ -200,6 +200,7 @@ export const ServiceExecution = sequelize.define('ServiceExecution', {
   service_id: { type: DataTypes.INTEGER, references: { model: 'services', key: 'id' }, allowNull: false },
   executer_id: { type: DataTypes.INTEGER, references: { model: 'executers', key: 'id' }, allowNull: false },
   order_number: { type: DataTypes.STRING, allowNull: false },
+  price: { type: DataTypes.FLOAT, allowNull: true, defaultValue: 0 }, // цена за выполнение услуги
   material_contents: { type: DataTypes.TEXT, allowNull: true }, // содержимое использованного материала
   status: { type: DataTypes.STRING, defaultValue: 'pending' }, // pending, in_progress, completed, cancelled
   started_at: { type: DataTypes.DATE, allowNull: true },

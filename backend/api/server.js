@@ -8,6 +8,7 @@ import { orderRoute } from './route/RouteAdmin/adminOrderRoute.js'
 import { executerRoute as adminExecuterRoute } from './route/RouteAdmin/adminExecuterRoute.js'
 import adminPricingRoute from './route/RouteAdmin/adminPricingRoute.js'
 import adminEarningsRoute from './route/RouteAdmin/adminEarningsRoute.js'
+import adminServiceExecutionsRoute from './route/RouteAdmin/adminServiceExecutionsRoute.js'
 import { executerRoute } from './route/RouteExecuter/executerRoute.js'
 import { executerOrderRoute } from './route/RouteExecuter/executerOrderRoute.js'
 import { executerMaterialRoute } from './route/RouteExecuter/executerMaterialRoute.js'
@@ -37,12 +38,13 @@ app.use('/api/executer/materials', authExecuterMiddleware, executerMaterialRoute
 app.use('/api/executer/services', authExecuterMiddleware, executerServicesRoute)
 
 // Защищённые роуты для админов (ТРЕБУЮТ токен админа)
-app.use('/api/services/admin', authMiddleware, sercesRoute)
-app.use('/api/materials/admin', authMiddleware, materialRoute)
-app.use('/api/orders/admin', authMiddleware, orderRoute)
-app.use('/api/executers/admin', authMiddleware, adminExecuterRoute)
-app.use('/api/pricing/admin', authMiddleware, adminPricingRoute)
-app.use('/api/earnings/admin', authMiddleware, adminEarningsRoute)
+app.use('/api/admin/services', authMiddleware, sercesRoute)
+app.use('/api/admin/materials', authMiddleware, materialRoute)
+app.use('/api/admin/orders', authMiddleware, orderRoute)
+app.use('/api/admin/executers', authMiddleware, adminExecuterRoute)
+app.use('/api/admin/pricing', authMiddleware, adminPricingRoute)
+app.use('/api/admin/earnings', authMiddleware, adminEarningsRoute)
+app.use('/api/admin/service-executions', authMiddleware, adminServiceExecutionsRoute)
 
 app.get('/', (req, res) => {
   res.send('👋 Сервер работает!');

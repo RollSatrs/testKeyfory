@@ -8,7 +8,8 @@ import {
     getServiceStats,
     assignExecutersToService,
     removeExecuterFromService,
-    getServiceExecuters
+    getServiceExecuters,
+    updateServicePricing
 } from '../../service/ServiceAdmim/adminServicesService.js';
 import dotenv from 'dotenv';
 
@@ -112,6 +113,18 @@ sercesRoute.delete('/:id/executers/:executerId', async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error removing executer from service:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// PUT /services/update-pricing/:id - обновить ценообразование услуги
+sercesRoute.put('/update-pricing/:id', async (req, res) => {
+    try {
+        const { base_price, custom_pricing } = req.body;
+        const result = await updateServicePricing(req.params.id, base_price, custom_pricing);
+        res.json(result);
+    } catch (error) {
+        console.error('Error updating service pricing:', error);
         res.status(400).json({ error: error.message });
     }
 });

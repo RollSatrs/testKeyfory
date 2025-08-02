@@ -263,3 +263,38 @@ export async function removeExecuterFromService(serviceId, executerId) {
         throw new Error(`Error removing executer from service: ${error.message}`);
     }
 }
+
+// Обновить ценообразование услуги
+export async function updateServicePricing(serviceId, basePrice, customPricing = []) {
+    try {
+        // Обновляем базовую цену услуги
+        await Services.update(
+            { price: basePrice },
+            { where: { id: serviceId } }
+        );
+
+        // Удаляем старые индивидуальные цены
+        await ExecuterPricing.destroy({
+            where: { service_id: serviceId }
+        });
+
+        // Добавляем новые индивидуальные цены, если они есть
+        if (customPricing && customPricing.length > 0) {
+            const pricingData = customPricing.map(pricing => ({
+                service_id: serviceId,
+                executer_id: pricing.executer_id,
+                custom_price: pricing.custom_price
+            }));
+
+            await ExecuterPricing.bulkCreate(pricingData);
+        }
+
+        return {
+            message: 'Ценообразование успешно обновлено',
+            base_price: basePrice,
+            custom_pricing_count: customPricing.length
+        };
+    } catch (error) {
+        throw new Error(`Error updating service pricing: ${error.message}`);
+    }
+}

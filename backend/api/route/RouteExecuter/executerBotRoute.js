@@ -624,10 +624,34 @@ router.post('/complete-order', async (req, res) => {
     console.log(`🎯 Service ID: ${service_id}`);
     console.log(`👤 Executer ID: ${executer_id}`);
 
-    // Обновляем статус ServiceExecution
+    // Получаем услугу для базовой цены
+    const service = await Services.findByPk(service_id);
+    if (!service) {
+      return res.status(404).json({
+        message: 'Услуга не найдена'
+      });
+    }
+
+    // Получаем индивидуальную цену исполнителя
+    let individualPrice = service.price; // По умолчанию базовая цена
+
+    try {
+      // Используем внутренний вызов к adminPricingService
+      const adminPricingService = await import('../../service/ServiceAdmim/adminPricingService.js');
+      const customPrice = await adminPricingService.default.getPriceForExecuter(executer_id, service_id);
+      if (customPrice) {
+        individualPrice = customPrice;
+      }
+      console.log(`💰 Individual Price: ${individualPrice}₽ (base: ${service.price}₽)`);
+    } catch (priceError) {
+      console.warn('Не удалось получить индивидуальную цену, используем базовую:', priceError.message);
+    }
+
+    // Обновляем статус ServiceExecution с индивидуальной ценой
     const [updatedRows] = await ServiceExecution.update({
       status: status || 'pending_approval',
-      completed_date: new Date()
+      completed_date: new Date(),
+      price: individualPrice  // Сохраняем индивидуальную цену
     }, {
       where: {
         order_number: order_number,
@@ -642,12 +666,13 @@ router.post('/complete-order', async (req, res) => {
       });
     }
 
-    console.log(`✅ Заказ ${order_number} отправлен на подтверждение`);
+    console.log(`✅ Заказ ${order_number} отправлен на подтверждение с ценой ${individualPrice}₽`);
 
     res.json({
       message: 'Заказ отправлен на подтверждение администратора',
       order_number,
-      status: status || 'pending_approval'
+      status: status || 'pending_approval',
+      price: individualPrice
     });
 
   } catch (error) {

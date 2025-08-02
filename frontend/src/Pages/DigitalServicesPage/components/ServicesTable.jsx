@@ -1,4 +1,4 @@
-import { FaEdit, FaTrash, FaUpload, FaBoxOpen } from 'react-icons/fa'
+import { FaEdit, FaTrash, FaUpload, FaBoxOpen, FaDollarSign } from 'react-icons/fa'
 import { useEffect, useState } from 'react'
 import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message, Upload, Card, Row, Col, Statistic, Divider, Tooltip } from 'antd'
 
@@ -19,6 +19,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   const [apiModal, setApiModal] = useState(false)
   const [manualModal, setManualModal] = useState(false)
   const [materialsModal, setMaterialsModal] = useState(false)
+  const [pricingModal, setPricingModal] = useState(false)
   const [selectedService, setSelectedService] = useState(null)
   const [serviceMaterials, setServiceMaterials] = useState([])
   const [materialStats, setMaterialStats] = useState(null)
@@ -26,6 +27,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   const [manualInput, setManualInput] = useState('')
   const [apiConfig, setApiConfig] = useState({ url: '', headers: '', method: 'GET' })
   const [selectedExecuters, setSelectedExecuters] = useState([])
+  const [executerPrices, setExecuterPrices] = useState([])
   const [form, setForm] = useState({
     id: null,
     name: '',
@@ -40,7 +42,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   }, [refresh])
 
   async function fetchServices() {
-    const res = await fetch('http://localhost:3000/api/services/admin/get', {
+    const res = await fetch('http://localhost:3000/api/admin/services/get', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
       }
@@ -64,7 +66,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
   }
 
   async function handleDelete(id) {
-    await fetch(`http://localhost:3000/api/services/admin/delete/${id}`, {
+    await fetch(`http://localhost:3000/api/admin/services/delete/${id}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -111,7 +113,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       const primaryExecuterId = selectedExecuters.length > 0 ? selectedExecuters[0] : null;
 
       // Обновляем данные услуги включая executer_id
-      await fetch(`http://localhost:3000/api/services/admin/update/${form.id}`, {
+      await fetch(`http://localhost:3000/api/admin/services/update/${form.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -128,7 +130,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
 
       // Обновляем назначенных исполнителей через ServiceAccess (для множественного назначения)
       if (selectedExecuters.length > 0) {
-        await fetch(`http://localhost:3000/api/services/admin/${form.id}/executers`, {
+        await fetch(`http://localhost:3000/api/admin/services/${form.id}/executers`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -209,6 +211,47 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       message.error('Ошибка при загрузке материалов')
       setServiceMaterials([])
       setMaterialStats(null)
+    }
+  }
+
+  // Функция для открытия модального окна ценообразования
+  async function openPricingModal(service) {
+    setSelectedService(service)
+    setPricingModal(true)
+
+    try {
+      // Загружаем текущие индивидуальные цены для всех исполнителей
+      const pricingResponse = await fetch(`http://localhost:3000/api/pricing/admin/all`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        }
+      })
+
+      if (pricingResponse.ok) {
+        const allPricing = await pricingResponse.json()
+        // Фильтруем только цены для текущей услуги
+        const servicePricing = allPricing.filter(p => p.service_id === service.id)
+
+        // Создаем массив с ценами для всех исполнителей
+        const prices = executers.map(executer => {
+          const existingPrice = servicePricing.find(p => p.executer_id === executer.id)
+          return {
+            executer_id: executer.id,
+            executer_name: executer.name,
+            service_id: service.id,
+            custom_price: existingPrice ? existingPrice.custom_price : service.price,
+            has_custom_price: !!existingPrice,
+            pricing_id: existingPrice ? existingPrice.id : null
+          }
+        })
+
+        setExecuterPrices(prices)
+      } else {
+        message.error('Ошибка при загрузке данных о ценах')
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке цен:', error)
+      message.error('Ошибка при загрузке данных о ценах')
     }
   }
 
@@ -317,6 +360,71 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       'manual': 'Ручной'
     }
     return typeLabels[type] || type || 'Ключ'
+  }
+
+  // Функция для сохранения индивидуальных цен
+  async function handleSavePricing() {
+    try {
+      for (const price of executerPrices) {
+        if (price.has_custom_price && price.custom_price !== selectedService.price) {
+          // Если есть индивидуальная цена и она отличается от базовой
+          if (price.pricing_id) {
+            // Обновляем существующую цену
+            await fetch(`http://localhost:3000/api/pricing/admin/update/${price.pricing_id}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+              },
+              body: JSON.stringify({
+                custom_price: parseFloat(price.custom_price)
+              })
+            })
+          } else {
+            // Создаем новую индивидуальную цену
+            await fetch('http://localhost:3000/api/pricing/admin/add', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+              },
+              body: JSON.stringify({
+                executer_id: price.executer_id,
+                service_id: price.service_id,
+                custom_price: parseFloat(price.custom_price)
+              })
+            })
+          }
+        } else if (!price.has_custom_price && price.pricing_id) {
+          // Если убрали индивидуальную цену, удаляем запись
+          await fetch(`http://localhost:3000/api/pricing/admin/delete/${price.pricing_id}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+            }
+          })
+        }
+      }
+
+      setPricingModal(false)
+      message.success('Индивидуальные цены сохранены')
+      fetchServices()
+      if (onChange) onChange()
+    } catch (error) {
+      console.error('Ошибка при сохранении цен:', error)
+      message.error('Ошибка при сохранении индивидуальных цен')
+    }
+  }
+
+  // Функция для изменения цены исполнителя
+  function handlePriceChange(executerId, newPrice, hasCustomPrice) {
+    setExecuterPrices(prices =>
+      prices.map(price =>
+        price.executer_id === executerId
+          ? { ...price, custom_price: newPrice, has_custom_price: hasCustomPrice }
+          : price
+      )
+    )
   }
 
   const columns = [
@@ -481,6 +589,13 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
             type="primary"
             ghost
             title="Загрузить расходники"
+          />
+          <Button
+            icon={<FaDollarSign />}
+            onClick={() => openPricingModal(record)}
+            size="small"
+            style={{ backgroundColor: '#52c41a', borderColor: '#52c41a', color: 'white' }}
+            title="Индивидуальные цены"
           />
           <Button
             icon={<FaEdit />}
@@ -870,6 +985,84 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           >
             Добавить расходник
           </Button>
+        </div>
+      </Modal>
+
+      {/* Модальное окно для управления индивидуальными ценами */}
+      <Modal
+        open={pricingModal}
+        title={`Индивидуальные цены для "${selectedService?.name}"`}
+        onCancel={() => setPricingModal(false)}
+        width={800}
+        footer={[
+          <Button key="cancel" onClick={() => setPricingModal(false)}>
+            Отмена
+          </Button>,
+          <Button key="save" type="primary" onClick={handleSavePricing}>
+            Сохранить цены
+          </Button>
+        ]}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{
+            padding: '12px 16px',
+            backgroundColor: '#f0f9ff',
+            border: '1px solid #bae6fd',
+            borderRadius: '8px',
+            marginBottom: '20px'
+          }}>
+            <div style={{ fontWeight: 'bold', color: '#0369a1', marginBottom: '4px' }}>
+              Базовая цена услуги: ₽{selectedService?.price || 0}
+            </div>
+            <div style={{ color: '#0369a1', fontSize: '14px' }}>
+              Установите индивидуальные цены для каждого исполнителя или оставьте базовую цену
+            </div>
+          </div>
+
+          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            {executerPrices.map((price, index) => (
+              <div key={price.executer_id} style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '12px 16px',
+                backgroundColor: index % 2 === 0 ? '#fafafa' : 'white',
+                borderRadius: '8px',
+                marginBottom: '8px',
+                border: '1px solid #f0f0f0'
+              }}>
+                <div style={{ flex: 1, fontWeight: '500' }}>
+                  {price.executer_name}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ fontSize: '14px', color: '#666' }}>
+                    Базовая: ₽{selectedService?.price || 0}
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#666' }}>→</div>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={price.custom_price}
+                    onChange={(e) => handlePriceChange(
+                      price.executer_id,
+                      e.target.value,
+                      parseFloat(e.target.value) !== selectedService?.price
+                    )}
+                    style={{ width: '120px' }}
+                    prefix="₽"
+                  />
+                  <div style={{
+                    fontSize: '12px',
+                    color: price.has_custom_price && price.custom_price !== selectedService?.price ? '#52c41a' : '#666',
+                    fontWeight: price.has_custom_price && price.custom_price !== selectedService?.price ? 'bold' : 'normal',
+                    minWidth: '80px'
+                  }}>
+                    {price.has_custom_price && price.custom_price !== selectedService?.price ? 'Индивид.' : 'Базовая'}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </Modal>
     </div>

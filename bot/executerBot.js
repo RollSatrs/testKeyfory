@@ -58,6 +58,31 @@ const translateMaterialStatus = (status) => {
   return materialStatusTranslations[status] || status;
 };
 
+// Функция для получения индивидуальной цены исполнителя
+const getExecuterPrice = async (executerId, serviceId, basePrice) => {
+  try {
+    console.log(`🔍 Запрос индивидуальной цены для исполнителя ${executerId}, услуга ${serviceId}`);
+    const response = await fetch(`${API_URL}/api/admin/pricing/get/${executerId}/${serviceId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log(`💰 Получена цена: ${data.custom_price || basePrice} (базовая: ${basePrice})`);
+      return data.custom_price || basePrice;
+    } else {
+      console.log(`⚠️ API ответил статусом ${response.status}, используем базовую цену: ${basePrice}`);
+      return basePrice; // Возвращаем базовую цену, если нет индивидуальной
+    }
+  } catch (error) {
+    console.error('❌ Ошибка получения индивидуальной цены:', error);
+    return basePrice; // Возвращаем базовую цену при ошибке
+  }
+};
+
 // Запросить отмену выполнения
 const requestCancelExecution = async (ctx, executionId, executerId) => {
   try {
@@ -388,11 +413,17 @@ const showMyServices = async (ctx, executerId) => {
     let message = '🎯 *Мои услуги*\n\n';
     message += 'Выберите услугу для работы:\n\n';
 
-    services.forEach((service, index) => {
-      message += `${index + 1}. *${service.name}*\n`;
-      message += `   💰 Цена: ${service.price}₽\n`;
+    for (let i = 0; i < services.length; i++) {
+      const service = services[i];
+      const individualPrice = await getExecuterPrice(executerId, service.id, service.price);
+
+      message += `${i + 1}. *${service.name}*\n`;
+
+      // Всегда показываем индивидуальную цену
+      message += `   💰 Цена: ${individualPrice}₽\n`;
+
       message += `   📂 Категория: ${service.category}\n\n`;
-    });
+    }
 
     message += '👆 Нажмите на кнопку услуги ниже';
 
@@ -636,6 +667,9 @@ const showServiceMaterials = async (ctx, executerId, serviceOrId, orderNumber = 
     console.log(`🎯 Final Service ID: ${serviceId}`);
     console.log(`🎯 Service Name: ${service.name}`);
 
+    // Получаем индивидуальную цену исполнителя
+    const individualPrice = await getExecuterPrice(executerId, serviceId, service.price);
+
     // Получаем доступные материалы для услуги
     const response = await fetch(`${API_URL}/api/executers/materials/${serviceId}`, {
       method: 'GET',
@@ -671,7 +705,7 @@ const showServiceMaterials = async (ctx, executerId, serviceOrId, orderNumber = 
       return ctx.reply(
         `🎯 *${service.name}*\n\n` +
         `${orderNumber ? `📋 Номер заказа: *${orderNumber}*\n` : ''}` +
-        `💰 Цена: ${service.price}₽\n` +
+        `💰 Цена: ${individualPrice}₽\n` +
         `📂 Категория: ${service.category}\n\n` +
         `❌ Нет материалов для этой услуги.\n` +
         `${orderNumber ? 'Выберите действие с заказом:' : 'Обратитесь к администратору или введите номер заказа.'}`,
@@ -720,7 +754,7 @@ const showServiceMaterials = async (ctx, executerId, serviceOrId, orderNumber = 
       ctx.reply(
         `🎯 *${service.name}*\n\n` +
         `📋 Номер заказа: *${orderNumber}*\n` +
-        `💰 Цена: ${service.price}₽\n` +
+        `💰 Цена: ${individualPrice}₽\n` +
         `📂 Категория: ${service.category}\n\n` +
         `📦 *Материалы заказа:* ${materials.length}\n\n` +
         `${materialsText}\n\n` +
@@ -753,7 +787,7 @@ const showServiceMaterials = async (ctx, executerId, serviceOrId, orderNumber = 
 
       return ctx.reply(
         `🎯 *${service.name}*\n\n` +
-        `💰 Цена: ${service.price}₽\n` +
+        `💰 Цена: ${individualPrice}₽\n` +
         `📂 Категория: ${service.category}\n\n` +
         `❌ Нет доступных материалов для этой услуги.\n` +
         `Обратитесь к администратору или введите номер заказа для работы без материалов.`,
@@ -786,7 +820,7 @@ const showServiceMaterials = async (ctx, executerId, serviceOrId, orderNumber = 
 
     ctx.reply(
       `🎯 *${service.name}*\n\n` +
-      `💰 Цена: ${service.price}₽\n` +
+      `💰 Цена: ${individualPrice}₽\n` +
       `📂 Категория: ${service.category}\n\n` +
       `📦 *Доступные материалы:* ${availableMaterials.length}\n\n` +
       `Выберите материал для работы или введите номер заказа:`,
@@ -1342,9 +1376,12 @@ bot.action(/select_service_(\d+)/, async (ctx) => {
     const service = services.find(s => s.id == serviceId);
 
     if (service) {
+      // Получаем индивидуальную цену исполнителя
+      const individualPrice = await getExecuterPrice(session.executer_id, serviceId, service.price);
+
       ctx.reply(
         `🎯 *${service.name}*\n\n` +
-        `💰 Цена: ${service.price}₽\n` +
+        `💰 Цена: ${individualPrice}₽\n` +
         `📂 Категория: ${service.category}\n\n` +
         `📝 *Введите номер заказа для этой услуги:*`,
         {
