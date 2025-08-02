@@ -18,7 +18,7 @@ export function PricingStats() {
   async function fetchEarningsStats() {
     try {
       // Получаем данные о заработке из ServiceExecution
-      const earningsRes = await fetch('http://localhost:3000/api/service-executions/admin/earnings-summary', {
+      const earningsRes = await fetch('http://localhost:3000/api/admin/service-executions/earnings-summary', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -30,7 +30,7 @@ export function PricingStats() {
       }
 
       // Получаем количество активных исполнителей
-      const executersRes = await fetch('http://localhost:3000/api/executers/admin/get', {
+      const executersRes = await fetch('http://localhost:3000/api/admin/executers/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }

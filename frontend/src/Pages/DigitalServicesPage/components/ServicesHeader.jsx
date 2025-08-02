@@ -66,20 +66,40 @@ export function ServicesHeader({ onAdd, children }) {
 
   const fetchExecuters = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/executers/admin/get', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
+      console.log('🔄 Загружаем исполнителей...');
+
+      const response = await fetch('http://localhost:3000/api/admin/executers/get', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+          'Content-Type': 'application/json'
+        }
       })
+
+      console.log('📡 Ответ от API:', response.status);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
       const data = await response.json()
-      console.log('Полученные исполнители:', data)
+      console.log('✅ Получены исполнители:', data);
+      console.log('📊 Количество исполнителей:', data.length);
+
+      // Детальный лог каждого исполнителя
+      data.forEach((executer, index) => {
+        console.log(`👤 Исполнитель ${index + 1}:`, {
+          id: executer.id,
+          name: executer.name,
+          telegram_id: executer.telegram_id,
+          status: executer.status,
+          fullObject: executer
+        });
+      });
+
       setExecuters(data)
     } catch (error) {
-      console.error('Ошибка загрузки исполнителей:', error)
-      message.error('Ошибка загрузки исполнителей')
+      console.error('❌ Ошибка загрузки исполнителей:', error)
+      message.error('Ошибка загрузки исполнителей: ' + error.message)
     }
   }
 
@@ -98,11 +118,13 @@ export function ServicesHeader({ onAdd, children }) {
   const updateCustomPricing = (index, field, value) => {
     const newPricing = [...form.customPricing]
     if (field === 'executer_id') {
-      const executer = executers.find(e => e.id === value)
+      const executer = executers.find(e => (e.id || e.executer_id) === value)
+      console.log('🔄 Обновляем индивидуальную цену для исполнителя:', executer);
+
       newPricing[index] = {
         ...newPricing[index],
         executer_id: value,
-        executer_name: executer ? (executer.name || `Исполнитель ${executer.id}`) : ''
+        executer_name: executer ? (executer.name || executer.executer_name || `Исполнитель ${value}`) : ''
       }
     } else {
       newPricing[index][field] = value
@@ -132,7 +154,7 @@ export function ServicesHeader({ onAdd, children }) {
 
     try {
       // Создаем услугу
-      const serviceResponse = await fetch('http://localhost:3000/api/services/admin/add', {
+      const serviceResponse = await fetch('http://localhost:3000/api/admin/services/add', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -155,14 +177,15 @@ export function ServicesHeader({ onAdd, children }) {
       const serviceData = await serviceResponse.json()
       const serviceId = serviceData.id
 
-      // Добавляем материалы если это ручная загрузка
+      // Добавляем материалы в зависимости от способа загрузки
       if (form.loadingMethod === 'manual' && manualInput.trim()) {
+        console.log('📝 Добавляем материалы вручную...');
         const materials = manualInput.split('\n')
           .map(line => line.trim())
           .filter(line => line.length > 0)
 
         for (const material of materials) {
-          await fetch('http://localhost:3000/api/materials/admin/add-single', {
+          await fetch('http://localhost:3000/api/admin/materials/add-single', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -177,10 +200,35 @@ export function ServicesHeader({ onAdd, children }) {
         }
       }
 
+      // Загружаем файл, если выбран файловый способ
+      if (form.loadingMethod === 'file' && fileList.length > 0) {
+        console.log('📁 Загружаем файл с материалами...');
+        const formData = new FormData()
+        formData.append('file', fileList[0].originFileObj || fileList[0])
+        formData.append('service_id', serviceId)
+
+        const uploadResponse = await fetch('http://localhost:3000/api/admin/materials/upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+          },
+          body: formData
+        })
+
+        if (uploadResponse.ok) {
+          const uploadResult = await uploadResponse.json()
+          console.log('✅ Файл загружен, материалов:', uploadResult.count);
+          message.success(`Загружено ${uploadResult.count || 0} материалов из файла`)
+        } else {
+          console.error('❌ Ошибка загрузки файла');
+          message.error('Ошибка при загрузке файла')
+        }
+      }
+
       // Добавляем индивидуальные цены для исполнителей
       for (const pricing of form.customPricing) {
         if (pricing.executer_id && pricing.custom_price) {
-          await fetch('http://localhost:3000/api/pricing/admin/add', {
+          await fetch('http://localhost:3000/api/admin/pricing/add', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -316,12 +364,25 @@ export function ServicesHeader({ onAdd, children }) {
               placeholder="Выберите исполнителя (опционально)"
               className="w-full"
               allowClear
+              showSearch
+              filterOption={(input, option) =>
+                option.children.toLowerCase().includes(input.toLowerCase())
+              }
             >
-              {executers.map(executer => (
-                <Select.Option key={executer.id} value={executer.id}>
-                  {executer.name || 'Без имени'} (ID: {executer.telegram_id})
-                </Select.Option>
-              ))}
+              {executers.map(executer => {
+                console.log('🔍 Отображаем исполнителя:', executer);
+
+                // Получаем имя исполнителя (проверяем разные варианты)
+                const executerName = executer.name || executer.executer_name || 'Без имени';
+                const telegramId = executer.telegram_id || executer.telegramId || 'ID не указан';
+                const executerId = executer.id || executer.executer_id;
+
+                return (
+                  <Select.Option key={executerId} value={executerId}>
+                    {executerName} (Telegram: {telegramId})
+                  </Select.Option>
+                );
+              })}
             </Select>
 
             <Select
@@ -358,12 +419,22 @@ export function ServicesHeader({ onAdd, children }) {
                       style={{ flex: 1 }}
                       value={pricing.executer_id || undefined}
                       onChange={value => updateCustomPricing(index, 'executer_id', value)}
+                      showSearch
+                      filterOption={(input, option) =>
+                        option.children.toLowerCase().includes(input.toLowerCase())
+                      }
                     >
-                      {executers.map(executer => (
-                        <Select.Option key={executer.id} value={executer.id}>
-                          {executer.name || `Исполнитель ${executer.id}`}
-                        </Select.Option>
-                      ))}
+                      {executers.map(executer => {
+                        const executerName = executer.name || executer.executer_name || 'Без имени';
+                        const telegramId = executer.telegram_id || executer.telegramId || 'ID не указан';
+                        const executerId = executer.id || executer.executer_id;
+
+                        return (
+                          <Select.Option key={executerId} value={executerId}>
+                            {executerName} (Telegram: {telegramId})
+                          </Select.Option>
+                        );
+                      })}
                     </Select>
                     <InputNumber
                       placeholder="Цена"
@@ -440,19 +511,30 @@ export function ServicesHeader({ onAdd, children }) {
       >
         {loadingModalType === 'file' && (
           <div>
-            <p className="mb-4">Настройте параметры загрузки материалов из файла:</p>
+            <p className="mb-4">Выберите файл с материалами (.txt, .csv, .xlsx):</p>
             <Upload.Dragger
               fileList={fileList}
               onChange={({ fileList }) => setFileList(fileList)}
-              beforeUpload={() => false}
+              beforeUpload={() => false} // Не загружаем сразу, сохраняем для потом
               accept=".txt,.csv,.xlsx"
+              maxCount={1}
             >
               <p className="ant-upload-drag-icon">
                 <FaUpload style={{ fontSize: '48px', color: '#1890ff' }} />
               </p>
               <p className="ant-upload-text">Выберите файл или перетащите его сюда</p>
               <p className="ant-upload-hint">Поддерживаются файлы .txt, .csv, .xlsx</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Каждая строка файла = один материал
+              </p>
             </Upload.Dragger>
+            {fileList.length > 0 && (
+              <div className="mt-3 p-2 bg-green-50 rounded">
+                <p className="text-green-700 text-sm">
+                  ✅ Файл "{fileList[0].name}" готов к загрузке
+                </p>
+              </div>
+            )}
           </div>
         )}
 

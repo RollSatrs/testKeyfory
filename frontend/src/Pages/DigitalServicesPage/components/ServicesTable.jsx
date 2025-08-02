@@ -53,7 +53,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
 
   async function fetchExecuters() {
     try {
-      const res = await fetch('http://localhost:3000/api/executers/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/executers/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -184,14 +184,14 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
 
     try {
       // Загружаем материалы
-      const materialsResponse = await fetch(`http://localhost:3000/api/materials/admin/service/${service.id}`, {
+      const materialsResponse = await fetch(`http://localhost:3000/api/admin/materials/service/${service.id}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
       })
 
       // Загружаем статистику
-      const statsResponse = await fetch(`http://localhost:3000/api/materials/admin/service/${service.id}/stats`, {
+      const statsResponse = await fetch(`http://localhost:3000/api/admin/materials/service/${service.id}/stats`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -221,7 +221,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
 
     try {
       // Загружаем текущие индивидуальные цены для всех исполнителей
-      const pricingResponse = await fetch(`http://localhost:3000/api/pricing/admin/all`, {
+      const pricingResponse = await fetch(`http://localhost:3000/api/admin/pricing/all`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -269,7 +269,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
     formData.append('service_id', selectedService.id)
 
     try {
-      const response = await fetch('http://localhost:3000/api/materials/admin/upload', {
+      const response = await fetch('http://localhost:3000/api/admin/materials/upload', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
@@ -299,7 +299,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
     }
 
     try {
-      const response = await fetch('http://localhost:3000/api/materials/admin/add-single', {
+      const response = await fetch('http://localhost:3000/api/admin/materials/add-single', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -370,7 +370,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           // Если есть индивидуальная цена и она отличается от базовой
           if (price.pricing_id) {
             // Обновляем существующую цену
-            await fetch(`http://localhost:3000/api/pricing/admin/update/${price.pricing_id}`, {
+            await fetch(`http://localhost:3000/api/admin/pricing/update/${price.pricing_id}`, {
               method: 'PUT',
               headers: {
                 'Content-Type': 'application/json',
@@ -382,7 +382,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
             })
           } else {
             // Создаем новую индивидуальную цену
-            await fetch('http://localhost:3000/api/pricing/admin/add', {
+            await fetch('http://localhost:3000/api/admin/pricing/add', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -397,7 +397,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           }
         } else if (!price.has_custom_price && price.pricing_id) {
           // Если убрали индивидуальную цену, удаляем запись
-          await fetch(`http://localhost:3000/api/pricing/admin/delete/${price.pricing_id}`, {
+          await fetch(`http://localhost:3000/api/admin/pricing/delete/${price.pricing_id}`, {
             method: 'DELETE',
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('admin_token')}`

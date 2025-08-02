@@ -18,7 +18,7 @@ export function PricingTable() {
 
   async function fetchServices() {
     try {
-      const res = await fetch('http://localhost:3000/api/services/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/services/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -35,7 +35,7 @@ export function PricingTable() {
 
   async function fetchExecuters() {
     try {
-      const res = await fetch('http://localhost:3000/api/executers/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/executers/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -65,7 +65,7 @@ export function PricingTable() {
     if (!selectedService) return
 
     try {
-      const res = await fetch(`http://localhost:3000/api/services/admin/update-pricing/${selectedService.id}`, {
+      const res = await fetch(`http://localhost:3000/api/admin/services/update-pricing/${selectedService.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -25,7 +25,7 @@ export function OrdersTable({ refresh, onChange, search = '', statusFilter = '',
 
   async function fetchOrders() {
     try {
-      const res = await fetch('http://localhost:3000/api/orders/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/orders/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -39,7 +39,7 @@ export function OrdersTable({ refresh, onChange, search = '', statusFilter = '',
 
   async function fetchServices() {
     try {
-      const res = await fetch('http://localhost:3000/api/services/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/services/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -53,7 +53,7 @@ export function OrdersTable({ refresh, onChange, search = '', statusFilter = '',
 
   async function fetchExecutors() {
     try {
-      const res = await fetch('http://localhost:3000/api/executers/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/executers/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -67,7 +67,7 @@ export function OrdersTable({ refresh, onChange, search = '', statusFilter = '',
 
   async function handleDelete(id) {
     try {
-      await fetch(`http://localhost:3000/api/orders/admin/delete/${id}`, {
+      await fetch(`http://localhost:3000/api/admin/orders/delete/${id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -99,7 +99,7 @@ export function OrdersTable({ refresh, onChange, search = '', statusFilter = '',
 
   async function handleEditSubmit() {
     try {
-      await fetch(`http://localhost:3000/api/orders/admin/update/${form.id}`, {
+      await fetch(`http://localhost:3000/api/admin/orders/update/${form.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

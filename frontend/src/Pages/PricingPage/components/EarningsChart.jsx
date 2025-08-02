@@ -19,7 +19,7 @@ export function EarningsChart() {
   async function fetchEarningsData() {
     setLoading(true)
     try {
-      let url = 'http://localhost:3000/api/service-executions/admin/earnings-chart'
+      let url = 'http://localhost:3000/api/admin/service-executions/earnings-chart'
 
       if (dateRange.length === 2) {
         const fromDate = dateRange[0].format('YYYY-MM-DD')

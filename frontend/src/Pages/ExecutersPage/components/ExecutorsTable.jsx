@@ -18,7 +18,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
   async function fetchExecutors() {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3000/api/executers/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/executers/get', {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -31,7 +31,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
         (Array.isArray(data) ? data : []).map(async (executor) => {
           try {
             // Получаем только количество активных заказов для проверки возможности удаления
-            const ordersRes = await fetch(`http://localhost:3000/api/executers/admin/orders/${executor.id}`, {
+            const ordersRes = await fetch(`http://localhost:3000/api/admin/executers/orders/${executor.id}`, {
               headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
@@ -95,7 +95,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
 
   async function handleEditSubmit() {
     try {
-      const res = await fetch(`http://localhost:3000/api/executers/admin/update/${form.id}`, {
+      const res = await fetch(`http://localhost:3000/api/admin/executers/update/${form.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -120,7 +120,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
 
   async function handleDelete(id) {
     try {
-      const res = await fetch(`http://localhost:3000/api/executers/admin/delete/${id}`, {
+      const res = await fetch(`http://localhost:3000/api/admin/executers/delete/${id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -148,7 +148,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
 
   async function handleBlock(id) {
     try {
-      const res = await fetch(`http://localhost:3000/api/executers/admin/update/${id}`, {
+      const res = await fetch(`http://localhost:3000/api/admin/executers/update/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

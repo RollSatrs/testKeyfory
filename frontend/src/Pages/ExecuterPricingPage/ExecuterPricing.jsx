@@ -3,7 +3,6 @@ import { Table, Card, Button, Modal, Select, Input, message, DatePicker, Statist
 import { FaEdit, FaChartLine, FaWallet, FaTrash, FaUser, FaClock, FaCoins } from 'react-icons/fa'
 
 const { RangePicker } = DatePicker
-const { TabPane } = Tabs
 
 export function ExecuterPricing() {
   const [executers, setExecuters] = useState([])
@@ -32,7 +31,7 @@ export function ExecuterPricing() {
 
   const fetchExecuters = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/executers/admin/get', {
+      const response = await fetch('http://localhost:3000/api/admin/executers/get', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
       })
 
@@ -51,7 +50,7 @@ export function ExecuterPricing() {
 
   const fetchServices = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/services/admin/get', {
+      const response = await fetch('http://localhost:3000/api/admin/services/get', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
       })
       const data = await response.json()
@@ -63,7 +62,7 @@ export function ExecuterPricing() {
 
   const fetchPricingData = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/pricing/admin/all', {
+      const response = await fetch('http://localhost:3000/api/admin/pricing/all', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
       })
 
@@ -84,8 +83,8 @@ export function ExecuterPricing() {
   const fetchEarningsData = async () => {
     try {
       const url = dateRange.length === 2
-        ? `http://localhost:3000/api/earnings/admin/all?from=${dateRange[0].format('YYYY-MM-DD')}&to=${dateRange[1].format('YYYY-MM-DD')}`
-        : 'http://localhost:3000/api/earnings/admin/all'
+        ? `http://localhost:3000/api/admin/earnings/all?from=${dateRange[0].format('YYYY-MM-DD')}&to=${dateRange[1].format('YYYY-MM-DD')}`
+        : 'http://localhost:3000/api/admin/earnings/all'
 
       const response = await fetch(url, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
@@ -107,8 +106,8 @@ export function ExecuterPricing() {
   const fetchExecuterStats = async () => {
     try {
       const url = dateRange.length === 2
-        ? `http://localhost:3000/api/earnings/admin/summary?from=${dateRange[0].format('YYYY-MM-DD')}&to=${dateRange[1].format('YYYY-MM-DD')}`
-        : 'http://localhost:3000/api/earnings/admin/summary'
+        ? `http://localhost:3000/api/admin/earnings/summary?from=${dateRange[0].format('YYYY-MM-DD')}&to=${dateRange[1].format('YYYY-MM-DD')}`
+        : 'http://localhost:3000/api/admin/earnings/summary'
 
       const response = await fetch(url, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
@@ -134,7 +133,7 @@ export function ExecuterPricing() {
         return
       }
 
-      const response = await fetch('http://localhost:3000/api/pricing/admin/add', {
+      const response = await fetch('http://localhost:3000/api/admin/pricing/add', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,7 +172,7 @@ export function ExecuterPricing() {
 
   const handleDeletePricing = async (id) => {
     try {
-      const response = await fetch(`http://localhost:3000/api/pricing/admin/delete/${id}`, {
+      const response = await fetch(`http://localhost:3000/api/admin/pricing/delete/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
       })
@@ -336,79 +335,97 @@ export function ExecuterPricing() {
       </Row>
 
       <Card>
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          <TabPane tab="Индивидуальные цены" key="pricing">
-            <div style={{ marginBottom: 16 }}>
-              <p className="text-gray-600">
-                Индивидуальные цены создаются при добавлении услуги.
-                Перейдите в раздел "Цифровые услуги" для настройки ценообразования.
-              </p>
-            </div>
-            <Table
-              columns={pricingColumns}
-              dataSource={pricingData}
-              rowKey="id"
-              pagination={{ pageSize: 10 }}
-            />
-          </TabPane>
-
-          <TabPane tab="Статистика заработка" key="earnings">
-            <div style={{ marginBottom: 16 }}>
-              <RangePicker
-                onChange={(dates) => {
-                  setDateRange(dates || [])
-                }}
-                placeholder={['Дата начала', 'Дата окончания']}
-              />
-            </div>
-            <Table
-              columns={earningsColumns}
-              dataSource={earningsData}
-              rowKey="id"
-              pagination={{ pageSize: 10 }}
-            />
-          </TabPane>
-
-          <TabPane tab="Статистика по исполнителям" key="stats">
-            <Table
-              columns={[
-                {
-                  title: 'Исполнитель',
-                  dataIndex: 'executer_name',
-                  key: 'executer_name'
-                },
-                {
-                  title: 'Общий заработок',
-                  dataIndex: 'total_amount',
-                  key: 'total_amount',
-                  render: (amount) => `${amount || 0} ₽`,
-                  sorter: (a, b) => (a.total_amount || 0) - (b.total_amount || 0)
-                },
-                {
-                  title: 'К выплате',
-                  dataIndex: 'pending_amount',
-                  key: 'pending_amount',
-                  render: (amount) => `${amount || 0} ₽`
-                },
-                {
-                  title: 'Выплачено',
-                  dataIndex: 'paid_amount',
-                  key: 'paid_amount',
-                  render: (amount) => `${amount || 0} ₽`
-                },
-                {
-                  title: 'Количество заказов',
-                  dataIndex: 'count',
-                  key: 'count',
-                  sorter: (a, b) => (a.count || 0) - (b.count || 0)
-                }
-              ]}
-              dataSource={executerStats}
-              rowKey="executer_id"
-              pagination={{ pageSize: 10 }}
-            />
-          </TabPane>
-        </Tabs>
+        <Tabs 
+          activeKey={activeTab} 
+          onChange={setActiveTab}
+          items={[
+            {
+              key: 'pricing',
+              label: 'Индивидуальные цены',
+              children: (
+                <div>
+                  <div style={{ marginBottom: 16 }}>
+                    <p className="text-gray-600">
+                      Индивидуальные цены создаются при добавлении услуги.
+                      Перейдите в раздел "Цифровые услуги" для настройки ценообразования.
+                    </p>
+                  </div>
+                  <Table
+                    columns={pricingColumns}
+                    dataSource={pricingData}
+                    rowKey="id"
+                    pagination={{ pageSize: 10 }}
+                  />
+                </div>
+              )
+            },
+            {
+              key: 'earnings',
+              label: 'Статистика заработка',
+              children: (
+                <div>
+                  <div style={{ marginBottom: 16 }}>
+                    <RangePicker
+                      onChange={(dates) => {
+                        setDateRange(dates || [])
+                      }}
+                      placeholder={['Дата начала', 'Дата окончания']}
+                    />
+                  </div>
+                  <Table
+                    columns={earningsColumns}
+                    dataSource={earningsData}
+                    rowKey="id"
+                    pagination={{ pageSize: 10 }}
+                  />
+                </div>
+              )
+            },
+            {
+              key: 'stats',
+              label: 'Статистика по исполнителям',
+              children: (
+                <Table
+                  columns={[
+                    {
+                      title: 'Исполнитель',
+                      dataIndex: 'executer_name',
+                      key: 'executer_name'
+                    },
+                    {
+                      title: 'Общий заработок',
+                      dataIndex: 'total_amount',
+                      key: 'total_amount',
+                      render: (amount) => `${amount || 0} ₽`,
+                      sorter: (a, b) => (a.total_amount || 0) - (b.total_amount || 0)
+                    },
+                    {
+                      title: 'К выплате',
+                      dataIndex: 'pending_amount',
+                      key: 'pending_amount',
+                      render: (amount) => `${amount || 0} ₽`
+                    },
+                    {
+                      title: 'Выплачено',
+                      dataIndex: 'paid_amount',
+                      key: 'paid_amount',
+                      render: (amount) => `${amount || 0} ₽`
+                    },
+                    {
+                      title: 'Количество заказов',
+                      dataIndex: 'count',
+                      key: 'count',
+                      sorter: (a, b) => (a.count || 0) - (b.count || 0)
+                    }
+                  ]}
+                  dataSource={executerStats}
+                  rowKey="executer_id"
+                  pagination={{ pageSize: 10 }}
+                />
+              )
+            }
+          ]}
+        />
       </Card>
     </div>
   )

@@ -46,6 +46,9 @@ app.use('/api/admin/pricing', authMiddleware, adminPricingRoute)
 app.use('/api/admin/earnings', authMiddleware, adminEarningsRoute)
 app.use('/api/admin/service-executions', authMiddleware, adminServiceExecutionsRoute)
 
+// Роуты для бота (без middleware)
+app.use('/api/pricing/admin', adminPricingRoute)
+
 app.get('/', (req, res) => {
   res.send('👋 Сервер работает!');
 });
@@ -70,10 +73,10 @@ const startServer = async () => {
       console.log(`   - Admin: http://localhost:${PORT}/api/admin/* (login/check/register)`);
       console.log(`   - Executer: http://localhost:${PORT}/api/executer/* (login/check/register/profile)`);
       console.log(`🔒 Защищённые роуты для админов:`);
-      console.log(`   - Services: http://localhost:${PORT}/api/services/admin/*`);
-      console.log(`   - Materials: http://localhost:${PORT}/api/materials/admin/*`);
-      console.log(`   - Orders: http://localhost:${PORT}/api/orders/admin/*`);
-      console.log(`   - Executers: http://localhost:${PORT}/api/executers/admin/*`);
+      console.log(`   - Services: http://localhost:${PORT}/api/admin/services/*`);
+      console.log(`   - Materials: http://localhost:${PORT}/api/admin/materials/*`);
+      console.log(`   - Orders: http://localhost:${PORT}/api/admin/orders/*`);
+      console.log(`   - Executers: http://localhost:${PORT}/api/admin/executers/*`);
       console.log(`🔒 Защищённые роуты для исполнителей:`);
       console.log(`   - Orders: http://localhost:${PORT}/api/executer/orders/*`);
       console.log(`   - Materials: http://localhost:${PORT}/api/executer/materials/*`);

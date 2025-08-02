@@ -10,7 +10,7 @@ let successCount = 0
 
 async function getMateriallsServices(nameService) {
   try{
-    await fetch('http://localhost:3000/api/materials/admin/:', {
+    await fetch('http://localhost:3000/api/admin/materials/service', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -24,7 +24,7 @@ async function getMateriallsServices(nameService) {
 
 async function addMaterialls(row) {
   try{
-    await fetch('http://localhost:3000/api/materials/admin/add', {
+    await fetch('http://localhost:3000/api/admin/materials/add', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -56,7 +56,7 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   async function fetchMaterials() {
     try {
-      const res = await fetch('http://localhost:3000/api/materials/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/materials/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -70,7 +70,7 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   async function fetchServices() {
     try {
-      const res = await fetch('http://localhost:3000/api/services/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/services/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -84,7 +84,7 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   async function handleDelete(id) {
     try {
-      await fetch(`http://localhost:3000/api/materials/admin/delete/${id}`, {
+      await fetch(`http://localhost:3000/api/admin/materials/delete/${id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -101,7 +101,7 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   async function handleStatusChange(id, newStatus) {
     try {
-      await fetch(`http://localhost:3000/api/materials/admin/update-status/${id}`, {
+      await fetch(`http://localhost:3000/api/admin/materials/update-status/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -133,7 +133,7 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
 
   async function handleEditSubmit() {
     try {
-      await fetch(`http://localhost:3000/api/materials/admin/update/${form.id}`, {
+      await fetch(`http://localhost:3000/api/admin/materials/update/${form.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

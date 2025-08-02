@@ -25,7 +25,7 @@ export function ExecutorsHeader({ onAdd, children }) {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    await fetch('http://localhost:3000/api/executers/admin/add', {
+    await fetch('http://localhost:3000/api/admin/executers/add', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

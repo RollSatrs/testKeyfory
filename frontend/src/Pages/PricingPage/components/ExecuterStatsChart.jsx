@@ -21,7 +21,7 @@ export function ExecuterStatsChart() {
   async function fetchExecuterStats() {
     setLoading(true)
     try {
-      const res = await fetch(`http://localhost:3000/api/service-executions/admin/executer-stats?period=${period}`, {
+      const res = await fetch(`http://localhost:3000/api/admin/service-executions/executer-stats?period=${period}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }

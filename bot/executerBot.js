@@ -62,7 +62,7 @@ const translateMaterialStatus = (status) => {
 const getExecuterPrice = async (executerId, serviceId, basePrice) => {
   try {
     console.log(`🔍 Запрос индивидуальной цены для исполнителя ${executerId}, услуга ${serviceId}`);
-    const response = await fetch(`${API_URL}/api/admin/pricing/get/${executerId}/${serviceId}`, {
+    const response = await fetch(`${API_URL}/api/pricing/admin/get/${executerId}/${serviceId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
@@ -71,15 +71,25 @@ const getExecuterPrice = async (executerId, serviceId, basePrice) => {
 
     if (response.ok) {
       const data = await response.json();
-      console.log(`💰 Получена цена: ${data.custom_price || basePrice} (базовая: ${basePrice})`);
-      return data.custom_price || basePrice;
+      console.log(`💰 Получена индивидуальная цена: ${data.custom_price || 'не найдена'}`);
+      console.log(`💰 Базовая цена: ${basePrice}`);
+
+      // ВАЖНО: Если есть индивидуальная цена, используем только её
+      if (data.custom_price !== null && data.custom_price !== undefined) {
+        console.log(`✅ Используем индивидуальную цену: ${data.custom_price}₽`);
+        return data.custom_price;
+      } else {
+        console.log(`⚠️ Индивидуальная цена не найдена, используем базовую: ${basePrice}₽`);
+        return basePrice;
+      }
     } else {
-      console.log(`⚠️ API ответил статусом ${response.status}, используем базовую цену: ${basePrice}`);
-      return basePrice; // Возвращаем базовую цену, если нет индивидуальной
+      console.log(`⚠️ API ответил статусом ${response.status}, используем базовую цену: ${basePrice}₽`);
+      return basePrice;
     }
   } catch (error) {
     console.error('❌ Ошибка получения индивидуальной цены:', error);
-    return basePrice; // Возвращаем базовую цену при ошибке
+    console.log(`🔄 Используем базовую цену: ${basePrice}₽`);
+    return basePrice;
   }
 };
 

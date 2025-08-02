@@ -25,7 +25,7 @@ export function OrdersHeader({ onAdd }) {
 
   async function fetchServices() {
     try {
-      const res = await fetch('http://localhost:3000/api/services/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/services/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -39,7 +39,7 @@ export function OrdersHeader({ onAdd }) {
 
   async function fetchExecutors() {
     try {
-      const res = await fetch('http://localhost:3000/api/executers/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/executers/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -53,7 +53,7 @@ export function OrdersHeader({ onAdd }) {
 
   async function fetchMaterialsForService(serviceId) {
     try {
-      const res = await fetch('http://localhost:3000/api/materials/admin/get', {
+      const res = await fetch('http://localhost:3000/api/admin/materials/get', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
         }
@@ -113,7 +113,7 @@ export function OrdersHeader({ onAdd }) {
   // Добавление заказа
   const handleAddOrder = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/orders/admin/add', {
+      const response = await fetch('http://localhost:3000/api/admin/orders/add', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
