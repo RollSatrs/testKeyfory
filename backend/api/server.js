@@ -29,8 +29,8 @@ app.use(express.json())
 
 // Публичные роуты (НЕ требуют токен)
 app.use('/api/admin', adminRoute)
-app.use('/api/executer', executerRoute) // маршруты исполнителей (регистрация, вход, профиль)
-app.use('/api/executers', executerBotRoute) // новые маршруты для бота исполнителей
+app.use('/api/executers', executerRoute) // маршруты исполнителей (регистрация, вход, профиль)
+app.use('/api/executers-bot', executerBotRoute) // новые маршруты для бота исполнителей
 
 // Защищённые роуты для исполнителей (ТРЕБУЮТ токен исполнителя)
 app.use('/api/executer/orders', authExecuterMiddleware, executerOrderRoute)

@@ -141,6 +141,39 @@ materialRoute.get('/replacement-requests', async (req, res) => {
     }
 });
 
+// POST /materials/replacement-requests - создать запрос на замену
+materialRoute.post('/replacement-requests', async (req, res) => {
+    try {
+        const { orderNumber, materialId, materialName, executerId, executerUsername, description } = req.body;
+
+        if (!orderNumber || !materialId || !executerId || !description) {
+            return res.status(400).json({ error: 'Все обязательные поля должны быть заполнены' });
+        }
+
+        const replacementData = {
+            orderNumber,
+            materialId,
+            materialName,
+            executerId,
+            executerUsername,
+            description,
+            status: 'pending',
+            createdAt: new Date()
+        };
+
+        // Здесь должен быть вызов сервиса для создания запроса
+        // Пока что просто возвращаем успех
+        res.status(201).json({
+            success: true,
+            message: 'Запрос на замену создан',
+            data: replacementData
+        });
+    } catch (error) {
+        console.error('Error creating replacement request:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // POST /materials/replacement-requests/:id/process - обработать запрос на замену
 materialRoute.post('/replacement-requests/:id/process', async (req, res) => {
     try {

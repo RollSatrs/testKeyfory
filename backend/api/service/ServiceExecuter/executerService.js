@@ -228,8 +228,11 @@ export const checkExecuter = async (telegramId) => {
       throw new Error('Telegram ID не указан');
     }
 
+    // Приводим telegram_id к строке для совместимости с базой данных
+    const telegramIdStr = String(telegramId);
+
     const executer = await Executer.findOne({
-      where: { telegram_id: telegramId }
+      where: { telegram_id: telegramIdStr }
     });
 
     return executer;
@@ -242,6 +245,10 @@ export const checkExecuter = async (telegramId) => {
 // Получить заказы исполнителя
 export const getExecuterOrders = async (executerId, status = null) => {
   try {
+    console.log('\n🔥 === SERVICE: ПОЛУЧЕНИЕ ЗАКАЗОВ ===');
+    console.log(`👤 Executer ID: ${executerId}`);
+    console.log(`📊 Status filter: ${status}`);
+
     const whereCondition = { executer_id: executerId };
 
     // Если указан статус, добавляем его в условие
@@ -249,16 +256,21 @@ export const getExecuterOrders = async (executerId, status = null) => {
       whereCondition.status = status;
     }
 
-    const orders = await Order.findAll({
+    // Используем ServiceExecution вместо Order
+    const orders = await ServiceExecution.findAll({
       where: whereCondition,
       include: [
         {
           model: Services,
-          attributes: ['name', 'description']
+          as: 'Service',
+          attributes: ['name', 'description', 'price']
         }
       ],
       order: [['created_at', 'DESC']]
     });
+
+    console.log(`📋 Найдено заказов: ${orders ? orders.length : 0}`);
+    console.log(`📊 Данные заказов:`, JSON.stringify(orders, null, 2));
 
     // Логируем активность просмотра заказов
     const logAction = status === 'completed' ? 'view_completed_orders' : 'view_orders';
@@ -275,7 +287,8 @@ export const getExecuterOrders = async (executerId, status = null) => {
 
     return orders;
   } catch (err) {
-    console.error('Ошибка при получении заказов:', err);
+    console.error('❌ SERVICE: Ошибка при получении заказов:', err);
+    console.error('❌ SERVICE: Stack trace:', err.stack);
     throw new Error('Ошибка сервера');
   }
 };
@@ -283,26 +296,30 @@ export const getExecuterOrders = async (executerId, status = null) => {
 // Получить активные заказы исполнителя
 export const getExecuterActiveOrders = async (executerId) => {
   try {
+    console.log('\n🔥 === SERVICE: ПОЛУЧЕНИЕ АКТИВНЫХ ЗАКАЗОВ ===');
+    console.log(`👤 Executer ID: ${executerId}`);
+
     const logAction = 'get_orders';
     const logDescription = `Получение активных заказов исполнителем ID: ${executerId}`;
 
-    const orders = await Order.findAll({
+    // Ищем в ServiceExecution вместо Order
+    const orders = await ServiceExecution.findAll({
       where: {
         executer_id: executerId,
-        status: 'in_progress'
+        status: ['pending', 'in_progress', 'active'] // активные статусы
       },
       include: [
         {
           model: Services,
+          as: 'Service',
           attributes: ['name', 'description', 'price']
-        },
-        {
-          model: Material,
-          attributes: ['id', 'type_key', 'contents', 'status', 'source']
         }
       ],
       order: [['created_at', 'DESC']]
     });
+
+    console.log(`📋 Найдено ServiceExecution записей: ${orders ? orders.length : 0}`);
+    console.log(`📊 Данные активных заказов:`, JSON.stringify(orders, null, 2));
 
     await createExecuterLog(
       executerId,
@@ -313,9 +330,54 @@ export const getExecuterActiveOrders = async (executerId) => {
     await updateExecuterActivity(executerId);
 
     return orders;
-  } catch (err) {
-    console.error('Ошибка при получении активных заказов:', err);
-    throw new Error('Ошибка сервера');
+  } catch (error) {
+    console.error('❌ SERVICE: Ошибка получения активных заказов:', error);
+    console.error('❌ SERVICE: Stack trace:', error.stack);
+    throw error;
+  }
+};
+
+// Получить завершенные заказы исполнителя
+export const getExecuterCompletedOrders = async (executerId) => {
+  try {
+    console.log('\n✅ === SERVICE: ПОЛУЧЕНИЕ ЗАВЕРШЕННЫХ ЗАКАЗОВ ===');
+    console.log(`👤 Executer ID: ${executerId}`);
+
+    const logAction = 'get_completed_orders';
+    const logDescription = `Получение завершенных заказов исполнителем ID: ${executerId}`;
+
+    // Ищем в ServiceExecution вместо Order
+    const orders = await ServiceExecution.findAll({
+      where: {
+        executer_id: executerId,
+        status: 'completed' // только завершенные
+      },
+      include: [
+        {
+          model: Services,
+          as: 'Service',
+          attributes: ['name', 'description', 'price']
+        }
+      ],
+      order: [['updated_at', 'DESC']] // сортируем по дате завершения
+    });
+
+    console.log(`✅ Найдено завершенных ServiceExecution записей: ${orders ? orders.length : 0}`);
+    console.log(`📊 Данные завершенных заказов:`, JSON.stringify(orders, null, 2));
+
+    await createExecuterLog(
+      executerId,
+      logAction,
+      logDescription
+    );
+
+    await updateExecuterActivity(executerId);
+
+    return orders;
+  } catch (error) {
+    console.error('❌ SERVICE: Ошибка получения завершенных заказов:', error);
+    console.error('❌ SERVICE: Stack trace:', error.stack);
+    throw error;
   }
 };
 
@@ -469,10 +531,10 @@ export const getOrderById = async (orderId, executerId) => {
 // Получить материалы по заказу
 export const getMaterialsByOrder = async (orderId) => {
   try {
-    console.log(`🔍 Поиск материалов для заказа ID: ${orderId}`);
+    console.log(`🔍 Поиск материалов для заказа номер: ${orderId}`);
 
     const materials = await Material.findAll({
-      where: { order_id: orderId }
+      where: { order_number: orderId }
     });
 
     console.log(`📦 Найдено материалов: ${materials.length}`);
@@ -480,7 +542,7 @@ export const getMaterialsByOrder = async (orderId) => {
       id: m.id,
       type_key: m.type_key,
       contents: m.contents,
-      order_id: m.order_id
+      order_number: m.order_number
     })));
 
     return materials;

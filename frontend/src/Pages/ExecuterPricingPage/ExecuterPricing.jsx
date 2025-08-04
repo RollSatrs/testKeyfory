@@ -335,8 +335,8 @@ export function ExecuterPricing() {
       </Row>
 
       <Card>
-        <Tabs 
-          activeKey={activeTab} 
+        <Tabs
+          activeKey={activeTab}
           onChange={setActiveTab}
           items={[
             {

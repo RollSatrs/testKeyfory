@@ -60,6 +60,7 @@ export const Material = sequelize.define('Material',{
       key: 'id'
     }
   },
+  order_number: { type: DataTypes.STRING, allowNull: true }, // Номер заказа
   create_date_material: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'material', timestamps: true });
 
