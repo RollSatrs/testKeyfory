@@ -1,2 +1,120 @@
+# ===========================================
+# KEYFORY PLATFORM - GIT IGNORE
+# ===========================================
+
+# ===========================================
+# DEPENDENCIES
+# ===========================================
 node_modules/
+npm-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ===========================================
+# ENVIRONMENT VARIABLES
+# ===========================================
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ===========================================
+# BUILD OUTPUTS
+# ===========================================
+dist/
+build/
+*.tgz
+*.tar.gz
+
+# ===========================================
+# LOGS
+# ===========================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ===========================================
+# RUNTIME & CACHE
+# ===========================================
+.npm
+.eslintcache
+.cache
+.parcel-cache
+.next
+.nuxt
+.vuepress/dist
+
+# ===========================================
+# DATABASE & UPLOADS
+# ===========================================
+backend/uploads/*
+!backend/uploads/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# ===========================================
+# TEMPORARY FILES
+# ===========================================
+temp/
+tmp/
+*.tmp
+.temp/
+test_*
+debug_*
+temp_*
+check_*
+migration_*
+
+# ===========================================
+# IDE & EDITORS
+# ===========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===========================================
+# OS GENERATED
+# ===========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ===========================================
+# DOCKER
+# ===========================================
+docker-compose.override.yml
+.dockerignore
+
+# ===========================================
+# DEPLOYMENT
+# ===========================================
+.vercel
+.netlify
+deployment/
+
+# ===========================================
+# TESTING
+# ===========================================
+coverage/
+.nyc_output
+.coverage
+
+# ===========================================
+# SECURITY
+# ===========================================
+*.pem
+*.key
+*.crt
+*.csr

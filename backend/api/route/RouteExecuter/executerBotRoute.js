@@ -1,10 +1,10 @@
 import express from 'express';
 import { Op } from 'sequelize';
-import { Services, Material, ServiceAccess, Executer, ServiceExecution, MaterialReplacement } from '../../../database/dbTables.js';
+import { Services, Material, ServiceAccess, Executer, ServiceExecution, MaterialReplacement, ExecuterPricing } from '../../../database/dbTables.js';
 
 const router = express.Router();
 
-// GET /api/executers/services/:executerId - Получить услуги исполнителя
+// GET /api/executers/services/:executerId - Получить услуги исполнителя с индивидуальными ценами
 router.get('/services/:executerId', async (req, res) => {
   try {
     const { executerId } = req.params;
@@ -13,20 +13,26 @@ router.get('/services/:executerId', async (req, res) => {
     console.log(`👤 Executer ID: ${executerId}`);
 
     // Получаем услуги двумя способами:
-    // 1. Через ServiceAccess (доступ к услугам)
+    // 1. Через ServiceAccess (доступ к услугам) - только активные услуги
     const serviceAccess = await ServiceAccess.findAll({
       where: { executer_id: executerId },
       include: [{
         model: Services,
         as: 'Service',
-        attributes: ['id', 'name', 'price', 'category', 'description']
+        where: {
+          status: 'active' // Только активные услуги
+        },
+        attributes: ['id', 'name', 'price', 'category', 'description', 'status']
       }]
     });
 
-    // 2. Через прямое назначение в Services (executer_id)
+    // 2. Через прямое назначение в Services (executer_id) - только активные услуги
     const assignedServices = await Services.findAll({
-      where: { executer_id: executerId },
-      attributes: ['id', 'name', 'price', 'category', 'description']
+      where: {
+        executer_id: executerId,
+        status: 'active' // Только активные услуги
+      },
+      attributes: ['id', 'name', 'price', 'category', 'description', 'status']
     });
 
     // Объединяем результаты и убираем дубликаты
@@ -38,11 +44,43 @@ router.get('/services/:executerId', async (req, res) => {
       index === self.findIndex(s => s.id === service.id)
     );
 
+    // Получаем индивидуальные цены для каждой услуги
+    const servicesWithIndividualPrices = await Promise.all(
+      uniqueServices.map(async (service) => {
+        try {
+          // Ищем индивидуальную цену в ExecuterPricing
+          const individualPricing = await ExecuterPricing.findOne({
+            where: {
+              executer_id: executerId,
+              service_id: service.id
+            }
+          });
+
+          const finalPrice = individualPricing?.custom_price || service.price;
+
+          console.log(`💰 Service "${service.name}": ${individualPricing ? `Individual ${finalPrice}₽` : `Standard ${service.price}₽`}`);
+
+          return {
+            ...service.toJSON(),
+            price: finalPrice,
+            has_individual_price: !!individualPricing
+          };
+        } catch (error) {
+          console.warn(`⚠️ Ошибка получения цены для услуги ${service.id}:`, error.message);
+          return {
+            ...service.toJSON(),
+            has_individual_price: false
+          };
+        }
+      })
+    );
+
     console.log(`📋 Найдено услуг через ServiceAccess: ${accessServices.length}`);
     console.log(`📋 Найдено услуг через прямое назначение: ${assignedServices.length}`);
     console.log(`📋 Итого уникальных услуг: ${uniqueServices.length}`);
+    console.log(`💰 Услуг с индивидуальными ценами: ${servicesWithIndividualPrices.filter(s => s.has_individual_price).length}`);
 
-    res.json(uniqueServices);
+    res.json(servicesWithIndividualPrices);
   } catch (error) {
     console.error('❌ Ошибка при получении услуг исполнителя:', error);
     res.status(500).json({
@@ -204,18 +242,22 @@ router.get('/active-executions/:executerId', async (req, res) => {
       where: {
         executer_id: executerId,
         status: {
-          [Op.ne]: 'completed'
+          [Op.in]: ['pending', 'active', 'in_progress'] // Только активные статусы, исключаем completed и cancelled
         }
       },
       include: [{
         model: Services,
         as: 'Service',
-        attributes: ['id', 'name', 'price', 'category']
+        where: {
+          status: 'active' // Только активные услуги
+        },
+        attributes: ['id', 'name', 'price', 'category', 'status'],
+        required: true // INNER JOIN - исключает заказы с удаленными услугами
       }],
       order: [['created_at', 'DESC']]
     });
 
-    console.log(`📋 Найдено активных заказов: ${executions.length}`);
+    console.log(`📋 Найдено активных заказов с активными услугами: ${executions.length}`);
 
     res.json(executions);
   } catch (error) {
@@ -239,20 +281,31 @@ router.get('/execution/:executionId', async (req, res) => {
       include: [{
         model: Services,
         as: 'Service',
-        attributes: ['id', 'name', 'price', 'category']
+        where: {
+          status: 'active' // Только активные услуги
+        },
+        attributes: ['id', 'name', 'price', 'category', 'status'],
+        required: true // INNER JOIN - исключает заказы с удаленными услугами
       }]
     });
 
     if (!execution) {
-      return res.status(404).json({ message: 'Заказ не найден' });
+      return res.status(404).json({
+        success: false,
+        message: 'Заказ не найден или услуга неактивна'
+      });
     }
 
     console.log(`📋 Заказ найден: ${execution.order_number}`);
 
-    res.json(execution);
+    res.json({
+      success: true,
+      data: execution
+    });
   } catch (error) {
     console.error('❌ Ошибка при получении деталей заказа:', error);
     res.status(500).json({
+      success: false,
       message: 'Ошибка при получении деталей заказа',
       error: error.message
     });
@@ -694,14 +747,17 @@ router.post('/cancel-order', async (req, res) => {
     console.log(`🎯 Service ID: ${service_id}`);
     console.log(`👤 Executer ID: ${executer_id}`);
 
-    // Возвращаем все материалы данной услуги в статус "available"
+    // Возвращаем материалы в статус "available" и очищаем order_number
     const [updatedMaterialsRows] = await Material.update({
       status: 'available',
-      used_date: null
+      order_number: null,
+      used_date: null,
+      executer_id: null
     }, {
       where: {
+        order_number: order_number,
         service_id: service_id,
-        status: 'used'
+        executer_id: executer_id
       }
     });
 
@@ -730,6 +786,40 @@ router.post('/cancel-order', async (req, res) => {
     console.error('❌ Ошибка при отмене заказа:', error);
     res.status(500).json({
       message: 'Ошибка при отмене заказа',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/executers/completed-orders/:executerId - Получить выполненные заказы
+router.get('/completed-orders/:executerId', async (req, res) => {
+  try {
+    const { executerId } = req.params;
+
+    console.log(`\n✅ === API: ПОЛУЧЕНИЕ ВЫПОЛНЕННЫХ ЗАКАЗОВ ===`);
+    console.log(`👤 Executer ID: ${executerId}`);
+
+    const executions = await ServiceExecution.findAll({
+      where: {
+        executer_id: executerId,
+        status: 'completed'
+      },
+      include: [{
+        model: Services,
+        as: 'Service',
+        attributes: ['id', 'name', 'price', 'category']
+      }],
+      order: [['updated_at', 'DESC']],
+      limit: 50 // Ограничиваем количество для производительности
+    });
+
+    console.log(`✅ Найдено выполненных заказов: ${executions.length}`);
+
+    res.json(executions);
+  } catch (error) {
+    console.error('❌ Ошибка при получении выполненных заказов:', error);
+    res.status(500).json({
+      message: 'Ошибка при получении выполненных заказов',
       error: error.message
     });
   }

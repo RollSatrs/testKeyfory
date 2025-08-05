@@ -1,21 +1,27 @@
 {
-  "name": "telegram-executer-bot",
+  "name": "keyfory-telegram-bot",
   "version": "1.0.0",
+  "description": "Telegram Bot for Keyfory Digital Services Platform - Executer Interface",
+  "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node executerBot.js",
-    "dev": "nodemon executerBot.js",
-    "executer": "nodemon executer.js",
-    "old-dev": "nodemon index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "prod": "NODE_ENV=production node index.js"
+  },
+  "keywords": ["telegram-bot", "keyfory", "digital-services", "executer"],
+  "author": "Keyfory Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
   },
   "dependencies": {
-    "axios": "^1.11.0",
-    "dotenv": "^16.6.1",
-    "node-fetch": "^3.3.2",
-    "node-telegram-bot-api": "^0.61.0",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
     "telegraf": "^4.16.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.4"
   }
 }

@@ -565,17 +565,39 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       )
     },
     {
-      title: 'Номер заказа',
-      dataIndex: 'order_number',
-      key: 'order_number',
-      width: 120,
-      render: (order_number) => (
-        order_number ? (
-          <Tag color="blue">{order_number}</Tag>
-        ) : (
-          <Tag color="default">Не назначен</Tag>
+      title: 'Номера заказов',
+      dataIndex: 'active_orders',
+      key: 'active_orders',
+      width: 200,
+      render: (active_orders, record) => {
+        // Если нет активных заказов
+        if (!active_orders || active_orders.length === 0) {
+          return <Tag color="default">Нет заказов</Tag>
+        }
+
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+            {active_orders.map((order, index) => (
+              <Tooltip
+                key={`${order.order_number}-${index}`}
+                title={`Исполнитель: ${order.executer_name || 'Неизвестный'}\nНомер заказа: ${order.order_number}`}
+                placement="top"
+              >
+                <Tag
+                  color="blue"
+                  style={{
+                    cursor: 'pointer',
+                    margin: '2px',
+                    fontSize: '12px'
+                  }}
+                >
+                  #{order.order_number}
+                </Tag>
+              </Tooltip>
+            ))}
+          </div>
         )
-      )
+      }
     },
     {
       title: 'Действия',

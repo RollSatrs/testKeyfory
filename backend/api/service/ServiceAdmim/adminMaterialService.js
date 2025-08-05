@@ -18,25 +18,32 @@ export async function getAllMaterials() {
             order: [['create_date_material', 'DESC']]
         });
 
-        // Для каждого материала находим связанные заказы
+        // Для каждого материала находим связанные заказы с исполнителями
         const materialsWithOrders = await Promise.all(
             materials.map(async (material) => {
                 const materialData = material.toJSON();
 
-                // Для любого материала ищем активные заказы для этой услуги
-                if (material.service_id) {
-                    // Ищем последний активный ServiceExecution для этой услуги
+                // Если у материала есть order_number, ищем исполнителя
+                if (material.order_number) {
+                    // Ищем ServiceExecution по номеру заказа для получения исполнителя
                     const serviceExecution = await ServiceExecution.findOne({
                         where: {
-                            service_id: material.service_id,
-                            status: ['pending', 'in_progress', 'completed']
+                            order_number: material.order_number,
+                            service_id: material.service_id
                         },
-                        attributes: ['order_number', 'material_contents', 'status'],
-                        order: [['created_at', 'DESC']]
+                        include: [{
+                            model: Executer,
+                            as: 'Executer',
+                            attributes: ['id', 'name', 'telegram_id']
+                        }],
+                        attributes: ['order_number', 'executer_id', 'status']
                     });
 
-                    if (serviceExecution) {
-                        materialData.order_number = serviceExecution.order_number;
+                    if (serviceExecution && serviceExecution.Executer) {
+                        materialData.executer_name = serviceExecution.Executer.name;
+                        materialData.executer_id = serviceExecution.executer_id;
+                    } else {
+                        materialData.executer_name = 'Неизвестный исполнитель';
                     }
                 }
 

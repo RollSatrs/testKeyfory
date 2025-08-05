@@ -1,6 +1,6 @@
 import { FaEdit, FaTrash } from 'react-icons/fa'
 import { useEffect, useState } from 'react'
-import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message } from 'antd'
+import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message, Tooltip } from 'antd'
 import { CSVLink } from 'react-csv'
 import { DownloadOutlined } from '@ant-design/icons'
 
@@ -252,14 +252,31 @@ export function KeysMaterialsTable({ refresh, onChange, search = '', statusFilte
       title: 'Номер заказа',
       dataIndex: 'order_number',
       key: 'order_number',
-      width: 120,
-      render: (order_number) => (
-        order_number ? (
-          <Tag color="blue">{order_number}</Tag>
-        ) : (
-          <Tag color="default">Не назначен</Tag>
+      width: 150,
+      render: (order_number, record) => {
+        if (!order_number) {
+          return <Tag color="default">Доступен</Tag>
+        }
+
+        const executerName = record.executer_name || 'Неизвестный исполнитель'
+
+        return (
+          <Tooltip
+            title={`Исполнитель: ${executerName}\nНомер заказа: ${order_number}`}
+            placement="top"
+          >
+            <Tag
+              color="orange"
+              style={{
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              #{order_number}
+            </Tag>
+          </Tooltip>
         )
-      )
+      }
     },
     {
       title: 'Источник',

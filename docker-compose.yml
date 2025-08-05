@@ -1,0 +1,81 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: keyfory_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keyfory
+      POSTGRES_USER: keyfory_user
+      POSTGRES_PASSWORD: keyfory_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - keyfory_network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: keyfory_backend
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=keyfory
+      - DB_USER=keyfory_user
+      - DB_PASSWORD=keyfory_password
+      - JWT_SECRET=your_jwt_secret_here
+      - BOT_TOKEN=your_telegram_bot_token_here
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+    networks:
+      - keyfory_network
+
+  # Telegram Bot
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    container_name: keyfory_bot
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      - NODE_ENV=production
+      - BOT_TOKEN=your_telegram_bot_token_here
+      - API_URL=http://backend:3000
+    networks:
+      - keyfory_network
+
+  # Frontend (React App)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: keyfory_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - keyfory_network
+
+volumes:
+  postgres_data:
+
+networks:
+  keyfory_network:
+    driver: bridge

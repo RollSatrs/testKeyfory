@@ -155,22 +155,29 @@ const showMyServices = async (ctx) => {
 
     const response = await axios.get(`${API_BASE_URL}/api/executers-bot/services/${session.executerId}`);
 
-    if (response.data.length === 0) {
+    // Дополнительная фильтрация на стороне бота - только активные услуги
+    const activeServices = response.data.filter(service => {
+      const isActive = service.status === 'active';
+      console.log(`🛠️ Услуга ${service.name}: статус=${service.status}, активна=${isActive}`);
+      return isActive;
+    });
+
+    if (activeServices.length === 0) {
       return ctx.reply(
         '🛠️ *Мои услуги*\n\n' +
-        '❌ У вас нет доступных услуг.\n' +
+        '❌ У вас нет доступных активных услуг.\n' +
         'Обратитесь к администратору для получения доступа.',
         { parse_mode: 'Markdown', ...getMainMenu() }
       );
     }
 
     // Создаем inline кнопки для услуг
-    const serviceButtons = response.data.map(service => [
+    const serviceButtons = activeServices.map(service => [
       { text: `🛠️ ${service.name} - ${service.price}₽`, callback_data: `select_service_${service.id}` }
     ]);
 
-    let message = '🛠️ *Ваши услуги:*\n\n';
-    response.data.forEach((service, index) => {
+    let message = '🛠️ *Ваши активные услуги:*\n\n';
+    activeServices.forEach((service, index) => {
       message += `${index + 1}. **${service.name}**\n`;
       message += `   💰 Цена: ${service.price}₽\n`;
       message += `   📝 ${service.description || 'Описание отсутствует'}\n\n`;
@@ -202,9 +209,20 @@ const showActiveServices = async (ctx) => {
     console.log(`\n📋 === АКТИВНЫЕ УСЛУГИ ===`);
     console.log(`👤 Executer ID: ${session.executerId}`);
 
-    const response = await axios.get(`${API_BASE_URL}/api/executers/active-orders/${session.executerId}`);
+    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/active-executions/${session.executerId}`);
 
-    if (response.data.length === 0) {
+    // Дополнительная фильтрация на стороне бота - убираем отмененные и завершенные заказы
+    const activeOrders = response.data.filter(order => {
+      // Проверяем что заказ активен и услуга существует и активна
+      const hasActiveService = order.Service && order.Service.status === 'active';
+      const hasValidStatus = ['pending', 'active', 'in_progress'].includes(order.status);
+
+      console.log(`📋 Заказ ${order.order_number}: статус=${order.status}, услуга=${order.Service?.name}, активна=${hasActiveService}`);
+
+      return hasActiveService && hasValidStatus;
+    });
+
+    if (activeOrders.length === 0) {
       return ctx.reply(
         '📋 *Активные услуги*\n\n' +
         '❌ У вас нет активных услуг.\n' +
@@ -214,12 +232,12 @@ const showActiveServices = async (ctx) => {
     }
 
     // Создаем кнопки для управления заказами
-    const orderButtons = response.data.map(order => [
+    const orderButtons = activeOrders.map(order => [
       { text: `📋 ${order.order_number} - ${order.Service?.name || 'Услуга'}`, callback_data: `manage_order_${order.order_number}` }
     ]);
 
     let message = '📋 *Ваши активные услуги:*\n\n';
-    response.data.forEach((order, index) => {
+    activeOrders.forEach((order, index) => {
       message += `${index + 1}. **Заказ #${order.order_number}**\n`;
       message += `   🛠️ Услуга: ${order.Service?.name || 'Не указана'}\n`;
       message += `   📊 Статус: ${translateStatus(order.status)}\n`;
@@ -252,7 +270,7 @@ const showCompletedServices = async (ctx) => {
     console.log(`\n✅ === ВЫПОЛНЕННЫЕ УСЛУГИ ===`);
     console.log(`👤 Executer ID: ${session.executerId}`);
 
-    const response = await axios.get(`${API_BASE_URL}/api/executers/completed-orders/${session.executerId}`);
+    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/completed-orders/${session.executerId}`);
 
     if (response.data.length === 0) {
       return ctx.reply(
@@ -299,7 +317,7 @@ const showStatistics = async (ctx) => {
     console.log(`\n📊 === СТАТИСТИКА ===`);
     console.log(`👤 Executer ID: ${session.executerId}`);
 
-    const response = await axios.get(`${API_BASE_URL}/api/executers/stats/${session.executerId}`);
+    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/stats/${session.executerId}`);
     const stats = response.data;
 
     const message =
@@ -339,34 +357,72 @@ const manageOrder = async (ctx, orderNumber) => {
     console.log(`\n🎯 === УПРАВЛЕНИЕ ЗАКАЗОМ ===`);
     console.log(`📋 Order Number: ${orderNumber}`);
 
-    // Получаем информацию о заказе
-    const orderResponse = await axios.get(`${API_BASE_URL}/api/executers/order-info/${orderNumber}`, {
-      params: { executerId: session.executerId }
-    });
+    // Получаем информацию о заказе через execution ID
+    const activeOrdersResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/active-executions/${session.executerId}`);
 
-    if (!orderResponse.data.success) {
+    if (!activeOrdersResponse.data || activeOrdersResponse.data.length === 0) {
+      return ctx.reply('❌ Активные заказы не найдены');
+    }
+
+    // Находим заказ по номеру
+    const orderExecution = activeOrdersResponse.data.find(order => order.order_number === orderNumber);
+
+    if (!orderExecution) {
       return ctx.reply('❌ Заказ не найден или недоступен');
     }
 
-    const orderData = orderResponse.data.data;
+    // Получаем детали заказа
+    const orderResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/execution/${orderExecution.id}`);
 
-    // Получаем материалы для заказа
-    const materialsResponse = await axios.get(`${API_BASE_URL}/api/executers/materials/${orderNumber}`, {
-      params: { executerId: session.executerId }
-    });
+    if (!orderResponse.data || !orderResponse.data.success) {
+      return ctx.reply('❌ Заказ не найден или недоступен');
+    }
 
-    const hasMaterials = materialsResponse.data.success && materialsResponse.data.data.length > 0;
+    const orderData = orderResponse.data.data; // Используем .data.data для получения данных
+
+    // Получаем материалы для заказа (используя service_id из заказа)
+    const materialsResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/materials/${orderData.service_id}`);
+
+    // Фильтруем материалы для конкретного заказа
+    let orderMaterials = [];
+    if (materialsResponse.data && materialsResponse.data.length > 0) {
+      orderMaterials = materialsResponse.data.filter(material =>
+        material.order_number && material.order_number.toString() === orderNumber.toString()
+      );
+    }
+
+    const hasMaterials = orderMaterials.length > 0;
 
     let message = `🎯 *Управление заказом #${orderNumber}*\n\n`;
-    message += `🛠️ Услуга: ${orderData.serviceName || 'Не указана'}\n`;
+    message += `🛠️ Услуга: ${orderData.Service?.name || 'Не указана'}\n`;
     message += `📊 Статус: ${translateStatus(orderData.status || 'active')}\n`;
-    message += `💰 Сумма: ${orderData.price || 'Не указана'}₽\n`;
-    message += `📅 Создан: ${orderData.createdAt ? new Date(orderData.createdAt).toLocaleDateString() : 'Не указано'}\n\n`;
+
+    // Получаем индивидуальную цену для исполнителя
+    try {
+      const servicesResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/services/${session.executerId}`);
+      const serviceWithPrice = servicesResponse.data.find(s => s.id === orderData.service_id);
+      const individualPrice = serviceWithPrice?.price || orderData.Service?.price || 'Не указана';
+      message += `💰 Ваша цена: ${individualPrice}₽\n`;
+    } catch (priceError) {
+      message += `💰 Сумма: ${orderData.Service?.price || 'Не указана'}₽\n`;
+    }
+
+    message += `📅 Создан: ${orderData.created_at ? new Date(orderData.created_at).toLocaleDateString() : 'Не указано'}\n\n`;
 
     if (hasMaterials) {
-      message += `📦 Материалы назначены\n\n`;
+      message += `📦 *Ваши материалы:*\n\n`;
+
+      orderMaterials.forEach((material, index) => {
+        message += `${index + 1}. \`${material.contents || material.name || 'Материал'}\`\n`;
+        if (material.description) {
+          message += `   📝 ${material.description}\n`;
+        }
+        message += '\n';
+      });
+
+      message += `_Материалы выше можно скопировать_\n\n`;
     } else {
-      message += `📦 Материалы не назначены\n\n`;
+      message += `📦 Материалы для заказа №${orderNumber} не назначены\n\n`;
     }
 
     message += `Выберите действие:`;
@@ -376,14 +432,13 @@ const manageOrder = async (ctx, orderNumber) => {
 
     if (hasMaterials) {
       managementButtons.push([
-        { text: '📝 Материалы в виде текста', callback_data: `show_materials_text_${orderNumber}` },
         { text: '🔄 Заменить материалы', callback_data: `replace_materials_${orderNumber}` }
       ]);
     }
 
     managementButtons.push([
       { text: '✅ Выполнить услугу', callback_data: `complete_order_${orderNumber}` },
-      { text: '❌ Отменить услугу', callback_data: `cancel_order_${orderNumber}` }
+      { text: '❌ Не выполнил услугу', callback_data: `cancel_order_${orderNumber}` }
     ]);
 
     managementButtons.push([
@@ -544,30 +599,56 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
       let materialsButtons = [];
 
       try {
-        const materialsResponse = await axios.get(`${API_BASE_URL}/api/executers/materials/${orderNumber}`, {
-          params: { executerId: session.executerId }
-        });
+        console.log(`🔍 Получаем материалы для заказа ${orderNumber}, service_id из заказа`);
 
-        if (materialsResponse.data.success && materialsResponse.data.data.length > 0) {
-          const materials = materialsResponse.data.data;
-          materialsMessage = `\n\n📦 *Ваши материалы:*\n\n`;
+        // Сначала получаем информацию о заказе чтобы узнать service_id
+        const orderResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/execution/${orderNumber}`);
 
-          materials.forEach((material, index) => {
-            materialsMessage += `${index + 1}. \`${material.contents || material.name || 'Материал'}\`\n`;
-            if (material.description) {
-              materialsMessage += `   📝 ${material.description}\n`;
+        if (orderResponse.data.success && orderResponse.data.data) {
+          const orderData = orderResponse.data.data;
+          const serviceId = orderData.service_id;
+
+          console.log(`📋 Service ID для заказа ${orderNumber}: ${serviceId}`);
+
+          // Теперь получаем материалы по service_id
+          const materialsResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/materials/${serviceId}`);
+
+          if (materialsResponse.data && materialsResponse.data.length > 0) {
+            const allMaterials = materialsResponse.data;
+
+            // Фильтруем материалы для этого конкретного заказа
+            const orderMaterials = allMaterials.filter(material =>
+              material.order_number && material.order_number.toString() === orderNumber.toString()
+            );
+
+            console.log(`📦 Всего материалов: ${allMaterials.length}, для заказа ${orderNumber}: ${orderMaterials.length}`);
+
+            if (orderMaterials.length > 0) {
+              materialsMessage = `\n\n📦 *Ваши материалы:*\n\n`;
+
+              orderMaterials.forEach((material, index) => {
+                materialsMessage += `${index + 1}. \`${material.contents || material.name || 'Материал'}\`\n`;
+                if (material.description) {
+                  materialsMessage += `   📝 ${material.description}\n`;
+                }
+                materialsMessage += '\n';
+              });
+
+              materialsMessage += `_Материалы выше можно скопировать_\n`;
+
+              // Добавляем кнопку замены материалов
+              materialsButtons = [
+                [{ text: '🔄 Заменить материалы', callback_data: `replace_materials_${orderNumber}` }]
+              ];
+            } else {
+              materialsMessage = `\n\n📦 Материалы для заказа №${orderNumber} пока не назначены администратором.`;
             }
-            materialsMessage += '\n';
-          });
-
-          materialsMessage += `_Материалы выше можно скопировать_\n`;
-
-          // Добавляем кнопку замены материалов
-          materialsButtons = [
-            [{ text: '🔄 Заменить материалы', callback_data: `replace_materials_${orderNumber}` }]
-          ];
+          } else {
+            materialsMessage = `\n\n📦 Материалы пока не назначены администратором.`;
+          }
         } else {
-          materialsMessage = `\n\n📦 Материалы пока не назначены администратором.`;
+          console.log(`❌ Не удалось получить информацию о заказе ${orderNumber}`);
+          materialsMessage = `\n\n📦 Не удалось получить информацию о материалах.`;
         }
       } catch (materialError) {
         console.error('❌ Ошибка получения материалов:', materialError);
@@ -612,12 +693,12 @@ const handleCancellationReasonInput = async (ctx, reason) => {
     const session = userSessions[chatId];
     const waitingData = waitingStates.cancellationReason[chatId];
 
-    console.log(`\n❌ === ПРИЧИНА ОТМЕНЫ ===`);
+    console.log(`\n❌ === ПРИЧИНА НЕВЫПОЛНЕНИЯ ===`);
     console.log(`📋 Order Number: ${waitingData.orderNumber}`);
     console.log(`📝 Reason: ${reason}`);
 
     // Отменяем заказ
-    const response = await axios.post(`${API_BASE_URL}/api/executers/cancel-order`, {
+    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/cancel-order`, {
       orderNumber: waitingData.orderNumber,
       executerId: session.executerId,
       reason: reason
@@ -628,17 +709,18 @@ const handleCancellationReasonInput = async (ctx, reason) => {
       delete waitingStates.cancellationReason[chatId];
 
       await ctx.reply(
-        `❌ *Заказ #${waitingData.orderNumber} отменен*\n\n` +
+        `❌ *Услуга #${waitingData.orderNumber} не выполнена*\n\n` +
         `📝 Причина: ${reason}\n` +
-        `🔄 Материалы возвращены в статус "Доступны"\n\n` +
-        `Заказ удален из активных услуг.`,
+        `🔄 Материалы возвращены в статус "Доступны"\n` +
+        `🗑️ Заказ удален из системы\n\n` +
+        `Заказ больше не отображается в активных услугах.`,
         {
           parse_mode: 'Markdown',
           ...getMainMenu()
         }
       );
 
-      await logActivity(session.executerId, 'cancel_order', `Отменен заказ ${waitingData.orderNumber}. Причина: ${reason}`);
+      await logActivity(session.executerId, 'cancel_order', `Не выполнил услугу ${waitingData.orderNumber}. Причина: ${reason}`);
     } else {
       ctx.reply(`❌ Ошибка отмены заказа: ${response.data.message}`);
     }
@@ -927,7 +1009,7 @@ bot.action(/^complete_order_(.+)$/, async (ctx) => {
     console.log(`📋 Order Number: ${orderNumber}`);
 
     // Выполняем заказ
-    const response = await axios.post(`${API_BASE_URL}/api/executers/complete-order`, {
+    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/complete-order`, {
       orderNumber: orderNumber,
       executerId: session.executerId
     });
@@ -975,7 +1057,7 @@ bot.action(/^cancel_order_(.+)$/, async (ctx) => {
       return ctx.reply('❌ Необходима авторизация. Нажмите /start');
     }
 
-    console.log(`\n❌ === ОТМЕНА ЗАКАЗА ===`);
+    console.log(`\n❌ === НЕ ВЫПОЛНИЛ УСЛУГУ ===`);
     console.log(`📋 Order Number: ${orderNumber}`);
 
     // Устанавливаем состояние ожидания причины отмены
@@ -984,9 +1066,9 @@ bot.action(/^cancel_order_(.+)$/, async (ctx) => {
     };
 
     await ctx.reply(
-      `❌ *Отмена заказа #${orderNumber}*\n\n` +
-      `📝 **Укажите причину отмены заказа:**\n` +
-      `Например: "Ошибка в заказе", "Нет материалов", "Технические проблемы"`,
+      `❌ *Не выполнил услугу #${orderNumber}*\n\n` +
+      `📝 **Укажите причину невыполнения услуги:**\n` +
+      `Например: "Нет нужных материалов", "Технические проблемы", "Не смог связаться с клиентом"`,
       {
         parse_mode: 'Markdown',
         reply_markup: {

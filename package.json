@@ -1,0 +1,41 @@
+{
+  "name": "keyfory-platform",
+  "version": "1.0.0",
+  "description": "Full-Stack Digital Services Platform with Telegram Bot Integration",
+  "scripts": {
+    "install:all": "npm run install:backend && npm run install:bot && npm run install:frontend",
+    "install:backend": "cd backend && npm install",
+    "install:bot": "cd bot && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:bot": "cd bot && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "start:backend": "cd backend && npm start",
+    "start:bot": "cd bot && npm start",
+    "start:frontend": "cd frontend && npm start",
+    "build:frontend": "cd frontend && npm run build",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "keywords": [
+    "digital-services",
+    "telegram-bot",
+    "react",
+    "nodejs",
+    "postgresql",
+    "docker"
+  ],
+  "author": "Keyfory Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "workspaces": [
+    "backend",
+    "bot",
+    "frontend"
+  ]
+}

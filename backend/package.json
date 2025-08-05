@@ -1,31 +1,33 @@
 {
-  "name": "backend",
+  "name": "keyfory-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Backend API for Keyfory Digital Services Platform",
+  "main": "api/server.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node api/server.js",
+    "dev": "nodemon api/server.js",
+    "prod": "NODE_ENV=production node api/server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": ["api", "keyfory", "digital-services", "telegram-bot"],
+  "author": "Keyfory Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "dependencies": {
-    "bcrypt": "^6.0.0",
-    "bcryptjs": "^3.0.2",
+    "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
-    "csv-parser": "^3.2.0",
-    "dotenv": "^17.2.0",
-    "express": "^5.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.2",
-    "node-fetch": "^3.3.2",
-    "nodemon": "^3.1.10",
-    "pg": "^8.16.3",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.12.0",
     "pg-hstore": "^2.3.4",
-    "recharts": "^3.1.0",
-    "sequelize": "^6.37.7",
-    "xlsx": "^0.18.5"
+    "sequelize": "^6.37.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
   }
 }

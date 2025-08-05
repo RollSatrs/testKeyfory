@@ -50,10 +50,18 @@ export async function getAllServices() {
                 ]
             });
 
-            // Получаем последний активный заказ для услуги
-            const latestOrder = await ServiceExecution.findOne({
-                where: { service_id: service.id },
-                attributes: ['order_number', 'status'],
+            // Получаем все активные заказы для услуги с именами исполнителей
+            const activeOrders = await ServiceExecution.findAll({
+                where: {
+                    service_id: service.id,
+                    status: ['in_progress', 'active', 'pending_approval']
+                },
+                include: [{
+                    model: Executer,
+                    as: 'Executer',
+                    attributes: ['id', 'name', 'telegram_id']
+                }],
+                attributes: ['order_number', 'status', 'executer_id'],
                 order: [['created_at', 'DESC']]
             });
 
@@ -61,7 +69,12 @@ export async function getAllServices() {
                 ...service.dataValues,
                 source: sources.join(', ') || '-',
                 available_keys: availableKeys,
-                order_number: latestOrder?.order_number || null,
+                active_orders: activeOrders.map(order => ({
+                    order_number: order.order_number,
+                    status: order.status,
+                    executer_id: order.executer_id,
+                    executer_name: order.Executer?.name || `ID: ${order.executer_id}`
+                })),
                 custom_pricing: customPricing.map(pricing => ({
                     executer_id: pricing.executer_id,
                     executer_name: pricing.Executer?.name || `Исполнитель ${pricing.executer_id}`,
