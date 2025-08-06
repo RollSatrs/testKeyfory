@@ -380,10 +380,22 @@ logging:
 # Проверить логи
 docker-compose logs
 
-# Пересобрать образы
+# Если ошибка с package-lock.json, то:
+# 1. Очистить Docker кэш
+docker system prune -a
+
+# 2. Пересобрать образы без кэша
 docker-compose build --no-cache
+
+# 3. Перезапустить
 docker-compose up -d
 ```
+
+**Распространенные ошибки сборки:**
+
+- `npm ci` требует `package-lock.json` - исправлено в Dockerfile
+- Ошибки прав доступа - добавить `--chown=node:node` в COPY
+- Нехватка памяти - увеличить лимиты Docker
 
 #### 2. **База данных не подключается**
 
