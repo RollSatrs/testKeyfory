@@ -2,10 +2,19 @@ import { Telegraf } from 'telegraf';
 import dotenv from 'dotenv';
 import bcrypt from 'bcrypt';
 import fetch from 'node-fetch';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config({ path: 'C:/Users/sarse/Desktop/My/FullProject/testKeyfory/.env' });
+// Простой путь к общему .env файлу в корне проекта
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const token = process.env.ADMINBOT;
+// Идем на 1 уровень вверх: bot -> testKeyfory
+const projectRoot = path.resolve(__dirname, '..');
+const envPath = path.join(projectRoot, '.env');
+
+console.log(`📄 [bot/index.js] Использую .env файл: ${envPath}`);
+dotenv.config({ path: envPath });const token = process.env.ADMINBOT;
 const telegramId = process.env.TELEGRAMID;
 
 if (!token) {

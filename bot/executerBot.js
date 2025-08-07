@@ -1,10 +1,19 @@
 import { Telegraf, Markup, session } from 'telegraf';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config({ path: 'C:/Users/sarse/Desktop/My/FullProject/testKeyfory/.env' })
+// Простой путь к общему .env файлу в корне проекта
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Конфигурация
+// Идем на 1 уровень вверх: bot -> testKeyfory
+const projectRoot = path.resolve(__dirname, '..');
+const envPath = path.join(projectRoot, '.env');
+
+console.log(`📄 [executerBot.js] Использую .env файл: ${envPath}`);
+dotenv.config({ path: envPath });// Конфигурация
 const BOT_TOKEN = process.env.EXECUTER_BOT_TOKEN;
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
 
