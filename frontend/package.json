@@ -11,7 +11,12 @@
     "lint": "eslint .",
     "prod": "npm run build"
   },
-  "keywords": ["react", "admin-panel", "keyfory", "digital-services"],
+  "keywords": [
+    "react",
+    "admin-panel",
+    "keyfory",
+    "digital-services"
+  ],
   "author": "Keyfory Team",
   "license": "MIT",
   "engines": {
@@ -23,8 +28,11 @@
     "antd": "^5.26.0",
     "axios": "^1.7.2",
     "react": "^18.3.1",
+    "react-csv": "^2.2.2",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.1"
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^6.26.1",
+    "recharts": "^3.1.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
