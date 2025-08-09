@@ -13,7 +13,9 @@ const projectRoot = path.resolve(__dirname, '..');
 const envPath = path.join(projectRoot, '.env');
 
 console.log(`📄 [executerBot.js] Использую .env файл: ${envPath}`);
-dotenv.config({ path: envPath });// Конфигурация
+dotenv.config({ path: envPath });
+
+// Конфигурация
 const BOT_TOKEN = process.env.EXECUTER_BOT_TOKEN;
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
 
@@ -52,6 +54,62 @@ const translateStatus = (status) => {
     'cancelled': '❌ Отменён'
   };
   return statusMap[status] || status;
+};
+
+// Функция уведомления о замене материала
+export const notifyMaterialReplacement = async (notificationData) => {
+  try {
+    const { telegramId, orderId, serviceName, oldMaterial, newMaterial, adminComment } = notificationData;
+
+    console.log(`📨 Отправка уведомления о замене материала для ${telegramId}`);
+
+    let message = `🔄 *Материал заменен!*\n\n`;
+    message += `📋 Заказ: #${orderId}\n`;
+    message += `🛠️ Услуга: ${serviceName}\n\n`;
+    message += `❌ Старый материал:\n\`${oldMaterial}\`\n\n`;
+    message += `✅ Новый материал:\n\`${newMaterial}\`\n\n`;
+
+    if (adminComment) {
+      message += `💬 Комментарий администратора:\n${adminComment}\n\n`;
+    }
+
+    message += `Можете продолжать работу с новым материалом.`;
+
+    // Находим чат с пользователем и отправляем уведомление
+    const chatId = Object.keys(userSessions).find(id =>
+      userSessions[id].telegramId === parseInt(telegramId)
+    );
+
+    if (chatId) {
+      await bot.telegram.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🎯 Управлять заказом', callback_data: `manage_order_${orderId}` }],
+            [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+          ]
+        }
+      });
+
+      console.log(`✅ Уведомление отправлено исполнителю ${telegramId}`);
+    } else {
+      console.log(`⚠️ Активная сессия для исполнителя ${telegramId} не найдена`);
+
+      // Пытаемся отправить напрямую по telegram_id
+      try {
+        await bot.telegram.sendMessage(telegramId, message, {
+          parse_mode: 'Markdown'
+        });
+        console.log(`✅ Уведомление отправлено напрямую исполнителю ${telegramId}`);
+      } catch (directError) {
+        console.error(`❌ Не удалось отправить прямое уведомление: ${directError.message}`);
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка отправки уведомления о замене материала:', error);
+    throw error;
+  }
 };
 
 // Функция логирования активности
@@ -116,7 +174,7 @@ bot.start(async (ctx) => {
         `🎉 *Добро пожаловать, ${executerData.name || firstName}!*\n\n` +
         `✅ Авторизация успешна\n` +
         `🆔 ID исполнителя: ${executerData.id}\n` +
-        `� Баланс: ${executerData.balance || 0}₽\n` +
+        `💰 Баланс: ${executerData.balance || 0}₽\n` +
         `⭐ Рейтинг: ${executerData.rating || 0}\n\n` +
         `Выберите действие из меню:`,
         {
@@ -387,17 +445,40 @@ const manageOrder = async (ctx, orderNumber) => {
       return ctx.reply('❌ Заказ не найден или недоступен');
     }
 
-    const orderData = orderResponse.data.data; // Используем .data.data для получения данных
+    const orderData = orderResponse.data.data;
 
-    // Получаем материалы для заказа (используя service_id из заказа)
-    const materialsResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/materials/${orderData.service_id}`);
-
-    // Фильтруем материалы для конкретного заказа
+    // Получаем материалы для заказа через правильный API endpoint
     let orderMaterials = [];
-    if (materialsResponse.data && materialsResponse.data.length > 0) {
-      orderMaterials = materialsResponse.data.filter(material =>
-        material.order_number && material.order_number.toString() === orderNumber.toString()
-      );
+    try {
+      console.log(`🔍 Запрашиваем материалы для заказа ${orderNumber}`);
+      console.log(`🔗 URL: ${API_BASE_URL}/api/executers-bot/order-materials/${orderNumber}`);
+      console.log(`👤 Executer ID: ${session.executerId}`);
+
+      const materialsResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/order-materials/${orderNumber}`, {
+        params: { telegramId: session.telegramId }
+      });
+
+      console.log(`📦 Materials Response Status:`, materialsResponse.status);
+      console.log(`📦 Materials Response Data:`, JSON.stringify(materialsResponse.data, null, 2));
+
+      // API может возвращать как объект {success: true, data: []} так и просто массив []
+      if (materialsResponse.data && Array.isArray(materialsResponse.data)) {
+        // Прямой массив материалов
+        orderMaterials = materialsResponse.data;
+        console.log(`✅ Материалы загружены (массив): ${orderMaterials.length} штук`);
+      } else if (materialsResponse.data && materialsResponse.data.success && materialsResponse.data.data) {
+        // Объект с success и data
+        orderMaterials = materialsResponse.data.data;
+        console.log(`✅ Материалы загружены (объект): ${orderMaterials.length} штук`);
+      } else {
+        console.log(`⚠️ Материалы не найдены или ошибка API`);
+        console.log(`🔍 Response type:`, typeof materialsResponse.data);
+        console.log(`🔍 Is array:`, Array.isArray(materialsResponse.data));
+      }
+    } catch (materialError) {
+      console.error('❌ Ошибка получения материалов:', materialError.message);
+      console.error('📍 Error response:', materialError.response?.data);
+      console.error('📍 Error status:', materialError.response?.status);
     }
 
     const hasMaterials = orderMaterials.length > 0;
@@ -419,7 +500,7 @@ const manageOrder = async (ctx, orderNumber) => {
     message += `📅 Создан: ${orderData.created_at ? new Date(orderData.created_at).toLocaleDateString() : 'Не указано'}\n\n`;
 
     if (hasMaterials) {
-      message += `📦 *Ваши материалы:*\n\n`;
+      message += `📦 *Доступные материалы для услуги:*\n\n`;
 
       orderMaterials.forEach((material, index) => {
         message += `${index + 1}. \`${material.contents || material.name || 'Материал'}\`\n`;
@@ -430,8 +511,9 @@ const manageOrder = async (ctx, orderNumber) => {
       });
 
       message += `_Материалы выше можно скопировать_\n\n`;
+      message += `💡 Выберите материал для назначения заказу или работайте с любым доступным.\n\n`;
     } else {
-      message += `📦 Материалы для заказа №${orderNumber} не назначены\n\n`;
+      message += `📦 Нет доступных материалов для этой услуги\n\n`;
     }
 
     message += `Выберите действие:`;
@@ -439,17 +521,34 @@ const manageOrder = async (ctx, orderNumber) => {
     // Создаем кнопки управления
     const managementButtons = [];
 
+    // Кнопка замены материалов (показываем всегда, но с разным текстом)
     if (hasMaterials) {
+      // Добавляем кнопки для выбора материалов
+      const limitedMaterials = orderMaterials.slice(0, 4);
+      limitedMaterials.forEach((material, index) => {
+        const materialText = material.contents || material.name || `Материал ${index + 1}`;
+        managementButtons.push([{
+          text: `📦 ${materialText.length > 30 ? materialText.substring(0, 30) + '...' : materialText}`,
+          callback_data: `assign_material_${orderNumber}_${material.id}`
+        }]);
+      });
+
       managementButtons.push([
         { text: '🔄 Заменить материалы', callback_data: `replace_materials_${orderNumber}` }
       ]);
+    } else {
+      managementButtons.push([
+        { text: '� Обратиться к админу', callback_data: `contact_admin_${orderNumber}` }
+      ]);
     }
 
+    // Основные кнопки управления заказом
     managementButtons.push([
       { text: '✅ Выполнить услугу', callback_data: `complete_order_${orderNumber}` },
       { text: '❌ Не выполнил услугу', callback_data: `cancel_order_${orderNumber}` }
     ]);
 
+    // Кнопка возврата к активным услугам
     managementButtons.push([
       { text: '🔙 К активным услугам', callback_data: 'back_to_active' }
     ]);
@@ -592,11 +691,12 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
     console.log(`📋 Order Number: ${orderNumber}`);
     console.log(`🛠️ Service ID: ${waitingData.serviceId}`);
 
-    // Создаем ServiceExecution
+    // Создаем ServiceExecution с автоматическим назначением материала
     const response = await axios.post(`${API_BASE_URL}/api/executers/service-execution`, {
       serviceId: waitingData.serviceId,
       executerId: session.executerId,
-      orderNumber: orderNumber
+      orderNumber: orderNumber,
+      autoAssignMaterial: true  // Добавляем флаг для автоматического назначения
     });
 
     if (response.data.success) {
@@ -608,56 +708,73 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
       let materialsButtons = [];
 
       try {
-        console.log(`🔍 Получаем материалы для заказа ${orderNumber}, service_id из заказа`);
+        console.log(`🔍 Получаем материалы для заказа ${orderNumber}`);
 
-        // Сначала получаем информацию о заказе чтобы узнать service_id
-        const orderResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/execution/${orderNumber}`);
+        // Получаем материалы через bot endpoint
+        const materialsResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/order-materials/${orderNumber}`, {
+          params: { telegramId: session.telegramId }
+        });
 
-        if (orderResponse.data.success && orderResponse.data.data) {
-          const orderData = orderResponse.data.data;
-          const serviceId = orderData.service_id;
+        if (materialsResponse.data && materialsResponse.data.success && materialsResponse.data.data) {
+          const orderMaterials = materialsResponse.data.data;
 
-          console.log(`📋 Service ID для заказа ${orderNumber}: ${serviceId}`);
+          console.log(`📦 Найдено материалов для заказа ${orderNumber}: ${orderMaterials.length}`);
 
-          // Теперь получаем материалы по service_id
-          const materialsResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/materials/${serviceId}`);
+          if (orderMaterials.length > 0) {
+            materialsMessage = `\n\n📦 *Ваши материалы:*\n\n`;
 
-          if (materialsResponse.data && materialsResponse.data.length > 0) {
-            const allMaterials = materialsResponse.data;
+            orderMaterials.forEach((material, index) => {
+              materialsMessage += `${index + 1}. \`${material.contents || material.name || 'Материал'}\`\n`;
+              if (material.description) {
+                materialsMessage += `   📝 ${material.description}\n`;
+              }
+              materialsMessage += '\n';
+            });
 
-            // Фильтруем материалы для этого конкретного заказа
-            const orderMaterials = allMaterials.filter(material =>
-              material.order_number && material.order_number.toString() === orderNumber.toString()
-            );
+            materialsMessage += `_Материалы выше можно скопировать_\n`;
 
-            console.log(`📦 Всего материалов: ${allMaterials.length}, для заказа ${orderNumber}: ${orderMaterials.length}`);
+            // Добавляем кнопку замены материалов
+            materialsButtons = [
+              [{ text: '🔄 Заменить материалы', callback_data: `replace_materials_${orderNumber}` }]
+            ];
+          } else {
+            materialsMessage = `\n\n📦 Материалы для заказа №${orderNumber} будут назначены автоматически.\n⏳ Пожалуйста, подождите...`;
 
-            if (orderMaterials.length > 0) {
-              materialsMessage = `\n\n📦 *Ваши материалы:*\n\n`;
-
-              orderMaterials.forEach((material, index) => {
-                materialsMessage += `${index + 1}. \`${material.contents || material.name || 'Материал'}\`\n`;
-                if (material.description) {
-                  materialsMessage += `   📝 ${material.description}\n`;
-                }
-                materialsMessage += '\n';
+            // Пытаемся назначить материал вручную через API
+            try {
+              const assignResponse = await axios.post(`${API_BASE_URL}/api/executers/assign-material-to-order`, {
+                orderNumber: orderNumber,
+                serviceId: waitingData.serviceId,
+                executerId: session.executerId
               });
 
-              materialsMessage += `_Материалы выше можно скопировать_\n`;
+              if (assignResponse.data.success) {
+                materialsMessage = `\n\n📦 *Материал автоматически назначен:*\n\n`;
+                materialsMessage += `1. \`${assignResponse.data.material.contents}\`\n\n`;
+                materialsMessage += `_Материал выше можно скопировать_\n`;
 
-              // Добавляем кнопку замены материалов
+                materialsButtons = [
+                  [{ text: '� Заменить материалы', callback_data: `replace_materials_${orderNumber}` }]
+                ];
+              } else {
+                materialsMessage = `\n\n📦 Нет доступных материалов для этой услуги.\n📞 Обратитесь к администратору.`;
+                materialsButtons = [
+                  [{ text: '📞 Связаться с админом', callback_data: `contact_admin_${orderNumber}` }]
+                ];
+              }
+            } catch (assignError) {
+              console.error('❌ Ошибка автоназначения материала:', assignError);
+              materialsMessage = `\n\n📦 Ошибка назначения материала.\n📞 Обратитесь к администратору.`;
               materialsButtons = [
-                [{ text: '🔄 Заменить материалы', callback_data: `replace_materials_${orderNumber}` }]
+                [{ text: '📞 Связаться с админом', callback_data: `contact_admin_${orderNumber}` }]
               ];
-            } else {
-              materialsMessage = `\n\n📦 Материалы для заказа №${orderNumber} пока не назначены администратором.`;
             }
-          } else {
-            materialsMessage = `\n\n📦 Материалы пока не назначены администратором.`;
           }
         } else {
-          console.log(`❌ Не удалось получить информацию о заказе ${orderNumber}`);
-          materialsMessage = `\n\n📦 Не удалось получить информацию о материалах.`;
+          materialsMessage = `\n\n📦 Материалы пока не назначены администратором.`;
+          materialsButtons = [
+            [{ text: '📦 Запросить материалы', callback_data: `request_materials_${orderNumber}` }]
+          ];
         }
       } catch (materialError) {
         console.error('❌ Ошибка получения материалов:', materialError);
@@ -691,7 +808,11 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
 
   } catch (error) {
     console.error('❌ Ошибка создания заказа:', error);
-    ctx.reply('❌ Ошибка при создании заказа. Попробуйте еще раз.');
+    if (error.response?.data?.message) {
+      ctx.reply(`❌ ${error.response.data.message}`);
+    } else {
+      ctx.reply('❌ Ошибка при создании заказа. Попробуйте еще раз.');
+    }
   }
 };
 
@@ -707,9 +828,9 @@ const handleCancellationReasonInput = async (ctx, reason) => {
     console.log(`📝 Reason: ${reason}`);
 
     // Отменяем заказ
-    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/cancel-order`, {
+    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/bot-cancel-order`, {
       orderNumber: waitingData.orderNumber,
-      executerId: session.executerId,
+      telegramId: session.telegramId,
       reason: reason
     });
 
@@ -861,19 +982,6 @@ bot.action(/^manage_order_(.+)$/, async (ctx) => {
   }
 });
 
-// Показать материалы в виде текста
-bot.action(/^show_materials_text_(.+)$/, async (ctx) => {
-  try {
-    await ctx.answerCbQuery();
-    const orderNumber = ctx.match[1];
-    await showMaterialsText(ctx, orderNumber);
-  } catch (error) {
-    console.error('❌ Ошибка показа материалов:', error);
-    await ctx.answerCbQuery();
-    ctx.reply('❌ Ошибка при загрузке материалов');
-  }
-});
-
 // Заменить материалы
 bot.action(/^replace_materials_(.+)$/, async (ctx) => {
   try {
@@ -890,8 +998,8 @@ bot.action(/^replace_materials_(.+)$/, async (ctx) => {
     console.log(`📋 Order Number: ${orderNumber}`);
 
     // Получаем материалы заказа
-    const response = await axios.get(`${API_BASE_URL}/api/executers/materials/${orderNumber}`, {
-      params: { executerId: session.executerId }
+    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/order-materials/${orderNumber}`, {
+      params: { telegramId: session.telegramId }
     });
 
     if (!response.data.success || response.data.data.length === 0) {
@@ -940,6 +1048,108 @@ bot.action(/^replace_materials_(.+)$/, async (ctx) => {
   }
 });
 
+// Запросить материалы (для заказов без материалов)
+bot.action(/^request_materials_(.+)$/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+    const orderNumber = ctx.match[1];
+
+    await ctx.reply(
+      `📦 *Запрос материалов для заказа #${orderNumber}*\n\n` +
+      `Материалы для данного заказа еще не назначены администратором.\n\n` +
+      `📱 Обратитесь к администратору для назначения материалов к заказу.`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🎯 К управлению заказом', callback_data: `manage_order_${orderNumber}` }],
+            [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+          ]
+        }
+      }
+    );
+
+  } catch (error) {
+    console.error('❌ Ошибка запроса материалов:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Ошибка при запросе материалов');
+  }
+});
+
+// Обратиться к админу (для заказов без материалов)
+bot.action(/^contact_admin_(.+)$/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+    const orderNumber = ctx.match[1];
+
+    await ctx.reply(
+      `📞 *Обращение к администратору*\n\n` +
+      `Заказ #${orderNumber} не имеет назначенных материалов.\n\n` +
+      `📱 Обратитесь к администратору для:\n` +
+      `• Назначения материалов к заказу\n` +
+      `• Получения инструкций по выполнению\n` +
+      `• Решения технических вопросов\n\n` +
+      `📧 Контакты администратора будут предоставлены отдельно.`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🎯 К управлению заказом', callback_data: `manage_order_${orderNumber}` }],
+            [{ text: '🏠 Главное меню', callback_data: 'main_menu' }]
+          ]
+        }
+      }
+    );
+
+  } catch (error) {
+    console.error('❌ Ошибка обращения к админу:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Ошибка при обращении к администратору');
+  }
+});
+
+// Назначение материала на заказ
+bot.action(/^assign_material_(.+)_(.+)$/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const orderNumber = ctx.match[1];
+    const materialId = ctx.match[2];
+    const chatId = ctx.chat.id;
+    const session = userSessions[chatId];
+
+    if (!session?.authenticated) {
+      return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    }
+
+    console.log(`\n📦 === НАЗНАЧЕНИЕ МАТЕРИАЛА ===`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`📦 Material ID: ${materialId}`);
+    console.log(`👤 Telegram ID: ${session.telegramId}`);
+
+    // Назначаем материал на заказ
+    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/assign-material`, {
+      orderNumber: orderNumber,
+      materialId: materialId,
+      telegramId: session.telegramId
+    });
+
+    if (response.data && response.data.success) {
+      await ctx.reply(`✅ Материал успешно назначен на заказ #${orderNumber}!`);
+
+      // Возвращаемся к управлению заказом
+      await manageOrder(ctx, orderNumber);
+    } else {
+      await ctx.reply(`❌ Ошибка при назначении материала: ${response.data?.error || 'Неизвестная ошибка'}`);
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка назначения материала:', error);
+    await ctx.answerCbQuery();
+    ctx.reply('❌ Ошибка при назначении материала');
+  }
+});
+
 // Выбор материала для замены
 bot.action(/^select_material_(.+)_(.+)$/, async (ctx) => {
   try {
@@ -959,8 +1169,8 @@ bot.action(/^select_material_(.+)_(.+)$/, async (ctx) => {
     console.log(`📦 Material ID: ${materialId}`);
 
     // Получаем информацию о материале
-    const response = await axios.get(`${API_BASE_URL}/api/executers/materials/${orderNumber}`, {
-      params: { executerId: session.executerId }
+    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/order-materials/${orderNumber}`, {
+      params: { telegramId: session.telegramId }
     });
 
     if (!response.data.success) {
@@ -1018,9 +1228,9 @@ bot.action(/^complete_order_(.+)$/, async (ctx) => {
     console.log(`📋 Order Number: ${orderNumber}`);
 
     // Выполняем заказ
-    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/complete-order`, {
+    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/bot-complete-order`, {
       orderNumber: orderNumber,
-      executerId: session.executerId
+      telegramId: session.telegramId
     });
 
     if (response.data.success) {

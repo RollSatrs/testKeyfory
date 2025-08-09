@@ -553,55 +553,66 @@ export const getMaterialsByOrder = async (orderId) => {
 };
 
 // Запросить замену материала
-export const requestMaterialReplacement = async (orderId, executerId, reason, materialId = null) => {
+export const requestMaterialReplacement = async (orderNumber, materialId, executerId, reason) => {
   try {
-    // Проверяем, что заказ существует и принадлежит исполнителю
-    const order = await Order.findOne({
-      where: { id: orderId, executer_id: executerId },
+    // Находим ServiceExecution по номеру заказа
+    const serviceExecution = await ServiceExecution.findOne({
+      where: {
+        order_number: orderNumber,
+        executer_id: executerId
+      },
       include: [
         {
           model: Services,
-          attributes: ['name']
+          as: 'Service',
+          attributes: ['id', 'name']
         }
       ]
     });
 
-    if (!order) {
+    if (!serviceExecution) {
       throw new Error('Заказ не найден');
+    }
+
+    // Проверяем материал
+    const material = await Material.findByPk(materialId);
+    if (!material) {
+      throw new Error('Материал не найден');
     }
 
     // Создаем запрос на замену материала
     const replacementRequest = await MaterialReplacement.create({
-      order_id: orderId,
+      order_id: serviceExecution.id, // Используем ID ServiceExecution как order_id
       executer_id: executerId,
       material_id: materialId,
       reason: reason,
       status: 'pending'
     });
 
-    // Меняем статус материала на "замену"
-    if (materialId) {
-      await Material.update(
-        { status: 'pending_replace' },
-        { where: { id: materialId } }
-      );
-    }
+    // Меняем статус материала на "ожидает замену"
+    await Material.update(
+      { status: 'pending_replace' },
+      { where: { id: materialId } }
+    );
 
     // Записываем лог запроса
     await createExecuterLog(
       executerId,
       'request_replacement',
-      `Запрос замены материала: ${reason}`,
-      orderId
+      `Запрос замены материала для заказа #${orderNumber}: ${reason}`,
+      serviceExecution.id,
+      serviceExecution.service_id
     );
 
     // Обновляем активность
     await updateExecuterActivity(executerId);
 
-    return { success: true, message: 'Запрос на замену отправлен', requestId: replacementRequest.id };
+    console.log(`✅ Запрос замены создан для заказа #${orderNumber}, материал ${materialId}`);
+
+    return replacementRequest;
   } catch (err) {
     console.error('Ошибка при запросе замены:', err);
-    throw new Error('Ошибка сервера');
+    throw new Error(err.message || 'Ошибка сервера');
   }
 };
 

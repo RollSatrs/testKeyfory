@@ -231,3 +231,23 @@ materialRoute.post('/add-single', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// POST /materials/replace - заменить материал
+materialRoute.post('/replace', async (req, res) => {
+    try {
+        const { oldMaterialId, newMaterialId } = req.body;
+
+        if (!oldMaterialId || !newMaterialId) {
+            return res.status(400).json({ error: 'ID старого и нового материала обязательны' });
+        }
+
+        // Импортируем сервис для замены материалов
+        const { replaceMaterial } = await import('../../service/ServiceAdmim/adminService.js');
+
+        const result = await replaceMaterial(oldMaterialId, newMaterialId);
+        res.json(result);
+    } catch (error) {
+        console.error('Error replacing material:', error);
+        res.status(500).json({ error: error.message });
+    }
+});

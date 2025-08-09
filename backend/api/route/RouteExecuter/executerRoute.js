@@ -193,29 +193,55 @@ executerRoute.get('/order-info/:orderNumber', async (req, res) => {
 executerRoute.get('/materials/:orderNumber', async (req, res) => {
   try {
     const { orderNumber } = req.params;
+    const { executerId } = req.query;
     console.log('\n📦 === МАТЕРИАЛЫ ЗАКАЗА ===');
     console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`👤 Executer ID: ${executerId}`);
+
+    // Сначала проверяем, что исполнитель имеет доступ к этому заказу
+    if (executerId) {
+      const execution = await ServiceExecution.findOne({
+        where: {
+          order_number: orderNumber,
+          executer_id: executerId
+        }
+      });
+
+      if (!execution) {
+        return res.status(403).json({
+          success: false,
+          error: 'Нет доступа к этому заказу'
+        });
+      }
+    }
 
     const materials = await Material.findAll({
       where: { order_number: orderNumber }
     });
 
     console.log(`📦 Найдено материалов: ${materials.length}`);
-    res.json(materials);
+
+    res.json({
+      success: true,
+      data: materials
+    });
 
   } catch (error) {
     console.error('❌ Ошибка получения материалов:', error);
-    res.status(500).json({ error: 'Ошибка сервера' });
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка сервера'
+    });
   }
 });
 
-// Создать выполнение услуги (ServiceExecution)
+// Создать выполнение услуги (ServiceExecution) с автоматическим назначением материала
 executerRoute.post('/service-execution', async (req, res) => {
   try {
-    const { serviceId, executerId, orderNumber } = req.body;
+    const { serviceId, executerId, orderNumber, autoAssignMaterial } = req.body;
 
     console.log('\n📋 === СОЗДАНИЕ ВЫПОЛНЕНИЯ УСЛУГИ ===');
-    console.log('📊 Данные:', { serviceId, executerId, orderNumber });
+    console.log('📊 Данные:', { serviceId, executerId, orderNumber, autoAssignMaterial });
 
     if (!serviceId || !executerId || !orderNumber) {
       return res.status(400).json({
@@ -246,6 +272,37 @@ executerRoute.post('/service-execution', async (req, res) => {
 
     const execution = await createServiceExecution(serviceId, executerId, orderNumber);
 
+    // Если включено автоматическое назначение материала
+    if (autoAssignMaterial) {
+      try {
+        // Ищем доступный материал для этой услуги
+        const availableMaterial = await Material.findOne({
+          where: {
+            service_id: serviceId,
+            status: 'available'
+          },
+          order: [['created_at', 'ASC']] // Берем самый старый материал
+        });
+
+        if (availableMaterial) {
+          // Назначаем материал к заказу
+          await availableMaterial.update({
+            status: 'used',
+            order_number: orderNumber,
+            executer_id: executerId,
+            executer_name: 'Автоназначение' // Можно получить имя исполнителя из базы
+          });
+
+          console.log(`✅ Материал ${availableMaterial.id} автоматически назначен к заказу ${orderNumber}`);
+        } else {
+          console.log(`⚠️ Нет доступных материалов для услуги ${serviceId}`);
+        }
+      } catch (materialError) {
+        console.error('❌ Ошибка автоназначения материала:', materialError);
+        // Не прерываем выполнение, заказ все равно создается
+      }
+    }
+
     console.log('✅ Выполнение услуги создано:', execution.id);
 
     res.json({
@@ -263,6 +320,79 @@ executerRoute.post('/service-execution', async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Ошибка сервера'
+    });
+  }
+});
+
+// Назначить материал к заказу вручную
+executerRoute.post('/assign-material-to-order', async (req, res) => {
+  try {
+    const { orderNumber, serviceId, executerId } = req.body;
+
+    console.log('\n📦 === НАЗНАЧЕНИЕ МАТЕРИАЛА К ЗАКАЗУ ===');
+    console.log('📊 Данные:', { orderNumber, serviceId, executerId });
+
+    // Проверяем, что заказ существует и принадлежит исполнителю
+    const execution = await ServiceExecution.findOne({
+      where: {
+        order_number: orderNumber,
+        executer_id: executerId,
+        service_id: serviceId
+      }
+    });
+
+    if (!execution) {
+      return res.status(404).json({
+        success: false,
+        message: 'Заказ не найден или не принадлежит исполнителю'
+      });
+    }
+
+    // Ищем доступный материал для этой услуги
+    const availableMaterial = await Material.findOne({
+      where: {
+        service_id: serviceId,
+        status: 'available'
+      },
+      order: [['created_at', 'ASC']] // Берем самый старый материал
+    });
+
+    if (!availableMaterial) {
+      return res.status(404).json({
+        success: false,
+        message: 'Нет доступных материалов для этой услуги'
+      });
+    }
+
+    // Получаем имя исполнителя
+    const executer = await Executer.findByPk(executerId);
+    const executerName = executer ? executer.name : 'Неизвестный исполнитель';
+
+    // Назначаем материал к заказу
+    await availableMaterial.update({
+      status: 'used',
+      order_number: orderNumber,
+      executer_id: executerId,
+      executer_name: executerName
+    });
+
+    console.log(`✅ Материал ${availableMaterial.id} назначен к заказу ${orderNumber}`);
+
+    res.json({
+      success: true,
+      message: 'Материал успешно назначен к заказу',
+      material: {
+        id: availableMaterial.id,
+        contents: availableMaterial.contents,
+        status: 'used'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка назначения материала:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера'
     });
   }
 });
@@ -400,20 +530,21 @@ executerRoute.post('/request-replacement', async (req, res) => {
       });
     }
 
-    // Создаем запрос на замену в таблице ReplacementRequests
-    // Пока просто возвращаем успех, так как таблица может не существовать
-    console.log('✅ Запрос замены создан для материала:', materialId);
+    const result = await requestMaterialReplacement(orderNumber, materialId, executerId, reason);
+
+    console.log('✅ Запрос замены создан:', result.id);
 
     res.json({
       success: true,
-      message: 'Запрос на замену материала отправлен'
+      message: 'Запрос на замену материала отправлен',
+      requestId: result.id
     });
 
   } catch (error) {
     console.error('❌ Ошибка запроса замены:', error);
     res.status(500).json({
       success: false,
-      message: 'Ошибка сервера'
+      message: error.message || 'Ошибка сервера'
     });
   }
 });

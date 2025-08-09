@@ -230,19 +230,23 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
 
         // Отправляем уведомление исполнителю через бот
         try {
-            // Импортируем функцию уведомления из бота
-            const { notifyMaterialReplacement } = await import('../../../bot/executerBot.js');
+            // Динамический импорт функции уведомления из бота
+            const botModule = await import('../../../../bot/executerBot.js');
 
-            await notifyMaterialReplacement({
-                telegramId: replacement.Executer.telegram_id,
-                orderId: replacement.order_id,
-                serviceName: replacement.Order.Service.name,
-                oldMaterial: replacement.Material ? `${replacement.Material.type_key} - ${replacement.Material.contents}` : 'Не указан',
-                newMaterial: `${newMaterial.type_key} - ${newMaterial.contents}`,
-                adminComment: adminComment
-            });
+            if (botModule.notifyMaterialReplacement) {
+                await botModule.notifyMaterialReplacement({
+                    telegramId: replacement.Executer.telegram_id,
+                    orderId: replacement.order_id,
+                    serviceName: replacement.Order.Service.name,
+                    oldMaterial: replacement.Material ? `${replacement.Material.type_key} - ${replacement.Material.contents}` : 'Не указан',
+                    newMaterial: `${newMaterial.type_key} - ${newMaterial.contents}`,
+                    adminComment: adminComment
+                });
 
-            console.log(`✅ Уведомление о замене материала отправлено исполнителю ${replacement.Executer.telegram_id}`);
+                console.log(`✅ Уведомление о замене материала отправлено исполнителю ${replacement.Executer.telegram_id}`);
+            } else {
+                console.log(`⚠️ Функция уведомления не найдена в боте`);
+            }
         } catch (notifyError) {
             console.error('Ошибка отправки уведомления:', notifyError);
             // Логируем детали для админа даже если уведомление не отправилось
@@ -382,5 +386,81 @@ export async function getAvailableMaterialsForReplacementAdmin(serviceId) {
     } catch (err) {
         console.error('Ошибка при получении доступных материалов:', err);
         throw new Error('Ошибка сервера');
+    }
+}
+
+// Заменить материал
+export async function replaceMaterial(oldMaterialId, newMaterialId) {
+    try {
+        // Получаем старый материал
+        const oldMaterial = await Material.findByPk(oldMaterialId);
+        if (!oldMaterial) {
+            throw new Error('Старый материал не найден');
+        }
+
+        // Получаем новый материал
+        const newMaterial = await Material.findByPk(newMaterialId);
+        if (!newMaterial) {
+            throw new Error('Новый материал не найден');
+        }
+
+        // Проверяем, что новый материал доступен
+        if (newMaterial.status !== 'available') {
+            throw new Error('Новый материал не доступен для использования');
+        }
+
+        // Проверяем, что материалы относятся к одной услуге
+        if (oldMaterial.service_id !== newMaterial.service_id) {
+            throw new Error('Материалы должны относиться к одной услуге');
+        }
+
+        // Обновляем статусы материалов
+        await Material.update(
+            { status: 'available' },
+            { where: { id: oldMaterialId } }
+        );
+
+        await Material.update(
+            {
+                status: 'used',
+                order_number: oldMaterial.order_number,
+                executer_id: oldMaterial.executer_id,
+                executer_name: oldMaterial.executer_name
+            },
+            { where: { id: newMaterialId } }
+        );
+
+        // Пытаемся отправить уведомление в бота
+        try {
+            const botModule = await import('../../../bot/executerBot.js');
+            if (botModule && botModule.notifyMaterialReplacement) {
+                await botModule.notifyMaterialReplacement(
+                    oldMaterial.executer_id,
+                    oldMaterial.order_number,
+                    oldMaterial.contents,
+                    newMaterial.contents
+                );
+            }
+        } catch (botError) {
+            console.warn('Не удалось отправить уведомление в бота:', botError.message);
+        }
+
+        console.log(`✅ Материал заменен: ${oldMaterial.contents} → ${newMaterial.contents}`);
+
+        return {
+            success: true,
+            message: 'Материал успешно заменен',
+            oldMaterial: {
+                id: oldMaterial.id,
+                contents: oldMaterial.contents
+            },
+            newMaterial: {
+                id: newMaterial.id,
+                contents: newMaterial.contents
+            }
+        };
+    } catch (err) {
+        console.error('Ошибка при замене материала:', err);
+        throw new Error(err.message || 'Ошибка сервера');
     }
 }

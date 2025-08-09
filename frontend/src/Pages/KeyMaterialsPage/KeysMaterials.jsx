@@ -1,17 +1,16 @@
-import { KeysMaterialsHeader } from './components/KeysMaterialsHeader';
-import { KeysMaterialsTable } from './components/KeysMaterialsTable';
-import { KeysMaterialsStats } from './components/KeysMaterialsStats';
-import { KeysMaterialsSearch } from './components/KeysMaterialsSearch';
-import ReplacementRequests from './components/ReplacementRequests';
-import { useState, useCallback, useEffect } from 'react';
-
+import { KeysMaterialsHeader } from "./components/KeysMaterialsHeader";
+import { KeysMaterialsTable } from "./components/KeysMaterialsTable";
+import { KeysMaterialsStats } from "./components/KeysMaterialsStats";
+import { KeysMaterialsSearch as MaterialsSearch } from "./components/KeysMaterialsSearch";
+import ReplacementRequests from "./components/ReplacementRequests";
+import { useState, useCallback, useEffect } from "react";
 
 export function KeysMaterials() {
   const [refresh, setRefresh] = useState(false);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
-  const handleRefresh = useCallback(() => setRefresh(r => !r), []);
+  const handleRefresh = useCallback(() => setRefresh((r) => !r), []);
 
   // Устанавливаем глобальную функцию обновления для вызова из ReplacementRequests
   useEffect(() => {
@@ -25,7 +24,7 @@ export function KeysMaterials() {
     <>
       <KeysMaterialsHeader />
       <KeysMaterialsStats refresh={refresh} />
-      <KeysMaterialsSearch
+      <MaterialsSearch
         search={search}
         setSearch={setSearch}
         statusFilter={statusFilter}

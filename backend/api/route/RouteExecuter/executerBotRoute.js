@@ -119,6 +119,96 @@ router.get('/materials/:serviceId', async (req, res) => {
   }
 });
 
+// GET /api/executers-bot/order-materials/:orderNumber - Получить материалы для конкретного заказа (для бота)
+router.get('/order-materials/:orderNumber', async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+    const { telegramId } = req.query; // Изменено с executerId на telegramId
+
+    console.log(`\n📦 === API BOT: ПОЛУЧЕНИЕ МАТЕРИАЛОВ ЗАКАЗА ===`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`👤 Telegram ID: ${telegramId}`);
+    console.log(`🌐 Request URL: ${req.originalUrl}`);
+    console.log(`🌐 Request Path: ${req.path}`);
+
+    // Проверяем, что исполнитель имеет доступ к этому заказу
+    if (telegramId) {
+      // Сначала находим исполнителя по telegram_id
+      const { Executer } = await import('../../../database/dbTables.js');
+      const executer = await Executer.findOne({
+        where: { telegram_id: telegramId.toString() }
+      });
+
+      if (!executer) {
+        console.log(`❌ Исполнитель с Telegram ID ${telegramId} не найден`);
+        return res.status(404).json({
+          success: false,
+          message: 'Исполнитель не найден'
+        });
+      }
+
+      console.log(`✅ Исполнитель найден: ID ${executer.id}, Name: ${executer.name}`);
+
+      const execution = await ServiceExecution.findOne({
+        where: {
+          order_number: orderNumber,
+          executer_id: executer.id // Используем внутренний ID для поиска
+        }
+      });
+
+      console.log(`🔍 ServiceExecution найден:`, execution ? 'ДА' : 'НЕТ');
+
+      if (!execution) {
+        console.log(`❌ Нет доступа к заказу ${orderNumber} для исполнителя ${executer.id}`);
+        return res.status(403).json({
+          success: false,
+          message: 'Нет доступа к этому заказу'
+        });
+      }
+
+      // Получаем все доступные материалы для услуги из этого заказа
+      const materials = await Material.findAll({
+        where: {
+          service_id: execution.service_id,
+          status: 'available' // Только доступные материалы
+        },
+        attributes: ['id', 'contents', 'status', 'type_key', 'service_id'],
+        order: [['createdAt', 'ASC']],
+        limit: 10 // Ограничиваем количество для производительности
+      });
+
+      console.log(`📦 Найдено доступных материалов для услуги ${execution.service_id}: ${materials.length}`);
+
+      // Логируем материалы перед отправкой
+      materials.forEach(material => {
+        console.log(`📦 Material: ${material.contents} (Status: ${material.status})`);
+      });
+
+      const response = {
+        success: true,
+        data: materials
+      };
+
+      console.log(`📤 Отправляем ответ:`, response);
+
+      res.json(response);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Telegram ID не указан'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка при получении материалов заказа:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера',
+      error: error.message
+    });
+  }
+});
+
 // GET /api/executers/material/:materialId - Получить информацию о конкретном материале
 router.get('/material/:materialId', async (req, res) => {
   try {
@@ -791,6 +881,147 @@ router.post('/cancel-order', async (req, res) => {
   }
 });
 
+// POST /api/executers-bot/bot-cancel-order - Отмена заказа через бота
+router.post('/bot-cancel-order', async (req, res) => {
+  try {
+    const { orderNumber, telegramId, reason } = req.body;
+
+    console.log(`\n❌ === BOT: ОТМЕНА ЗАКАЗА ===`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`👤 Telegram ID: ${telegramId}`);
+    console.log(`📝 Reason: ${reason}`);
+
+    // Находим исполнителя по telegram_id
+    const { Executer } = await import('../../../database/dbTables.js');
+    const executer = await Executer.findOne({
+      where: { telegram_id: telegramId.toString() }
+    });
+
+    if (!executer) {
+      console.log(`❌ Исполнитель с Telegram ID ${telegramId} не найден`);
+      return res.status(404).json({
+        success: false,
+        message: 'Исполнитель не найден'
+      });
+    }
+
+    // Находим ServiceExecution
+    const execution = await ServiceExecution.findOne({
+      where: {
+        order_number: orderNumber,
+        executer_id: executer.id
+      }
+    });
+
+    if (!execution) {
+      return res.status(404).json({
+        success: false,
+        message: 'Заказ не найден'
+      });
+    }
+
+    // Возвращаем материалы в статус "available"
+    await Material.update({
+      status: 'available',
+      order_number: null,
+      executer_id: null,
+      executer_name: null
+    }, {
+      where: { order_number: orderNumber }
+    });
+
+    // Отменяем заказ
+    await execution.update({
+      status: 'cancelled',
+      cancelled_at: new Date(),
+      cancel_reason: reason
+    });
+
+    console.log(`✅ Заказ ${orderNumber} отменен через бота`);
+
+    res.json({
+      success: true,
+      message: 'Заказ успешно отменен'
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка отмены заказа через бота:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/executers-bot/bot-complete-order - Завершение заказа через бота
+router.post('/bot-complete-order', async (req, res) => {
+  try {
+    const { orderNumber, telegramId } = req.body;
+
+    console.log(`\n✅ === BOT: ЗАВЕРШЕНИЕ ЗАКАЗА ===`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`👤 Telegram ID: ${telegramId}`);
+
+    // Находим исполнителя по telegram_id
+    const { Executer } = await import('../../../database/dbTables.js');
+    const executer = await Executer.findOne({
+      where: { telegram_id: telegramId.toString() }
+    });
+
+    if (!executer) {
+      console.log(`❌ Исполнитель с Telegram ID ${telegramId} не найден`);
+      return res.status(404).json({
+        success: false,
+        message: 'Исполнитель не найден'
+      });
+    }
+
+    // Находим ServiceExecution
+    const execution = await ServiceExecution.findOne({
+      where: {
+        order_number: orderNumber,
+        executer_id: executer.id
+      }
+    });
+
+    if (!execution) {
+      return res.status(404).json({
+        success: false,
+        message: 'Заказ не найден'
+      });
+    }
+
+    // Помечаем материалы как использованные
+    await Material.update({
+      status: 'used'
+    }, {
+      where: { order_number: orderNumber }
+    });
+
+    // Завершаем заказ
+    await execution.update({
+      status: 'completed',
+      completed_at: new Date()
+    });
+
+    console.log(`✅ Заказ ${orderNumber} завершен через бота`);
+
+    res.json({
+      success: true,
+      message: 'Заказ успешно завершен'
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка завершения заказа через бота:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера',
+      error: error.message
+    });
+  }
+});
+
 // GET /api/executers/completed-orders/:executerId - Получить выполненные заказы
 router.get('/completed-orders/:executerId', async (req, res) => {
   try {
@@ -820,6 +1051,75 @@ router.get('/completed-orders/:executerId', async (req, res) => {
     console.error('❌ Ошибка при получении выполненных заказов:', error);
     res.status(500).json({
       message: 'Ошибка при получении выполненных заказов',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/executers-bot/assign-material - Назначить материал заказу
+router.post('/assign-material', async (req, res) => {
+  try {
+    const { orderNumber, materialId, telegramId } = req.body;
+
+    console.log(`\n📦 === BOT: НАЗНАЧЕНИЕ МАТЕРИАЛА ===`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`📦 Material ID: ${materialId}`);
+    console.log(`👤 Telegram ID: ${telegramId}`);
+
+    // Находим исполнителя по telegram_id
+    const { Executer } = await import('../../../database/dbTables.js');
+    const executer = await Executer.findOne({
+      where: { telegram_id: telegramId.toString() }
+    });
+
+    if (!executer) {
+      console.log(`❌ Исполнитель с Telegram ID ${telegramId} не найден`);
+      return res.status(404).json({
+        success: false,
+        message: 'Исполнитель не найден'
+      });
+    }
+
+    // Проверяем, что материал доступен
+    const material = await Material.findOne({
+      where: {
+        id: materialId,
+        status: 'available'
+      }
+    });
+
+    if (!material) {
+      return res.status(404).json({
+        success: false,
+        message: 'Материал не найден или недоступен'
+      });
+    }
+
+    // Назначаем материал заказу
+    await material.update({
+      status: 'used',
+      order_number: orderNumber,
+      executer_id: executer.id,
+      executer_name: executer.name,
+      used_date: new Date()
+    });
+
+    console.log(`✅ Материал ${materialId} назначен заказу ${orderNumber}`);
+
+    res.json({
+      success: true,
+      message: 'Материал успешно назначен заказу',
+      material: {
+        id: material.id,
+        contents: material.contents
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка назначения материала:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера',
       error: error.message
     });
   }
