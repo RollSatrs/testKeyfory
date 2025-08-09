@@ -589,8 +589,7 @@ router.post('/create-service-execution', async (req, res) => {
       order_number,
       executer_id,
       service_id,
-      created_at: new Date(),
-      updated_at: new Date()
+      created_at: new Date()
     });
 
     console.log(`✅ Выполнение услуги создано с ID: ${serviceExecution.id}`);
@@ -650,8 +649,26 @@ router.get('/stats/:executerId', async (req, res) => {
       }
     });
 
-    // Используем реальный баланс исполнителя как общий заработок
-    const totalEarnings = executer.balance || 0;
+    // Рассчитываем общий заработок на основе индивидуальных цен из ServiceExecution
+    let totalEarnings = 0;
+    try {
+      const completedExecutions = await ServiceExecution.findAll({
+        where: {
+          executer_id: executerId,
+          status: 'completed'
+        },
+        attributes: ['price']
+      });
+
+      totalEarnings = completedExecutions.reduce((sum, execution) => {
+        return sum + (execution.price || 0);
+      }, 0);
+
+      console.log(`💰 Расчет заработка: найдено ${completedExecutions.length} выполненных заказов, общая сумма: ${totalEarnings}₽`);
+    } catch (earningsError) {
+      console.error('⚠️ Ошибка расчета заработка, используем баланс из профиля:', earningsError.message);
+      totalEarnings = executer.balance || 0;
+    }
 
     // Рейтинг из базы данных
     const rating = executer.rating || 5.0;
@@ -992,6 +1009,31 @@ router.post('/bot-complete-order', async (req, res) => {
       });
     }
 
+    // Получаем индивидуальную цену исполнителя для данной услуги
+    let individualPrice = null;
+    try {
+      const serviceAccess = await ServiceAccess.findOne({
+        where: {
+          executer_id: executer.id,
+          service_id: execution.service_id,
+          status: 'active'
+        }
+      });
+
+      if (serviceAccess && serviceAccess.price !== null) {
+        individualPrice = serviceAccess.price;
+        console.log(`💰 Найдена индивидуальная цена для исполнителя: ${individualPrice}₽`);
+      } else {
+        // Если нет индивидуальной цены, получаем стандартную цену услуги
+        const service = await Services.findByPk(execution.service_id);
+        individualPrice = service?.price || 0;
+        console.log(`💰 Использую стандартную цену услуги: ${individualPrice}₽`);
+      }
+    } catch (priceError) {
+      console.error('⚠️ Ошибка получения цены, использую 0:', priceError.message);
+      individualPrice = 0;
+    }
+
     // Помечаем материалы как использованные
     await Material.update({
       status: 'used'
@@ -999,13 +1041,14 @@ router.post('/bot-complete-order', async (req, res) => {
       where: { order_number: orderNumber }
     });
 
-    // Завершаем заказ
+    // Завершаем заказ и сохраняем индивидуальную цену
     await execution.update({
       status: 'completed',
-      completed_at: new Date()
+      completed_at: new Date(),
+      price: individualPrice // Сохраняем индивидуальную цену при завершении
     });
 
-    console.log(`✅ Заказ ${orderNumber} завершен через бота`);
+    console.log(`✅ Заказ ${orderNumber} завершен через бота с ценой ${individualPrice}₽`);
 
     res.json({
       success: true,
@@ -1038,15 +1081,25 @@ router.get('/completed-orders/:executerId', async (req, res) => {
       include: [{
         model: Services,
         as: 'Service',
-        attributes: ['id', 'name', 'price', 'category']
+        attributes: ['id', 'name', 'category', 'description']
       }],
-      order: [['updated_at', 'DESC']],
+      order: [['completed_at', 'DESC']],
       limit: 50 // Ограничиваем количество для производительности
     });
 
-    console.log(`✅ Найдено выполненных заказов: ${executions.length}`);
+    // Добавляем информацию о цене из ServiceExecution (индивидуальная цена)
+    const ordersWithPrices = executions.map(execution => {
+      const executionData = execution.toJSON();
+      // Цена теперь берется из поля price в ServiceExecution, а не из Services
+      if (executionData.Service) {
+        executionData.Service.price = executionData.price || executionData.Service.price || 0;
+      }
+      return executionData;
+    });
 
-    res.json(executions);
+    console.log(`✅ Найдено выполненных заказов: ${executions.length} (с индивидуальными ценами)`);
+
+    res.json(ordersWithPrices);
   } catch (error) {
     console.error('❌ Ошибка при получении выполненных заказов:', error);
     res.status(500).json({

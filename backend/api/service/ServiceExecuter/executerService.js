@@ -421,7 +421,7 @@ export const getExecuterStats = async (executerId) => {
       }
     });
 
-    // Подсчитываем общий заработок через цены услуг
+    // Подсчитываем общий заработок через индивидуальные цены из ServiceExecution
     const completedServices = await ServiceExecution.findAll({
       where: {
         executer_id: executerId,
@@ -429,13 +429,20 @@ export const getExecuterStats = async (executerId) => {
       },
       include: [{
         model: Services,
-        attributes: ['price']
+        attributes: ['name', 'price']
       }]
     });
 
+    console.log(`💰 Расчет заработка: найдено ${completedServices.length} выполненных заказов`);
+
     const totalEarnings = completedServices.reduce((sum, execution) => {
-      return sum + (execution.Service?.price || 0);
+      // Используем индивидуальную цену из ServiceExecution, если она есть
+      const individualPrice = execution.price || execution.Service?.price || 0;
+      console.log(`💰 Заказ #${execution.order_number}: цена ${individualPrice}₽ (индивидуальная: ${execution.price}₽, стандартная: ${execution.Service?.price}₽)`);
+      return sum + individualPrice;
     }, 0);
+
+    console.log(`💰 Расчет заработка: найдено ${completedServices.length} выполненных заказов, общая сумма: ${totalEarnings}₽`);
 
     const executer = await Executer.findByPk(executerId);
 
@@ -875,6 +882,28 @@ export const createServiceExecution = async (serviceId, executerId, orderNumber)
       throw new Error('Исполнитель не найден');
     }
 
+    // Получаем индивидуальную цену исполнителя для данной услуги
+    let individualPrice = service.price; // По умолчанию стандартная цена
+
+    try {
+      const serviceAccess = await ServiceAccess.findOne({
+        where: {
+          executer_id: executerId,
+          service_id: serviceId,
+          status: 'active'
+        }
+      });
+
+      if (serviceAccess && serviceAccess.price !== null) {
+        individualPrice = serviceAccess.price;
+        console.log(`💰 Использую индивидуальную цену для исполнителя ${executerId}: ${individualPrice}₽ (стандартная: ${service.price}₽)`);
+      } else {
+        console.log(`💰 Использую стандартную цену для услуги: ${individualPrice}₽`);
+      }
+    } catch (priceError) {
+      console.error('⚠️ Ошибка получения индивидуальной цены, использую стандартную:', priceError.message);
+    }
+
     // Проверяем, есть ли уже выполнение с таким номером заказа
     const existingExecution = await ServiceExecution.findOne({
       where: { order_number: orderNumber }
@@ -884,17 +913,17 @@ export const createServiceExecution = async (serviceId, executerId, orderNumber)
       throw new Error(`Заказ с номером ${orderNumber} уже существует`);
     }
 
-    // Создаём выполнение услуги
+    // Создаём выполнение услуги с индивидуальной ценой
     const execution = await ServiceExecution.create({
       service_id: serviceId,
       executer_id: executerId,
       order_number: orderNumber,
+      price: individualPrice, // Сохраняем индивидуальную цену
       status: 'in_progress',
-      created_at: new Date(),
-      updated_at: new Date()
+      created_at: new Date()
     });
 
-    console.log('✅ Выполнение услуги создано:', execution.id);
+    console.log(`✅ Выполнение услуги создано: ${execution.id} с ценой ${individualPrice}₽`);
 
     // Обновляем активность исполнителя
     await updateExecuterActivity(executerId);
@@ -903,7 +932,7 @@ export const createServiceExecution = async (serviceId, executerId, orderNumber)
     await createExecuterLog(
       executerId,
       'create_service_execution',
-      `Создано выполнение услуги "${service.name}" для заказа #${orderNumber}`,
+      `Создано выполнение услуги "${service.name}" для заказа #${orderNumber} с ценой ${individualPrice}₽`,
       null,
       serviceId
     );

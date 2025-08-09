@@ -400,3 +400,209 @@ export async function getServiceExecutionExecuterStats(period = 'month') {
         throw new Error(`Ошибка получения статистики исполнителей: ${error.message}`)
     }
 }
+
+// Получить статистику по услугам - что лучше продается
+export async function getServicesPerformanceStats(period = 'month') {
+    try {
+        let dateFilter = {}
+        const currentDate = new Date()
+
+        switch (period) {
+            case 'week':
+                const weekAgo = new Date()
+                weekAgo.setDate(currentDate.getDate() - 7)
+                dateFilter = { created_at: { [Op.gte]: weekAgo } }
+                break
+            case 'quarter':
+                const quarterAgo = new Date()
+                quarterAgo.setMonth(currentDate.getMonth() - 3)
+                dateFilter = { created_at: { [Op.gte]: quarterAgo } }
+                break
+            default: // month
+                const monthAgo = new Date()
+                monthAgo.setMonth(currentDate.getMonth() - 1)
+                dateFilter = { created_at: { [Op.gte]: monthAgo } }
+        }
+
+        const services = await Services.findAll({
+            where: { status: 'active' },
+            attributes: ['id', 'name', 'price', 'description'],
+            include: [
+                {
+                    model: ServiceExecution,
+                    as: 'ServiceExecutions',
+                    where: dateFilter,
+                    attributes: ['status', 'price', 'created_at'],
+                    required: false
+                }
+            ]
+        })
+
+        const servicesStats = services.map(service => {
+            const executions = service.ServiceExecutions || []
+
+            const totalOrders = executions.length
+            const completedOrders = executions.filter(exec => exec.status === 'completed').length
+            const cancelledOrders = executions.filter(exec => exec.status === 'cancelled').length
+            const totalEarnings = executions.filter(exec => exec.status === 'completed')
+                .reduce((sum, exec) => sum + exec.price, 0)
+
+            const successRate = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0
+            const uniqueExecuters = new Set(executions.map(exec => exec.executer_id)).size
+
+            return {
+                id: service.id,
+                name: service.name,
+                price: service.price,
+                description: service.description,
+                totalOrders,
+                completedOrders,
+                cancelledOrders,
+                totalEarnings,
+                successRate,
+                uniqueExecuters,
+                averageOrdersPerDay: totalOrders > 0 ? Math.round(totalOrders / 30) : 0 // примерно за месяц
+            }
+        })
+
+        // Топ услуги по доходу
+        const topByEarnings = servicesStats
+            .filter(service => service.totalEarnings > 0)
+            .sort((a, b) => b.totalEarnings - a.totalEarnings)
+            .slice(0, 10)
+
+        // Топ услуги по количеству заказов
+        const topByOrders = servicesStats
+            .filter(service => service.totalOrders > 0)
+            .sort((a, b) => b.completedOrders - a.completedOrders)
+            .slice(0, 10)
+
+        // Услуги с лучшим процентом выполнения (минимум 5 заказов)
+        const topBySuccessRate = servicesStats
+            .filter(service => service.totalOrders >= 5)
+            .sort((a, b) => b.successRate - a.successRate)
+            .slice(0, 10)
+
+        // Услуги с худшей производительностью
+        const poorPerformers = servicesStats
+            .filter(service => service.totalOrders >= 3)
+            .sort((a, b) => a.successRate - b.successRate)
+            .slice(0, 5)
+
+        return {
+            allServices: servicesStats,
+            topByEarnings,
+            topByOrders,
+            topBySuccessRate,
+            poorPerformers,
+            summary: {
+                totalServices: servicesStats.length,
+                activeServices: servicesStats.filter(s => s.totalOrders > 0).length,
+                totalRevenue: servicesStats.reduce((sum, s) => sum + s.totalEarnings, 0),
+                totalOrders: servicesStats.reduce((sum, s) => sum + s.totalOrders, 0),
+                averageSuccessRate: Math.round(
+                    servicesStats.reduce((sum, s) => sum + s.successRate, 0) / Math.max(servicesStats.length, 1)
+                )
+            }
+        }
+    } catch (error) {
+        throw new Error(`Ошибка получения статистики услуг: ${error.message}`)
+    }
+}
+
+// Получить сравнительную аналитику за два периода
+export async function getComparativeAnalytics(currentPeriod = 'month', previousPeriod = 'month') {
+    try {
+        const currentDate = new Date()
+
+        // Текущий период
+        let currentFromDate = new Date()
+        switch (currentPeriod) {
+            case 'week':
+                currentFromDate.setDate(currentDate.getDate() - 7)
+                break
+            case 'quarter':
+                currentFromDate.setMonth(currentDate.getMonth() - 3)
+                break
+            default:
+                currentFromDate.setMonth(currentDate.getMonth() - 1)
+        }
+
+        // Предыдущий период
+        let previousFromDate = new Date(currentFromDate)
+        let previousToDate = new Date(currentFromDate)
+        switch (previousPeriod) {
+            case 'week':
+                previousFromDate.setDate(previousFromDate.getDate() - 7)
+                break
+            case 'quarter':
+                previousFromDate.setMonth(previousFromDate.getMonth() - 3)
+                break
+            default:
+                previousFromDate.setMonth(previousFromDate.getMonth() - 1)
+        }
+
+        // Получаем данные для текущего периода
+        const currentEarnings = await ServiceExecution.sum('price', {
+            where: {
+                status: 'completed',
+                completed_at: { [Op.gte]: currentFromDate }
+            }
+        }) || 0
+
+        const currentOrders = await ServiceExecution.count({
+            where: {
+                status: 'completed',
+                completed_at: { [Op.gte]: currentFromDate }
+            }
+        })
+
+        // Получаем данные для предыдущего периода
+        const previousEarnings = await ServiceExecution.sum('price', {
+            where: {
+                status: 'completed',
+                completed_at: {
+                    [Op.between]: [previousFromDate, previousToDate]
+                }
+            }
+        }) || 0
+
+        const previousOrders = await ServiceExecution.count({
+            where: {
+                status: 'completed',
+                completed_at: {
+                    [Op.between]: [previousFromDate, previousToDate]
+                }
+            }
+        })
+
+        // Рассчитываем изменения
+        const earningsChange = previousEarnings > 0
+            ? Math.round(((currentEarnings - previousEarnings) / previousEarnings) * 100)
+            : currentEarnings > 0 ? 100 : 0
+
+        const ordersChange = previousOrders > 0
+            ? Math.round(((currentOrders - previousOrders) / previousOrders) * 100)
+            : currentOrders > 0 ? 100 : 0
+
+        return {
+            current: {
+                earnings: currentEarnings,
+                orders: currentOrders,
+                period: currentPeriod
+            },
+            previous: {
+                earnings: previousEarnings,
+                orders: previousOrders,
+                period: previousPeriod
+            },
+            changes: {
+                earningsChange,
+                ordersChange,
+                trend: earningsChange > 0 ? 'up' : earningsChange < 0 ? 'down' : 'stable'
+            }
+        }
+    } catch (error) {
+        throw new Error(`Ошибка получения сравнительной аналитики: ${error.message}`)
+    }
+}

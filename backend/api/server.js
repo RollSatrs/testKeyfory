@@ -49,6 +49,9 @@ app.use('/api/admin/service-executions', authMiddleware, adminServiceExecutionsR
 // Роуты для бота (без middleware)
 app.use('/api/pricing/admin', adminPricingRoute)
 
+// Дополнительные роуты для frontend (без /api префикса)
+app.use('/admin/earnings', adminEarningsRoute)
+
 app.get('/', (req, res) => {
   res.send('👋 Сервер работает!');
 });

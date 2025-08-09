@@ -132,7 +132,7 @@ const getMainMenu = () => {
     reply_markup: {
       keyboard: [
         [{ text: '🛠️ Мои услуги' }, { text: '📋 Активные услуги' }],
-        [{ text: '✅ Выполненные услуги' }, { text: '📊 Статистика' }]
+        [{ text: '📊 Статистика' }]
       ],
       resize_keyboard: true,
       one_time_keyboard: false
@@ -326,53 +326,6 @@ const showActiveServices = async (ctx) => {
   }
 };
 
-// Показать выполненные услуги
-const showCompletedServices = async (ctx) => {
-  try {
-    const session = userSessions[ctx.chat.id];
-    if (!session?.authenticated) {
-      return ctx.reply('❌ Необходима авторизация. Нажмите /start');
-    }
-
-    console.log(`\n✅ === ВЫПОЛНЕННЫЕ УСЛУГИ ===`);
-    console.log(`👤 Executer ID: ${session.executerId}`);
-
-    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/completed-orders/${session.executerId}`);
-
-    if (response.data.length === 0) {
-      return ctx.reply(
-        '✅ *Выполненные услуги*\n\n' +
-        '❌ У вас нет выполненных услуг.\n' +
-        'После завершения заказов они появятся здесь.',
-        { parse_mode: 'Markdown', ...getMainMenu() }
-      );
-    }
-
-    let message = '✅ *Ваши выполненные услуги:*\n\n';
-    response.data.slice(0, 15).forEach((order, index) => {
-      message += `${index + 1}. **Заказ #${order.order_number}**\n`;
-      message += `   🛠️ Услуга: ${order.Service?.name || 'Не указана'}\n`;
-      message += `   💰 Сумма: ${order.Service?.price || 'Не указана'}₽\n`;
-      message += `   📅 Выполнен: ${new Date(order.updated_at).toLocaleDateString()}\n\n`;
-    });
-
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 Главное меню', callback_data: 'main_menu' }
-        ]]
-      }
-    });
-
-    await logActivity(session.executerId, 'view_completed_orders', 'Просмотр выполненных заказов');
-
-  } catch (error) {
-    console.error('❌ Ошибка получения выполненных услуг:', error);
-    ctx.reply('❌ Ошибка при получении выполненных услуг');
-  }
-};
-
 // Показать статистику
 const showStatistics = async (ctx) => {
   try {
@@ -387,16 +340,86 @@ const showStatistics = async (ctx) => {
     const response = await axios.get(`${API_BASE_URL}/api/executers-bot/stats/${session.executerId}`);
     const stats = response.data;
 
+    // Получаем выполненные заказы для расчета общей суммы
+    let completedOrdersData = [];
+    let totalEarningsCalculated = 0;
+
+    try {
+      const completedResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/completed-orders/${session.executerId}`);
+      completedOrdersData = completedResponse.data || [];
+
+      // Получаем индивидуальные цены исполнителя для услуг
+      let executerServices = [];
+      try {
+        const servicesResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/services/${session.executerId}`);
+        executerServices = servicesResponse.data || [];
+        console.log(`📊 Loaded ${executerServices.length} services with individual prices for executer ${session.executerId}`);
+      } catch (servicesError) {
+        console.error('❌ Ошибка получения индивидуальных цен:', servicesError.message);
+      }
+
+      // Суммируем заработок по выполненным заказам с учетом индивидуальных цен
+      totalEarningsCalculated = completedOrdersData.reduce((sum, order) => {
+        // Ищем индивидуальную цену для данной услуги у этого исполнителя
+        const executerService = executerServices.find(es => es.id === order.service_id);
+
+        let orderPrice = 0;
+        if (executerService && executerService.price) {
+          // Используем индивидуальную цену исполнителя
+          orderPrice = executerService.price;
+          console.log(`💰 Order #${order.order_number}: using individual price ${orderPrice}₽ for service "${executerService.name}"`);
+        } else if (order.Service?.price) {
+          // Используем стандартную цену услуги как fallback
+          orderPrice = order.Service.price;
+          console.log(`💰 Order #${order.order_number}: using standard price ${orderPrice}₽ for service "${order.Service.name}"`);
+        } else {
+          console.log(`⚠️ Order #${order.order_number}: no price found`);
+        }
+
+        return sum + orderPrice;
+      }, 0);
+
+      console.log(`💰 Calculated earnings: ${totalEarningsCalculated}₽ from ${completedOrdersData.length} orders (with individual prices)`);
+    } catch (earningsError) {
+      console.error('❌ Ошибка расчета заработка:', earningsError.message);
+    }
+
     const message =
       '📊 *Ваша статистика:*\n\n' +
-      `✅ Выполненных заказов: **${stats.completedOrders || 0}**\n` +
+      `✅ Выполненных заказов: **${completedOrdersData.length || stats.completedOrders || 0}**\n` +
       `📋 Активных заказов: **${stats.activeOrders || 0}**\n` +
-      `💰 Общий заработок: **${stats.totalEarnings || 0}₽**\n` +
+      `💰 Общий заработок: **${totalEarningsCalculated || stats.totalEarnings || 0}₽**\n` +
       `⭐ Рейтинг: **${stats.rating || 0}**\n` +
-      `🔄 Запросов на замену: **${stats.replacementRequests || 0}**\n\n` +
-      `📅 Данные обновлены: ${new Date().toLocaleDateString()}`;
+      `🔄 Запросов на замену: **${stats.replacementRequests || 0}**\n\n`;
 
-    await ctx.reply(message, {
+    // Показываем последние выполненные заказы
+    let recentOrdersMessage = '';
+    if (completedOrdersData.length > 0) {
+      recentOrdersMessage += `\n📋 *Последние выполненные заказы:*\n\n`;
+
+      // Получаем индивидуальные цены исполнителя для услуг (для отображения)
+      let executerServicesForDisplay = [];
+      try {
+        const servicesResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/services/${session.executerId}`);
+        executerServicesForDisplay = servicesResponse.data || [];
+      } catch (servicesError) {
+        console.error('❌ Ошибка получения услуг для отображения:', servicesError.message);
+      }
+
+      completedOrdersData.slice(0, 5).forEach((order, index) => {
+        // Определяем цену с учетом индивидуальных настроек
+        const executerService = executerServicesForDisplay.find(es => es.id === order.service_id);
+        const displayPrice = executerService?.price || order.Service?.price || 0;
+        const priceSource = executerService?.price ? '(ваша цена)' : '(стандартная)';
+
+        recentOrdersMessage += `${index + 1}. #${order.order_number} - ${order.Service?.name || 'Услуга'} (${displayPrice}₽ ${priceSource})\n`;
+      });
+      recentOrdersMessage += `\n`;
+    }
+
+    const finalMessage = message + recentOrdersMessage + `📅 Данные обновлены: ${new Date().toLocaleDateString()}`;
+
+    await ctx.reply(finalMessage, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
@@ -405,7 +428,7 @@ const showStatistics = async (ctx) => {
       }
     });
 
-    await logActivity(session.executerId, 'view_statistics', 'Просмотр статистики');
+    await logActivity(session.executerId, 'view_statistics', 'Просмотр статистики и выполненных заказов');
 
   } catch (error) {
     console.error('❌ Ошибка получения статистики:', error);
@@ -640,18 +663,17 @@ bot.on('text', async (ctx) => {
   switch (text) {
     case '🛠️ Мои услуги':
       await showMyServices(ctx);
+      await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Мои услуги"');
       break;
 
     case '📋 Активные услуги':
       await showActiveServices(ctx);
-      break;
-
-    case '✅ Выполненные услуги':
-      await showCompletedServices(ctx);
+      await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Активные услуги"');
       break;
 
     case '📊 Статистика':
       await showStatistics(ctx);
+      await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Статистика"');
       break;
 
     default:
@@ -660,6 +682,7 @@ bot.on('text', async (ctx) => {
         'Используйте кнопки меню для навигации.',
         getMainMenu()
       );
+      await logActivity(session.executerId, 'unknown_command', `Неизвестная команда: ${text}`);
   }
 });
 
@@ -791,7 +814,7 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
         }
       );
 
-      await logActivity(session.executerId, 'create_order', `Создан заказ ${orderNumber} для услуги ${waitingData.serviceName}`);
+      await logActivity(session.executerId, 'create_order', `Создан заказ #${orderNumber} для услуги "${waitingData.serviceName}". Материалы назначены автоматически.`, orderNumber);
     } else {
       ctx.reply(`❌ Ошибка создания заказа: ${response.data.message}`);
     }
@@ -840,14 +863,20 @@ const handleCancellationReasonInput = async (ctx, reason) => {
         }
       );
 
-      await logActivity(session.executerId, 'cancel_order', `Не выполнил услугу ${waitingData.orderNumber}. Причина: ${reason}`);
+      await logActivity(session.executerId, 'cancel_order', `Не выполнил услугу #${waitingData.orderNumber}. Причина: ${reason}. Материалы возвращены.`, waitingData.orderNumber);
     } else {
       ctx.reply(`❌ Ошибка отмены заказа: ${response.data.message}`);
+      await logActivity(session.executerId, 'cancel_order_failed', `Ошибка отмены заказа #${waitingData.orderNumber}: ${response.data.message}`, waitingData.orderNumber);
     }
 
   } catch (error) {
     console.error('❌ Ошибка отмены заказа:', error);
     ctx.reply('❌ Ошибка при отмене заказа. Попробуйте еще раз.');
+
+    const session = userSessions[ctx.chat.id];
+    if (session?.executerId) {
+      await logActivity(session.executerId, 'cancel_order_error', `Системная ошибка при отмене заказа: ${error.message}`);
+    }
   }
 };
 
@@ -893,14 +922,20 @@ const handleReplacementReasonInput = async (ctx, reason) => {
         }
       );
 
-      await logActivity(session.executerId, 'request_replacement', `Запрос замены материала в заказе ${waitingData.orderNumber}. Причина: ${reason}`);
+      await logActivity(session.executerId, 'request_replacement', `Запрос замены материала "${waitingData.materialName}" в заказе #${waitingData.orderNumber}. Причина: ${reason}`, waitingData.orderNumber);
     } else {
       ctx.reply(`❌ Ошибка отправки запроса: ${response.data.message}`);
+      await logActivity(session.executerId, 'request_replacement_failed', `Ошибка запроса замены материала в заказе #${waitingData.orderNumber}: ${response.data.message}`, waitingData.orderNumber);
     }
 
   } catch (error) {
     console.error('❌ Ошибка запроса замены:', error);
     ctx.reply('❌ Ошибка при отправке запроса на замену. Попробуйте еще раз.');
+
+    const session = userSessions[ctx.chat.id];
+    if (session?.executerId) {
+      await logActivity(session.executerId, 'request_replacement_error', `Системная ошибка при запросе замены материала: ${error.message}`);
+    }
   }
 };
 
@@ -1241,15 +1276,21 @@ bot.action(/^complete_order_(.+)$/, async (ctx) => {
         }
       );
 
-      await logActivity(session.executerId, 'complete_order', `Выполнен заказ ${orderNumber}`);
+      await logActivity(session.executerId, 'complete_order', `Выполнен заказ #${orderNumber}. Заработок добавлен к балансу.`, orderNumber);
     } else {
       ctx.reply(`❌ Ошибка выполнения заказа: ${response.data.message}`);
+      await logActivity(session.executerId, 'complete_order_failed', `Ошибка выполнения заказа #${orderNumber}: ${response.data.message}`, orderNumber);
     }
 
   } catch (error) {
     console.error('❌ Ошибка выполнения заказа:', error);
     await ctx.answerCbQuery();
     ctx.reply('❌ Ошибка при выполнении заказа');
+
+    const session = userSessions[ctx.chat.id];
+    if (session?.executerId) {
+      await logActivity(session.executerId, 'complete_order_error', `Системная ошибка при выполнении заказа: ${error.message}`);
+    }
   }
 });
 

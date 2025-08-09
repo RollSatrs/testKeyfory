@@ -1,6 +1,6 @@
-import { FaPercent, FaRubleSign, FaChartLine, FaCog } from 'react-icons/fa'
-import { useEffect, useState } from 'react'
-import { Statistic, Card, Row, Col, Spin } from 'antd'
+import { FaPercent, FaRubleSign, FaChartLine, FaCog } from "react-icons/fa";
+import { useEffect, useState } from "react";
+import { Statistic, Card, Row, Col, Spin } from "antd";
 
 export function PricingStats() {
   const [stats, setStats] = useState({
@@ -8,71 +8,64 @@ export function PricingStats() {
     monthlyEarnings: 0,
     activeExecuters: 0,
     completedOrders: 0,
-    loading: true
-  })
+    loading: true,
+  });
 
   useEffect(() => {
-    fetchEarningsStats()
-  }, [])
+    fetchEarningsStats();
+  }, []);
 
   async function fetchEarningsStats() {
     try {
-      // Получаем данные о заработке из ServiceExecution
-      const earningsRes = await fetch('http://localhost:3000/api/admin/service-executions/earnings-summary', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+      console.log("Fetching earnings stats...");
+
+      // Используем новый упрощенный endpoint
+      const response = await fetch(
+        "http://localhost:3000/admin/earnings/dashboard-summary",
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+          },
         }
-      })
+      );
 
-      let earningsData = { totalEarnings: 0, monthlyEarnings: 0, completedOrders: 0 }
-      if (earningsRes.ok) {
-        earningsData = await earningsRes.json()
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Dashboard stats received:", data);
+
+        setStats({
+          totalEarnings: data.totalEarnings || 0,
+          monthlyEarnings: data.monthlyEarnings || 0,
+          activeExecuters: data.activeExecuters || 0,
+          completedOrders: data.completedOrders || 0,
+          loading: false,
+        });
+      } else {
+        throw new Error(`HTTP ${response.status}`);
       }
-
-      // Получаем количество активных исполнителей
-      const executersRes = await fetch('http://localhost:3000/api/admin/executers/get', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        }
-      })
-
-      let activeExecuters = 0
-      if (executersRes.ok) {
-        const executers = await executersRes.json()
-        activeExecuters = executers.filter(e => e.status === 'active').length
-      }
-
-      setStats({
-        totalEarnings: earningsData.totalEarnings || 0,
-        monthlyEarnings: earningsData.monthlyEarnings || 0,
-        activeExecuters: activeExecuters,
-        completedOrders: earningsData.completedOrders || 0,
-        loading: false
-      })
-
     } catch (error) {
-      console.error('Ошибка загрузки статистики заработка:', error)
+      console.error("Ошибка загрузки статистики заработка:", error);
       // Показываем демо данные при ошибке
       setStats({
         totalEarnings: 245680,
         monthlyEarnings: 45320,
         activeExecuters: 12,
         completedOrders: 156,
-        loading: false
-      })
+        loading: false,
+      });
     }
   }
 
   if (stats.loading) {
     return (
       <div className="grid grid-cols-4 gap-4 mb-6">
-        {[1, 2, 3, 4].map(i => (
+        {[1, 2, 3, 4].map((i) => (
           <Card key={i} className="text-center">
             <Spin />
           </Card>
         ))}
       </div>
-    )
+    );
   }
 
   return (
@@ -88,7 +81,11 @@ export function PricingStats() {
           title="Общий заработок"
           value={stats.totalEarnings}
           prefix="₽"
-          valueStyle={{ color: '#52c41a', fontSize: '2rem', fontWeight: 'bold' }}
+          valueStyle={{
+            color: "#52c41a",
+            fontSize: "2rem",
+            fontWeight: "bold",
+          }}
         />
         <div className="text-green-500 text-sm mt-2 font-medium">
           За все время
@@ -106,7 +103,11 @@ export function PricingStats() {
           title="За месяц"
           value={stats.monthlyEarnings}
           prefix="₽"
-          valueStyle={{ color: '#1890ff', fontSize: '2rem', fontWeight: 'bold' }}
+          valueStyle={{
+            color: "#1890ff",
+            fontSize: "2rem",
+            fontWeight: "bold",
+          }}
         />
         <div className="text-blue-500 text-sm mt-2 font-medium">
           Текущий период
@@ -123,7 +124,11 @@ export function PricingStats() {
         <Statistic
           title="Активные исполнители"
           value={stats.activeExecuters}
-          valueStyle={{ color: '#fa8c16', fontSize: '2rem', fontWeight: 'bold' }}
+          valueStyle={{
+            color: "#fa8c16",
+            fontSize: "2rem",
+            fontWeight: "bold",
+          }}
         />
         <div className="text-orange-500 text-sm mt-2 font-medium">
           Работают сейчас
@@ -140,7 +145,11 @@ export function PricingStats() {
         <Statistic
           title="Выполнено заказов"
           value={stats.completedOrders}
-          valueStyle={{ color: '#722ed1', fontSize: '2rem', fontWeight: 'bold' }}
+          valueStyle={{
+            color: "#722ed1",
+            fontSize: "2rem",
+            fontWeight: "bold",
+          }}
         />
         <div className="text-purple-500 text-sm mt-2 font-medium">
           Успешно завершены
@@ -161,5 +170,5 @@ export function PricingStats() {
         }
       `}</style>
     </div>
-  )
+  );
 }

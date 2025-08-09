@@ -1,60 +1,112 @@
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
-import { Card, Select, Spin, Statistic, Row, Col } from 'antd'
-import { FaUser, FaMedal, FaChartBar } from 'react-icons/fa'
-import { useState, useEffect } from 'react'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import { Card, Select, Spin, Statistic, Row, Col } from "antd";
+import { FaUser, FaMedal, FaChartBar } from "react-icons/fa";
+import { useState, useEffect } from "react";
 
-const { Option } = Select
+const { Option } = Select;
 
-const COLORS = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2']
+const COLORS = [
+  "#1890ff",
+  "#52c41a",
+  "#faad14",
+  "#f5222d",
+  "#722ed1",
+  "#13c2c2",
+];
 
 export function ExecuterStatsChart() {
-  const [executerStats, setExecuterStats] = useState([])
-  const [topExecuters, setTopExecuters] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [chartType, setChartType] = useState('bar')
-  const [period, setPeriod] = useState('month')
+  const [executerStats, setExecuterStats] = useState([]);
+  const [topExecuters, setTopExecuters] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [chartType, setChartType] = useState("bar");
+  const [period, setPeriod] = useState("month");
 
   useEffect(() => {
-    fetchExecuterStats()
-  }, [period])
+    fetchExecuterStats();
+  }, [period]);
 
   async function fetchExecuterStats() {
-    setLoading(true)
+    setLoading(true);
     try {
-      const res = await fetch(`http://localhost:3000/api/admin/service-executions/executer-stats?period=${period}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+      console.log("Fetching executer stats...");
+
+      const res = await fetch(
+        `http://localhost:3000/admin/earnings/simple-executer-stats`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+          },
         }
-      })
+      );
 
       if (res.ok) {
-        const data = await res.json()
-        setExecuterStats(data.executerStats || [])
-        setTopExecuters(data.topExecuters || [])
+        const data = await res.json();
+        console.log("Executer stats received:", data);
+
+        // Преобразуем данные в нужный формат
+        const stats = data.map((executer) => ({
+          name: executer.name,
+          earnings: executer.earnings,
+          orders: executer.orders,
+          rating: executer.rating.toFixed(1),
+          completionRate: executer.completionRate,
+        }));
+
+        const topStats = stats
+          .sort((a, b) => b.earnings - a.earnings)
+          .slice(0, 6)
+          .map((item, index) => ({
+            ...item,
+            rank: index + 1,
+            percentage: (
+              (item.earnings / stats.reduce((sum, s) => sum + s.earnings, 0)) *
+              100
+            ).toFixed(1),
+          }));
+
+        setExecuterStats(stats);
+        setTopExecuters(topStats);
       } else {
-        console.error('Ошибка загрузки статистики исполнителей')
+        console.error("Ошибка загрузки статистики исполнителей");
         // Показываем демо данные
-        generateDemoData()
+        generateDemoData();
       }
     } catch (error) {
-      console.error('Ошибка:', error)
+      console.error("Ошибка:", error);
       // Показываем демо данные
-      generateDemoData()
+      generateDemoData();
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   function generateDemoData() {
-    const executerNames = ['Иван Петров', 'Мария Иванова', 'Сергей Сидоров', 'Анна Козлова', 'Дмитрий Орлов']
+    const executerNames = [
+      "Иван Петров",
+      "Мария Иванова",
+      "Сергей Сидоров",
+      "Анна Козлова",
+      "Дмитрий Орлов",
+    ];
 
     const stats = executerNames.map((name, index) => ({
       name: name,
       earnings: Math.floor(Math.random() * 50000) + 10000,
       orders: Math.floor(Math.random() * 30) + 5,
       rating: (Math.random() * 2 + 3).toFixed(1),
-      completionRate: Math.floor(Math.random() * 20) + 80
-    }))
+      completionRate: Math.floor(Math.random() * 20) + 80,
+    }));
 
     const topStats = stats
       .sort((a, b) => b.earnings - a.earnings)
@@ -62,42 +114,59 @@ export function ExecuterStatsChart() {
       .map((item, index) => ({
         ...item,
         rank: index + 1,
-        percentage: ((item.earnings / stats.reduce((sum, s) => sum + s.earnings, 0)) * 100).toFixed(1)
-      }))
+        percentage: (
+          (item.earnings / stats.reduce((sum, s) => sum + s.earnings, 0)) *
+          100
+        ).toFixed(1),
+      }));
 
-    setExecuterStats(stats)
-    setTopExecuters(topStats)
+    setExecuterStats(stats);
+    setTopExecuters(topStats);
   }
 
   const formatCurrency = (value) => {
-    return new Intl.NumberFormat('ru-RU', {
-      style: 'currency',
-      currency: 'RUB',
-      minimumFractionDigits: 0
-    }).format(value)
-  }
+    return new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency: "RUB",
+      minimumFractionDigits: 0,
+    }).format(value);
+  };
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
-      const data = payload[0].payload
+      const data = payload[0].payload;
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
           <p className="font-medium text-gray-900">{label}</p>
-          <p className="text-blue-600">{`Заработок: ${formatCurrency(data.earnings)}`}</p>
+          <p className="text-blue-600">{`Заработок: ${formatCurrency(
+            data.earnings
+          )}`}</p>
           <p className="text-green-600">{`Заказов: ${data.orders}`}</p>
           <p className="text-orange-600">{`Рейтинг: ${data.rating}`}</p>
           <p className="text-purple-600">{`Выполнено: ${data.completionRate}%`}</p>
         </div>
-      )
+      );
     }
-    return null
-  }
+    return null;
+  };
 
-  const totalEarnings = executerStats.reduce((sum, executer) => sum + executer.earnings, 0)
-  const totalOrders = executerStats.reduce((sum, executer) => sum + executer.orders, 0)
-  const averageRating = executerStats.length > 0
-    ? (executerStats.reduce((sum, executer) => sum + parseFloat(executer.rating), 0) / executerStats.length).toFixed(1)
-    : 0
+  const totalEarnings = executerStats.reduce(
+    (sum, executer) => sum + executer.earnings,
+    0
+  );
+  const totalOrders = executerStats.reduce(
+    (sum, executer) => sum + executer.orders,
+    0
+  );
+  const averageRating =
+    executerStats.length > 0
+      ? (
+          executerStats.reduce(
+            (sum, executer) => sum + parseFloat(executer.rating),
+            0
+          ) / executerStats.length
+        ).toFixed(1)
+      : 0;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -107,7 +176,9 @@ export function ExecuterStatsChart() {
           <div className="flex items-center">
             <FaChartBar className="text-2xl text-purple-500 mr-3" />
             <div>
-              <h3 className="text-lg font-bold text-gray-900">Статистика по исполнителям</h3>
+              <h3 className="text-lg font-bold text-gray-900">
+                Статистика по исполнителям
+              </h3>
               <p className="text-sm text-gray-600">Заработок и активность</p>
             </div>
           </div>
@@ -143,7 +214,7 @@ export function ExecuterStatsChart() {
         ) : (
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              {chartType === 'bar' ? (
+              {chartType === "bar" ? (
                 <BarChart data={executerStats}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis
@@ -173,17 +244,20 @@ export function ExecuterStatsChart() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({name, percentage}) => `${name}: ${percentage}%`}
+                    label={({ name, percentage }) => `${name}: ${percentage}%`}
                     outerRadius={100}
                     fill="#8884d8"
                     dataKey="earnings"
                   >
                     {topExecuters.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={COLORS[index % COLORS.length]}
+                      />
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value) => [formatCurrency(value), 'Заработок']}
+                    formatter={(value) => [formatCurrency(value), "Заработок"]}
                   />
                 </PieChart>
               )}
@@ -196,21 +270,23 @@ export function ExecuterStatsChart() {
       <div className="space-y-6">
         {/* Общая статистика */}
         <Card className="executer-stats-summary">
-          <h4 className="text-base font-bold text-gray-900 mb-4">Общая статистика</h4>
+          <h4 className="text-base font-bold text-gray-900 mb-4">
+            Общая статистика
+          </h4>
           <Row gutter={[0, 16]}>
             <Col span={24}>
               <Statistic
                 title="Общий заработок"
                 value={totalEarnings}
                 prefix="₽"
-                valueStyle={{ color: '#1890ff', fontSize: '1.5rem' }}
+                valueStyle={{ color: "#1890ff", fontSize: "1.5rem" }}
               />
             </Col>
             <Col span={24}>
               <Statistic
                 title="Всего заказов"
                 value={totalOrders}
-                valueStyle={{ color: '#52c41a', fontSize: '1.2rem' }}
+                valueStyle={{ color: "#52c41a", fontSize: "1.2rem" }}
               />
             </Col>
             <Col span={24}>
@@ -219,7 +295,7 @@ export function ExecuterStatsChart() {
                 value={averageRating}
                 suffix="/5.0"
                 precision={1}
-                valueStyle={{ color: '#faad14', fontSize: '1.2rem' }}
+                valueStyle={{ color: "#faad14", fontSize: "1.2rem" }}
               />
             </Col>
           </Row>
@@ -229,18 +305,29 @@ export function ExecuterStatsChart() {
         <Card className="top-executers-card">
           <div className="flex items-center mb-4">
             <FaMedal className="text-xl text-yellow-500 mr-2" />
-            <h4 className="text-base font-bold text-gray-900">Топ исполнители</h4>
+            <h4 className="text-base font-bold text-gray-900">
+              Топ исполнители
+            </h4>
           </div>
 
           <div className="space-y-3">
             {topExecuters.slice(0, 5).map((executer, index) => (
-              <div key={executer.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div
+                key={executer.name}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+              >
                 <div className="flex items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3 ${
-                    index === 0 ? 'bg-yellow-500' :
-                    index === 1 ? 'bg-gray-400' :
-                    index === 2 ? 'bg-orange-600' : 'bg-blue-500'
-                  }`}>
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3 ${
+                      index === 0
+                        ? "bg-yellow-500"
+                        : index === 1
+                        ? "bg-gray-400"
+                        : index === 2
+                        ? "bg-orange-600"
+                        : "bg-blue-500"
+                    }`}
+                  >
                     {index + 1}
                   </div>
                   <div>
@@ -291,5 +378,5 @@ export function ExecuterStatsChart() {
         }
       `}</style>
     </div>
-  )
+  );
 }

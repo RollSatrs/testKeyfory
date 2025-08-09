@@ -18,38 +18,74 @@ export async function getAllMaterials() {
             order: [['create_date_material', 'DESC']]
         });
 
-        // Для каждого материала находим связанные заказы с исполнителями
+        // Для каждого материала находим все связанные заказы с исполнителями
         const materialsWithOrders = await Promise.all(
             materials.map(async (material) => {
                 const materialData = material.toJSON();
 
-                // Если у материала есть order_number, ищем исполнителя
-                if (material.order_number) {
-                    // Ищем ServiceExecution по номеру заказа для получения исполнителя
-                    const serviceExecution = await ServiceExecution.findOne({
-                        where: {
-                            order_number: material.order_number,
-                            service_id: material.service_id
-                        },
-                        include: [{
-                            model: Executer,
-                            as: 'Executer',
-                            attributes: ['id', 'name', 'telegram_id']
-                        }],
-                        attributes: ['order_number', 'executer_id', 'status']
-                    });
+                // Ищем все ServiceExecution для данного материала и услуги
+                const serviceExecutions = await ServiceExecution.findAll({
+                    where: {
+                        service_id: material.service_id,
+                        status: ['active', 'in_progress', 'pending'] // Активные заказы
+                    },
+                    include: [{
+                        model: Executer,
+                        as: 'Executer',
+                        attributes: ['id', 'name', 'telegram_id']
+                    }],
+                    attributes: ['order_number', 'executer_id', 'status']
+                });
 
-                    if (serviceExecution && serviceExecution.Executer) {
-                        materialData.executer_name = serviceExecution.Executer.name;
-                        materialData.executer_id = serviceExecution.executer_id;
-                    } else {
-                        materialData.executer_name = 'Неизвестный исполнитель';
+                // Также ищем назначенные материалы через MaterialAssignment (если есть такая таблица)
+                // или используем order_number из материала
+                const relatedOrders = [];
+
+                // Если у материала есть order_number, добавляем его
+                if (material.order_number) {
+                    const directExecution = serviceExecutions.find(se => se.order_number === material.order_number);
+                    if (directExecution && directExecution.Executer) {
+                        relatedOrders.push({
+                            order_number: directExecution.order_number,
+                            executer_name: directExecution.Executer.name,
+                            executer_id: directExecution.executer_id,
+                            status: directExecution.status
+                        });
                     }
+                }
+
+                // Для всех активных заказов этой услуги (если материал доступен)
+                if (material.status === 'available' && serviceExecutions.length > 0) {
+                    serviceExecutions.forEach(execution => {
+                        if (execution.Executer && !relatedOrders.find(o => o.order_number === execution.order_number)) {
+                            relatedOrders.push({
+                                order_number: execution.order_number,
+                                executer_name: execution.Executer.name,
+                                executer_id: execution.executer_id,
+                                status: execution.status
+                            });
+                        }
+                    });
+                }
+
+                // Добавляем информацию о заказах к материалу
+                if (relatedOrders.length > 0) {
+                    materialData.active_orders = relatedOrders;
+
+                    // Для обратной совместимости оставляем первый заказ в старых полях
+                    materialData.executer_name = relatedOrders[0].executer_name;
+                    materialData.executer_id = relatedOrders[0].executer_id;
+                    materialData.order_number = relatedOrders[0].order_number;
+                } else if (material.order_number) {
+                    // Если есть номер заказа, но нет активного исполнения
+                    materialData.executer_name = 'Неизвестный исполнитель';
                 }
 
                 return materialData;
             })
-        );        return materialsWithOrders;
+        );
+
+        return materialsWithOrders;
     } catch (error) {
         throw new Error(`Error fetching materials: ${error.message}`);
     }
