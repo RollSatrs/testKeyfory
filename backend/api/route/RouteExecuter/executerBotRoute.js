@@ -1,6 +1,6 @@
 import express from 'express';
 import { Op } from 'sequelize';
-import { Services, Material, ServiceAccess, Executer, ServiceExecution, MaterialReplacement, ExecuterPricing } from '../../../database/dbTables.js';
+import { Services, Material, ServiceAccess, Executer, ServiceExecution, MaterialReplacement, ExecuterPricing, Order } from '../../../database/dbTables.js';
 
 const router = express.Router();
 
@@ -1117,6 +1117,151 @@ router.post('/assign-material', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Ошибка назначения материала:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера',
+      error: error.message
+    });
+  }
+});
+
+// POST /request-replacement - Запрос на замену материала
+router.post('/request-replacement', async (req, res) => {
+  try {
+    const { orderNumber, materialId, telegramId, reason } = req.body;
+
+    console.log(`\n🔄 === ЗАПРОС НА ЗАМЕНУ МАТЕРИАЛА ===`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`📦 Material ID: ${materialId}`);
+    console.log(`👤 Telegram ID: ${telegramId}`);
+    console.log(`📝 Reason: ${reason}`);
+
+    // Проверяем обязательные поля
+    if (!orderNumber || !materialId || !telegramId || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: 'Все поля обязательны для заполнения'
+      });
+    }
+
+    // Находим исполнителя по telegram_id
+    const executer = await Executer.findOne({
+      where: { telegram_id: telegramId.toString() }
+    });
+
+    if (!executer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Исполнитель не найден'
+      });
+    }
+
+    // Находим заказ
+    const execution = await ServiceExecution.findOne({
+      where: {
+        order_number: orderNumber,
+        executer_id: executer.id
+      },
+      include: [
+        {
+          model: Services,
+          as: 'Service'
+        }
+      ]
+    });
+
+    if (!execution) {
+      return res.status(404).json({
+        success: false,
+        message: 'Заказ не найден'
+      });
+    }
+
+    // Находим материал
+    const material = await Material.findByPk(materialId);
+
+    if (!material) {
+      return res.status(404).json({
+        success: false,
+        message: 'Материал не найден'
+      });
+    }
+
+    // Проверяем, есть ли уже Order в details execution
+    let orderId = null;
+
+    // Пытаемся найти существующий Order по данным execution
+    const existingOrder = await Order.findOne({
+      where: {
+        service_id: execution.service_id,
+        executer_id: executer.id,
+        details: {
+          order_number: orderNumber
+        }
+      }
+    });
+
+    if (existingOrder) {
+      orderId = existingOrder.id;
+      console.log(`📋 Найден существующий Order с ID: ${orderId}`);
+    } else {
+      console.log(`⚠️ Order для заказа ${orderNumber} не найден, создаем запрос замены без order_id`);
+      // Временно пропускаем создание Order и используем заглушку
+      // В реальной системе нужно будет либо создать Order, либо изменить схему БД
+    }
+
+    // Создаем запрос на замену
+    const replacementData = {
+      executer_id: executer.id,
+      material_id: materialId,
+      reason: reason,
+      status: 'pending'
+    };
+
+    // Добавляем order_id только если найден существующий Order
+    if (orderId) {
+      replacementData.order_id = orderId;
+    } else {
+      // Временное решение: создаем минимальный Order
+      try {
+        const tempOrder = await Order.create({
+          service_id: execution.service_id,
+          executer_id: executer.id,
+          total_sum: 0,
+          status: 'active',
+          payment_status: 'pending',
+          details: {
+            order_number: orderNumber,
+            service_execution_id: execution.id,
+            temp_order: true
+          }
+        });
+        replacementData.order_id = tempOrder.id;
+        console.log(`📋 Создан временный Order с ID: ${tempOrder.id}`);
+      } catch (orderError) {
+        console.error('❌ Ошибка создания временного Order:', orderError);
+        return res.status(500).json({
+          success: false,
+          message: 'Ошибка создания заказа для запроса замены'
+        });
+      }
+    }
+
+    const replacementRequest = await MaterialReplacement.create(replacementData);
+
+    console.log(`✅ Запрос на замену создан с ID: ${replacementRequest.id}`);
+
+    res.json({
+      success: true,
+      message: 'Запрос на замену успешно отправлен',
+      request: {
+        id: replacementRequest.id,
+        status: replacementRequest.status
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка создания запроса на замену:', error);
     res.status(500).json({
       success: false,
       message: 'Ошибка сервера',

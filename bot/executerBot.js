@@ -523,16 +523,6 @@ const manageOrder = async (ctx, orderNumber) => {
 
     // Кнопка замены материалов (показываем всегда, но с разным текстом)
     if (hasMaterials) {
-      // Добавляем кнопки для выбора материалов
-      const limitedMaterials = orderMaterials.slice(0, 4);
-      limitedMaterials.forEach((material, index) => {
-        const materialText = material.contents || material.name || `Материал ${index + 1}`;
-        managementButtons.push([{
-          text: `📦 ${materialText.length > 30 ? materialText.substring(0, 30) + '...' : materialText}`,
-          callback_data: `assign_material_${orderNumber}_${material.id}`
-        }]);
-      });
-
       managementButtons.push([
         { text: '🔄 Заменить материалы', callback_data: `replace_materials_${orderNumber}` }
       ]);
@@ -874,10 +864,10 @@ const handleReplacementReasonInput = async (ctx, reason) => {
     console.log(`📝 Reason: ${reason}`);
 
     // Отправляем запрос на замену
-    const response = await axios.post(`${API_BASE_URL}/api/executers/request-replacement`, {
+    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/request-replacement`, {
       orderNumber: waitingData.orderNumber,
       materialId: waitingData.materialId,
-      executerId: session.executerId,
+      telegramId: session.telegramId,
       reason: reason
     });
 
