@@ -7,8 +7,8 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Идем на 2 уровня вверх: backend/database -> backend -> testKeyfory
-const projectRoot = path.resolve(__dirname, '..', '..')
+// Идем на 1 уровень вверх: backend/database -> backend
+const projectRoot = path.resolve(__dirname, '..')
 const envPath = path.join(projectRoot, '.env')
 
 console.log(`📄 [databaseOn.js] Использую .env файл: ${envPath}`)

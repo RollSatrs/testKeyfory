@@ -17,6 +17,7 @@ import executerBotRoute from './route/RouteExecuter/executerBotRoute.js'
 import { authMiddleware, authExecuterMiddleware } from './middleware.js'
 import { sequelize } from '../database/databaseOn.js'
 import { checkInactiveExecuters } from './service/ServiceAdmim/adminExecuterService.js'
+import { initializeAdmin } from '../initAdmin.mjs'
 
 dotenv.config()
 const app = express()
@@ -67,7 +68,8 @@ const startServer = async () => {
     await sequelize.sync({ alter: true });
     console.log('✅ Схема базы данных синхронизирована');
 
-    // Убираем заполнение фейковыми данными
+  // Инициализируем авто-админа из .env
+  await initializeAdmin();
 
     // Запускаем сервер
     app.listen(PORT, () => {

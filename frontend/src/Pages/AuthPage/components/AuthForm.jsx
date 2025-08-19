@@ -20,10 +20,10 @@ export function AuthForm() {
     if (resetStep === 1) {
       // Проверяем, существует ли админ с таким Telegram ID
       try {
-        const res = await fetch('http://localhost:3000/api/admin/check-for-reset', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ telegramId })
+        const res = await fetch("/api/admin/check-for-reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ telegramId }),
         });
 
         const data = await res.json();
@@ -40,10 +40,10 @@ export function AuthForm() {
     } else {
       // Смена пароля
       try {
-        const res = await fetch('http://localhost:3000/api/admin/simple-reset-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ telegramId, newPassword })
+        const res = await fetch("/api/admin/simple-reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ telegramId, newPassword }),
         });
 
         const data = await res.json();
@@ -69,15 +69,15 @@ export function AuthForm() {
     e.preventDefault();
     setError("");
     try {
-      const res = await fetch('http://localhost:3000/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegramId, password })
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegramId, password }),
       });
 
       const data = await res.json();
       if (res.ok && data.token) {
-        localStorage.setItem('admin_token', data.token);
+        localStorage.setItem("admin_token", data.token);
         navigate("/overview");
       } else {
         setError(data.error || "Ошибка авторизации");
@@ -106,26 +106,34 @@ export function AuthForm() {
             `}
           </style>
           <div className="text-center mb-6">
-            <div className="font-bold text-4xl mb-2 text-[#f5f7ff]">Welcome Back!</div>
-            <div className="text-[#e7e7e7]">Введите Telegram ID и пароль для входа.</div>
+            <div className="font-bold text-4xl mb-2 text-[#f5f7ff]">
+              Welcome Back!
+            </div>
+            <div className="text-[#e7e7e7]">
+              Введите Telegram ID и пароль для входа.
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1 text-[#6375F0]">Telegram ID</label>
+            <label className="block text-sm font-medium mb-1 text-[#6375F0]">
+              Telegram ID
+            </label>
             <input
               type="text"
               value={telegramId}
-              onChange={e => setTelegramId(e.target.value)}
+              onChange={(e) => setTelegramId(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-transparent text-white placeholder-white transition-transform duration-200 focus:scale-105"
               placeholder="Введите Telegram ID"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1 text-[#6375F0]">Password</label>
+            <label className="block text-sm font-medium mb-1 text-[#6375F0]">
+              Password
+            </label>
             <input
               type="password"
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-transparent text-white placeholder-white transition-transform duration-200 focus:scale-105"
               placeholder="Введите пароль"
               required
@@ -136,7 +144,7 @@ export function AuthForm() {
               <input
                 type="checkbox"
                 checked={remember}
-                onChange={e => setRemember(e.target.checked)}
+                onChange={(e) => setRemember(e.target.checked)}
                 className="accent-blue-500"
               />
               Запомнить меня
@@ -164,22 +172,25 @@ export function AuthForm() {
         >
           <div className="text-center mb-6">
             <div className="font-bold text-3xl mb-2 text-[#f5f7ff]">
-              {resetStep === 1 ? "Восстановление пароля" : "Введите новый пароль"}
+              {resetStep === 1
+                ? "Восстановление пароля"
+                : "Введите новый пароль"}
             </div>
             <div className="text-[#e7e7e7]">
               {resetStep === 1
                 ? "Введите ваш Telegram ID для проверки"
-                : "Введите новый пароль для вашего аккаунта"
-              }
+                : "Введите новый пароль для вашего аккаунта"}
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1 text-[#6375F0]">Telegram ID</label>
+            <label className="block text-sm font-medium mb-1 text-[#6375F0]">
+              Telegram ID
+            </label>
             <input
               type="text"
               value={telegramId}
-              onChange={e => setTelegramId(e.target.value)}
+              onChange={(e) => setTelegramId(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-transparent text-white placeholder-white transition-transform duration-200 focus:scale-105"
               placeholder="Введите Telegram ID"
               required
@@ -189,11 +200,13 @@ export function AuthForm() {
 
           {resetStep === 2 && (
             <div>
-              <label className="block text-sm font-medium mb-1 text-[#6375F0]">Новый пароль</label>
+              <label className="block text-sm font-medium mb-1 text-[#6375F0]">
+                Новый пароль
+              </label>
               <input
                 type="password"
                 value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
+                onChange={(e) => setNewPassword(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-transparent text-white placeholder-white transition-transform duration-200 focus:scale-105"
                 placeholder="Введите новый пароль"
                 required

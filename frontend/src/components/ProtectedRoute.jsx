@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
+import { apiFetch } from "../lib/api";
 
 export function ProtectedRoute({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(null);
@@ -7,7 +8,7 @@ export function ProtectedRoute({ children }) {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('admin_token');
+      const token = localStorage.getItem("admin_token");
 
       if (!token) {
         setIsAuthenticated(false);
@@ -16,22 +17,14 @@ export function ProtectedRoute({ children }) {
       }
 
       try {
-        const response = await fetch('http://localhost:3000/api/admin/verify', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (response.ok) {
-          setIsAuthenticated(true);
-        } else {
-          // Токен недействителен, удаляем его
-          localStorage.removeItem('admin_token');
-          setIsAuthenticated(false);
-        }
+        await apiFetch("/api/admin/verify");
+        setIsAuthenticated(true);
       } catch (error) {
-        console.error('Ошибка проверки авторизации:', error);
-        localStorage.removeItem('admin_token');
+        console.error("Ошибка проверки авторизации:", error);
+        // Токен недействителен, удаляем его
+        try {
+          localStorage.removeItem("admin_token");
+        } catch {}
         setIsAuthenticated(false);
       }
 

@@ -1,0 +1,80 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: db
+      DB_PORT: "5432"
+      PORT: "3000"
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_TELEGRAM_ID: ${ADMIN_TELEGRAM_ID}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_NAME: ${ADMIN_NAME}
+    command: ["sh", "-lc", "[ -f package-lock.json ] && npm ci || npm install; npm run dev"]
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_HOST: 0.0.0.0
+      VITE_PORT: "5173"
+      TAILWIND_DISABLE_OXIDE: "1"
+    command: ["sh", "-lc", "[ -f package-lock.json ] && npm ci || npm install; npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"]
+    ports:
+      - "5173:5173"
+    restart: unless-stopped
+
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./bot:/app
+      - /app/node_modules
+    environment:
+      EXECUTER_BOT_TOKEN: ${EXECUTER_BOT_TOKEN}
+      API_BASE_URL: "http://backend:3000"
+    command: ["sh", "-lc", "[ -f package-lock.json ] && npm ci || npm install; npm start"]
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db_data:

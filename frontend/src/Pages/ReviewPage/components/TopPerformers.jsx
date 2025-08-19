@@ -1,54 +1,63 @@
-import { useState, useEffect } from 'react'
-import { FaStar } from 'react-icons/fa'
+import { useState, useEffect } from "react";
+import { FaStar } from "react-icons/fa";
+import { apiFetch } from "../../../lib/api";
 
 export function TopPerformers() {
-  const [performers, setPerformers] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [performers, setPerformers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchTopPerformers = async () => {
       try {
-        setLoading(true)
+        setLoading(true);
 
-        // Получаем всех исполнителей и заказы
-        const [executersRes, ordersRes] = await Promise.all([
-          fetch('http://localhost:3000/api/admin/executers'),
-          fetch('http://localhost:3000/api/admin/orders')
-        ])
-
-        const executers = await executersRes.json()
-        const orders = await ordersRes.json()
+        // Получаем всех исполнителей и заказы (через прокси /api и с JWT)
+        const [executers, orders] = await Promise.all([
+          apiFetch("/api/admin/executers"),
+          apiFetch("/api/admin/orders"),
+        ]);
 
         // Подсчитываем количество заказов для каждого исполнителя
-        const executerStats = executers.map(executer => {
-          const executerOrders = orders.filter(order => order.executer_id === executer.id)
-          const completedOrders = executerOrders.filter(order => order.status === 'completed')
+        const safeExecuters = Array.isArray(executers) ? executers : [];
+        const safeOrders = Array.isArray(orders) ? orders : [];
+        const executerStats = safeExecuters.map((executer) => {
+          const executerOrders = safeOrders.filter(
+            (order) => order.executer_id === executer.id
+          );
+          const completedOrders = executerOrders.filter(
+            (order) => order.status === "completed"
+          );
 
           return {
             id: executer.id,
             name: executer.name || `Исполнитель #${executer.id}`,
             orders: completedOrders.length,
             totalOrders: executerOrders.length,
-            rating: executer.rating || 0
-          }
-        })
+            rating: executer.rating || 0,
+          };
+        });
 
         // Сортируем по количеству выполненных заказов
         const topPerformers = executerStats
-          .filter(e => e.orders > 0) // Только с выполненными заказами
+          .filter((e) => e.orders > 0) // Только с выполненными заказами
           .sort((a, b) => b.orders - a.orders)
-          .slice(0, 4) // Берем топ-4
+          .slice(0, 4); // Берем топ-4
 
-        setPerformers(topPerformers)
+        setPerformers(topPerformers);
       } catch (error) {
-        console.error('Ошибка загрузки топ исполнителей:', error)
+        if (error.status === 401) {
+          console.warn("Не авторизовано. Перенаправление на страницу входа.");
+          // Ничего не делаем здесь; ProtectedRoute выполнит редирект при ререндере
+        } else {
+          console.error("Ошибка загрузки топ исполнителей:", error);
+        }
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    fetchTopPerformers()
-  }, [])
+    fetchTopPerformers();
+  }, []);
 
   if (loading) {
     return (
@@ -56,7 +65,10 @@ export function TopPerformers() {
         <h2 className="font-semibold mb-4">Лучшие исполнители</h2>
         <div className="animate-pulse">
           {[1, 2, 3, 4].map((item) => (
-            <div key={item} className="flex justify-between items-center py-3 border-b border-gray-200">
+            <div
+              key={item}
+              className="flex justify-between items-center py-3 border-b border-gray-200"
+            >
               <div className="h-4 bg-gray-200 rounded w-32"></div>
               <div className="h-4 bg-gray-200 rounded w-16"></div>
               <div className="h-4 bg-gray-200 rounded w-16"></div>
@@ -64,7 +76,7 @@ export function TopPerformers() {
           ))}
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -84,16 +96,24 @@ export function TopPerformers() {
               performers.map((p, idx) => (
                 <tr
                   key={p.id}
-                  className={idx !== performers.length - 1 ? "border-b border-gray-200" : ""}
+                  className={
+                    idx !== performers.length - 1
+                      ? "border-b border-gray-200"
+                      : ""
+                  }
                 >
                   <td className="py-2 font-medium">{p.name}</td>
                   <td className="py-2">
-                    <span className="font-semibold text-green-600">{p.orders}</span>
-                    <span className="text-gray-500 text-sm ml-1">из {p.totalOrders}</span>
+                    <span className="font-semibold text-green-600">
+                      {p.orders}
+                    </span>
+                    <span className="text-gray-500 text-sm ml-1">
+                      из {p.totalOrders}
+                    </span>
                   </td>
                   <td className="py-2 flex items-center gap-1">
                     <FaStar className="text-yellow-400" size={16} />
-                    {p.rating > 0 ? p.rating.toFixed(1) : 'Нет рейтинга'}
+                    {p.rating > 0 ? p.rating.toFixed(1) : "Нет рейтинга"}
                   </td>
                 </tr>
               ))
@@ -108,5 +128,5 @@ export function TopPerformers() {
         </table>
       </div>
     </div>
-  )
+  );
 }
