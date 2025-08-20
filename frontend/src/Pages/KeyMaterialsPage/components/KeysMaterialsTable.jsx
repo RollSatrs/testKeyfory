@@ -13,33 +13,23 @@ import {
   Tooltip,
 } from "antd";
 import { CSVLink } from "react-csv";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 import { DownloadOutlined } from "@ant-design/icons";
 
 let successCount = 0;
 
 async function getMateriallsServices(nameService) {
   try {
-    await fetch(`${BACKEND_URL}/api/admin/materials/service`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-      },
-    });
-  } catch {
+    await apiFetch("/api/admin/materials/service");
+  } catch (err) {
     console.log("Ошибка", err);
   }
 }
 
 async function addMaterialls(row) {
   try {
-    await fetch(`${BACKEND_URL}/api/admin/materials/add`, {
+    await apiFetch("/api/admin/materials/add", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-      },
       body: JSON.stringify(row),
     });
     successCount++;
@@ -74,12 +64,7 @@ export function KeysMaterialsTable({
 
   async function fetchMaterials() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/materials/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/materials/get");
       setMaterials(data);
     } catch (error) {
       console.error("Ошибка загрузки материалов:", error);
@@ -88,12 +73,7 @@ export function KeysMaterialsTable({
 
   async function fetchServices() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/services/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/services/get");
       setServices(data);
     } catch (error) {
       console.error("Ошибка загрузки услуг:", error);
@@ -102,13 +82,7 @@ export function KeysMaterialsTable({
 
   async function handleDelete(id) {
     try {
-      await fetch(`${BACKEND_URL}/api/admin/materials/delete/${id}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
+      await apiFetch(`/api/admin/materials/delete/${id}`, { method: "DELETE" });
       fetchMaterials();
       if (onChange) onChange();
       message.success("Материал удален");
@@ -119,12 +93,8 @@ export function KeysMaterialsTable({
 
   async function handleStatusChange(id, newStatus) {
     try {
-      await fetch(`${BACKEND_URL}/api/admin/materials/update-status/${id}`, {
+      await apiFetch(`/api/admin/materials/update-status/${id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
         body: JSON.stringify({ status: newStatus }),
       });
       fetchMaterials();
@@ -151,12 +121,8 @@ export function KeysMaterialsTable({
 
   async function handleEditSubmit() {
     try {
-      await fetch(`${BACKEND_URL}/api/admin/materials/update/${form.id}`, {
+      await apiFetch(`/api/admin/materials/update/${form.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
         body: JSON.stringify({
           service_id: form.service_id,
           contents: form.contents,
@@ -180,12 +146,7 @@ export function KeysMaterialsTable({
 
   async function fetchReplacementMaterials(serviceId) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/materials/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/materials/get");
       // Фильтруем только доступные материалы той же услуги
       const availableMaterials = data.filter(
         (m) => m.service_id === serviceId && m.status === "available"
@@ -198,29 +159,17 @@ export function KeysMaterialsTable({
 
   async function handleReplaceSubmit(newMaterialId) {
     try {
-      const response = await fetch(
-        `${BACKEND_URL}/api/admin/materials/replace`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-          body: JSON.stringify({
-            oldMaterialId: selectedMaterial.id,
-            newMaterialId: newMaterialId,
-          }),
-        }
-      );
-
-      if (response.ok) {
-        message.success("Материал успешно заменен");
-        setReplacementModalVisible(false);
-        fetchMaterials();
-        if (onChange) onChange();
-      } else {
-        message.error("Ошибка при замене материала");
-      }
+      await apiFetch("/api/admin/materials/replace", {
+        method: "POST",
+        body: JSON.stringify({
+          oldMaterialId: selectedMaterial.id,
+          newMaterialId: newMaterialId,
+        }),
+      });
+      message.success("Материал успешно заменен");
+      setReplacementModalVisible(false);
+      fetchMaterials();
+      if (onChange) onChange();
     } catch (error) {
       console.error("Ошибка при замене материала:", error);
       message.error("Ошибка при замене материала");

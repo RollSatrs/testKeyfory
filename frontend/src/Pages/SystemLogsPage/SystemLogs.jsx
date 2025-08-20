@@ -1,50 +1,57 @@
-import { useState, useEffect } from 'react'
-import { FaSearch, FaFilter, FaDownload, FaEye, FaUser, FaCog } from 'react-icons/fa'
+import { useState, useEffect } from "react";
+import {
+  FaSearch,
+  FaFilter,
+  FaDownload,
+  FaEye,
+  FaUser,
+  FaCog,
+} from "react-icons/fa";
+import { apiFetch } from "../../lib/api";
 
 export function SystemLogs() {
-  const [logs, setLogs] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
-    user_type: '',
-    action: '',
-    search: ''
-  })
+    user_type: "",
+    action: "",
+    search: "",
+  });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
-    total: 0
-  })
+    total: 0,
+  });
 
   useEffect(() => {
-    fetchLogs()
-  }, [filters, pagination.page])
+    fetchLogs();
+  }, [filters, pagination.page]);
 
   const fetchLogs = async () => {
     try {
-      setLoading(true)
+      setLoading(true);
       const params = new URLSearchParams({
         limit: pagination.limit,
         offset: (pagination.page - 1) * pagination.limit,
         ...(filters.user_type && { user_type: filters.user_type }),
-        ...(filters.action && { action: filters.action })
-      })
+        ...(filters.action && { action: filters.action }),
+      });
 
-      const response = await fetch(`/api/admin/executers/logs?${params}`)
-      const data = await response.json()
+      const data = await apiFetch(`/api/admin/executers/logs?${params}`);
 
-      setLogs(data.rows || [])
-      setPagination(prev => ({ ...prev, total: data.count || 0 }))
+      setLogs(data.rows || []);
+      setPagination((prev) => ({ ...prev, total: data.count || 0 }));
     } catch (error) {
-      console.error('Ошибка загрузки логов:', error)
+      console.error("Ошибка загрузки логов:", error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleFilterChange = (key, value) => {
-    setFilters(prev => ({ ...prev, [key]: value }))
-    setPagination(prev => ({ ...prev, page: 1 }))
-  }
+    setFilters((prev) => ({ ...prev, [key]: value }));
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  };
 
   const exportLogs = async () => {
     try {
@@ -52,67 +59,88 @@ export function SystemLogs() {
         limit: 1000,
         offset: 0,
         ...(filters.user_type && { user_type: filters.user_type }),
-        ...(filters.action && { action: filters.action })
-      })
+        ...(filters.action && { action: filters.action }),
+      });
 
-      const response = await fetch(`/api/admin/executers/logs?${params}`)
-      const data = await response.json()
+      const data = await apiFetch(`/api/admin/executers/logs?${params}`);
 
       // Создаем CSV
       const csvContent = [
-        ['Дата', 'Пользователь', 'Тип', 'Действие', 'Описание', 'Заказ', 'Услуга'],
-        ...data.rows.map(log => [
+        [
+          "Дата",
+          "Пользователь",
+          "Тип",
+          "Действие",
+          "Описание",
+          "Заказ",
+          "Услуга",
+        ],
+        ...data.rows.map((log) => [
           new Date(log.created_at).toLocaleString(),
-          log.user_type === 'executer' && log.Executer
-            ? `${log.Executer.name || 'Без имени'} (ID: ${log.user_id}, TG: ${log.Executer.telegram_id})`
+          log.user_type === "executer" && log.Executer
+            ? `${log.Executer.name || "Без имени"} (ID: ${log.user_id}, TG: ${
+                log.Executer.telegram_id
+              })`
             : `#${log.user_id}`,
-          log.user_type === 'admin' ? 'Админ' : 'Исполнитель',
+          log.user_type === "admin" ? "Админ" : "Исполнитель",
           log.action,
           log.description,
-          log.order_id || '',
-          log.Order?.Service?.name || ''
-        ])
-      ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n')
+          log.order_id || "",
+          log.Order?.Service?.name || "",
+        ]),
+      ]
+        .map((row) => row.map((cell) => `"${cell}"`).join(","))
+        .join("\n");
 
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = `system_logs_${new Date().toISOString().split('T')[0]}.csv`
-      link.click()
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `system_logs_${
+        new Date().toISOString().split("T")[0]
+      }.csv`;
+      link.click();
     } catch (error) {
-      console.error('Ошибка экспорта логов:', error)
+      console.error("Ошибка экспорта логов:", error);
     }
-  }
+  };
 
   const getActionIcon = (action) => {
     switch (action) {
-      case 'login': return <FaUser className="text-green-600" />
-      case 'complete_order': return <FaEye className="text-blue-600" />
-      case 'request_replacement': return <FaCog className="text-orange-600" />
-      default: return <FaCog className="text-gray-600" />
+      case "login":
+        return <FaUser className="text-green-600" />;
+      case "complete_order":
+        return <FaEye className="text-blue-600" />;
+      case "request_replacement":
+        return <FaCog className="text-orange-600" />;
+      default:
+        return <FaCog className="text-gray-600" />;
     }
-  }
+  };
 
   const getActionText = (action) => {
     const actions = {
-      'login': 'Вход в систему',
-      'view_order': 'Просмотр заказа',
-      'get_materials': 'Получение материалов',
-      'complete_order': 'Завершение заказа',
-      'request_replacement': 'Запрос замены',
-      'create_order': 'Создание заказа',
-      'update_rights': 'Обновление прав'
-    }
-    return actions[action] || action
-  }
+      login: "Вход в систему",
+      view_order: "Просмотр заказа",
+      get_materials: "Получение материалов",
+      complete_order: "Завершение заказа",
+      request_replacement: "Запрос замены",
+      create_order: "Создание заказа",
+      update_rights: "Обновление прав",
+    };
+    return actions[action] || action;
+  };
 
-  const totalPages = Math.ceil(pagination.total / pagination.limit)
+  const totalPages = Math.ceil(pagination.total / pagination.limit);
 
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">Системные логи</h1>
-        <p className="text-gray-600">Просмотр всех действий пользователей в системе</p>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">
+          Системные логи
+        </h1>
+        <p className="text-gray-600">
+          Просмотр всех действий пользователей в системе
+        </p>
       </div>
 
       {/* Фильтры */}
@@ -124,7 +152,7 @@ export function SystemLogs() {
             </label>
             <select
               value={filters.user_type}
-              onChange={(e) => handleFilterChange('user_type', e.target.value)}
+              onChange={(e) => handleFilterChange("user_type", e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Все</option>
@@ -139,7 +167,7 @@ export function SystemLogs() {
             </label>
             <select
               value={filters.action}
-              onChange={(e) => handleFilterChange('action', e.target.value)}
+              onChange={(e) => handleFilterChange("action", e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Все действия</option>
@@ -161,7 +189,7 @@ export function SystemLogs() {
                 type="text"
                 placeholder="Поиск по описанию..."
                 value={filters.search}
-                onChange={(e) => handleFilterChange('search', e.target.value)}
+                onChange={(e) => handleFilterChange("search", e.target.value)}
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -213,15 +241,21 @@ export function SystemLogs() {
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
+                  <td
+                    colSpan="5"
+                    className="px-6 py-12 text-center text-gray-500"
+                  >
                     Логи не найдены
                   </td>
                 </tr>
               ) : (
                 logs
-                  .filter(log =>
-                    !filters.search ||
-                    log.description.toLowerCase().includes(filters.search.toLowerCase())
+                  .filter(
+                    (log) =>
+                      !filters.search ||
+                      log.description
+                        .toLowerCase()
+                        .includes(filters.search.toLowerCase())
                   )
                   .map((log) => (
                     <tr key={log.id} className="hover:bg-gray-50">
@@ -230,25 +264,32 @@ export function SystemLogs() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            log.user_type === 'admin'
-                              ? 'bg-purple-100 text-purple-800'
-                              : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {log.user_type === 'admin' ? 'Админ' : 'Исполнитель'}
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs ${
+                              log.user_type === "admin"
+                                ? "bg-purple-100 text-purple-800"
+                                : "bg-blue-100 text-blue-800"
+                            }`}
+                          >
+                            {log.user_type === "admin"
+                              ? "Админ"
+                              : "Исполнитель"}
                           </span>
                           <div className="text-sm">
-                            {log.user_type === 'executer' && log.Executer ? (
+                            {log.user_type === "executer" && log.Executer ? (
                               <div>
                                 <div className="font-medium text-gray-900">
-                                  {log.Executer.name || 'Без имени'}
+                                  {log.Executer.name || "Без имени"}
                                 </div>
                                 <div className="text-gray-500 text-xs">
-                                  ID: {log.user_id} | TG: {log.Executer.telegram_id}
+                                  ID: {log.user_id} | TG:{" "}
+                                  {log.Executer.telegram_id}
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-gray-600">#{log.user_id}</span>
+                              <span className="text-gray-600">
+                                #{log.user_id}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -269,7 +310,9 @@ export function SystemLogs() {
                           <div className="text-sm">
                             <div className="font-medium">#{log.order_id}</div>
                             {log.Order?.Service?.name && (
-                              <div className="text-gray-500">{log.Order.Service.name}</div>
+                              <div className="text-gray-500">
+                                {log.Order.Service.name}
+                              </div>
                             )}
                           </div>
                         ) : (
@@ -287,11 +330,15 @@ export function SystemLogs() {
         {totalPages > 1 && (
           <div className="bg-white px-6 py-3 border-t border-gray-200 flex items-center justify-between">
             <div className="text-sm text-gray-700">
-              Показано {(pagination.page - 1) * pagination.limit + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} из {pagination.total} записей
+              Показано {(pagination.page - 1) * pagination.limit + 1} -{" "}
+              {Math.min(pagination.page * pagination.limit, pagination.total)}{" "}
+              из {pagination.total} записей
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                onClick={() =>
+                  setPagination((prev) => ({ ...prev, page: prev.page - 1 }))
+                }
                 disabled={pagination.page === 1}
                 className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
               >
@@ -301,7 +348,9 @@ export function SystemLogs() {
                 Страница {pagination.page} из {totalPages}
               </span>
               <button
-                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                onClick={() =>
+                  setPagination((prev) => ({ ...prev, page: prev.page + 1 }))
+                }
                 disabled={pagination.page === totalPages}
                 className="px-3 py-1 border border-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
               >
@@ -312,5 +361,5 @@ export function SystemLogs() {
         )}
       </div>
     </div>
-  )
+  );
 }

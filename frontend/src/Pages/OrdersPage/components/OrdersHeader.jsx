@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Input, Select, Button, message, Modal } from "antd";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 
 export function OrdersHeader({ onAdd }) {
   const [showOrderModal, setShowOrderModal] = useState(false);
@@ -25,12 +25,7 @@ export function OrdersHeader({ onAdd }) {
 
   async function fetchServices() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/services/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/services/get");
       setServices(data);
     } catch (error) {
       console.error("Ошибка загрузки услуг:", error);
@@ -39,12 +34,7 @@ export function OrdersHeader({ onAdd }) {
 
   async function fetchExecutors() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/executers/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/executers/get");
       setExecutors(data);
     } catch (error) {
       console.error("Ошибка загрузки исполнителей:", error);
@@ -53,12 +43,7 @@ export function OrdersHeader({ onAdd }) {
 
   async function fetchMaterialsForService(serviceId) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/materials/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/materials/get");
       // Фильтруем только доступные материалы для выбранной услуги
       const serviceMaterials = data.filter(
         (m) => m.service_id == serviceId && m.status === "available"
@@ -115,30 +100,22 @@ export function OrdersHeader({ onAdd }) {
   // Добавление заказа
   const handleAddOrder = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/admin/orders/add`, {
+      await apiFetch("/api/admin/orders/add", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
         body: JSON.stringify({
           ...orderForm,
           materials: selectedMaterials.map((m) => m.id),
         }),
       });
-
-      if (response.ok) {
-        setShowOrderModal(false);
-        resetForm();
-        if (onAdd) onAdd();
-        message.success("Заказ успешно добавлен");
-      } else {
-        const error = await response.json();
-        message.error(error.error || "Ошибка при добавлении заказа");
-      }
-    } catch (error) {
-      console.error("Ошибка при добавлении заказа:", error);
-      message.error("Ошибка при добавлении заказа");
+      setShowOrderModal(false);
+      resetForm();
+      if (onAdd) onAdd();
+      message.success("Заказ успешно добавлен");
+    } catch (err) {
+      console.error("Ошибка при добавлении заказа:", err);
+      message.error(
+        (err && err.data && err.data.error) || "Ошибка при добавлении заказа"
+      );
     }
   };
 

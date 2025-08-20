@@ -13,7 +13,7 @@ import {
   Line,
 } from "recharts";
 import { Card, Select, Spin, Statistic, Row, Col, Tabs } from "antd";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 import {
   FaChartPie,
   FaTrophy,
@@ -56,22 +56,10 @@ export function ServicesAnalytics() {
   async function fetchServicesData() {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${BACKEND_URL}/api/admin/earnings/services/performance?period=${period}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-        }
+      const data = await apiFetch(
+        `/api/admin/earnings/services/performance?period=${period}`
       );
-
-      if (res.ok) {
-        const data = await res.json();
-        setServicesData(data);
-      } else {
-        console.error("Ошибка загрузки статистики услуг");
-        generateDemoData();
-      }
+      setServicesData(data);
     } catch (error) {
       console.error("Ошибка:", error);
       generateDemoData();

@@ -55,3 +55,5 @@ export async function apiFetch(path, options = {}) {
 
   return data;
 }
+
+export default apiFetch;

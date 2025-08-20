@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 import {
   Input,
   Select,
@@ -83,20 +83,7 @@ export function ServicesHeader({ onAdd, children }) {
     try {
       console.log("🔄 Загружаем исполнителей...");
 
-      const response = await fetch(`${BACKEND_URL}/api/admin/executers/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      console.log("📡 Ответ от API:", response.status);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await apiFetch("/api/admin/executers/get");
       console.log("✅ Получены исполнители:", data);
       console.log("📊 Количество исполнителей:", data.length);
 
@@ -174,50 +161,29 @@ export function ServicesHeader({ onAdd, children }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     try {
-      // Создаем услугу
-      const serviceResponse = await fetch(
-        `${BACKEND_URL}/api/admin/services/add`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-          body: JSON.stringify({
-            name: form.name,
-            category: form.category,
-            price: parseFloat(form.price) || 0,
-            status: form.status,
-            loading_method: form.loadingMethod,
-            executer_id: form.executer_id || null,
-          }),
-        }
-      );
+      const serviceData = await apiFetch("/api/admin/services/add", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.name,
+          category: form.category,
+          price: parseFloat(form.price) || 0,
+          status: form.status,
+          loading_method: form.loadingMethod,
+          executer_id: form.executer_id || null,
+        }),
+      });
 
-      if (!serviceResponse.ok) {
-        throw new Error("Ошибка создания услуги");
-      }
+      const serviceId = serviceData && serviceData.id;
 
-      const serviceData = await serviceResponse.json();
-      const serviceId = serviceData.id;
-
-      // Добавляем материалы в зависимости от способа загрузки
       if (form.loadingMethod === "manual" && manualInput.trim()) {
-        console.log("📝 Добавляем материалы вручную...");
         const materials = manualInput
           .split("\n")
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0);
-
+          .map((l) => l.trim())
+          .filter(Boolean);
         for (const material of materials) {
-          await fetch(`${BACKEND_URL}/api/admin/materials/add-single`, {
+          await apiFetch("/api/admin/materials/add-single", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-            },
             body: JSON.stringify({
               service_id: serviceId,
               contents: material,
@@ -227,45 +193,23 @@ export function ServicesHeader({ onAdd, children }) {
         }
       }
 
-      // Загружаем файл, если выбран файловый способ
       if (form.loadingMethod === "file" && fileList.length > 0) {
-        console.log("📁 Загружаем файл с материалами...");
         const formData = new FormData();
         formData.append("file", fileList[0].originFileObj || fileList[0]);
         formData.append("service_id", serviceId);
-
-        const uploadResponse = await fetch(
-          `${BACKEND_URL}/api/admin/materials/upload`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-            },
-            body: formData,
-          }
+        const uploadResult = await apiFetch("/api/admin/materials/upload", {
+          method: "POST",
+          body: formData,
+        });
+        message.success(
+          `Загружено ${uploadResult?.count || 0} материалов из файла`
         );
-
-        if (uploadResponse.ok) {
-          const uploadResult = await uploadResponse.json();
-          console.log("✅ Файл загружен, материалов:", uploadResult.count);
-          message.success(
-            `Загружено ${uploadResult.count || 0} материалов из файла`
-          );
-        } else {
-          console.error("❌ Ошибка загрузки файла");
-          message.error("Ошибка при загрузке файла");
-        }
       }
 
-      // Добавляем индивидуальные цены для исполнителей
       for (const pricing of form.customPricing) {
         if (pricing.executer_id && pricing.custom_price) {
-          await fetch(`${BACKEND_URL}/api/admin/pricing/add`, {
+          await apiFetch("/api/admin/pricing/add", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-            },
             body: JSON.stringify({
               executer_id: pricing.executer_id,
               service_id: serviceId,

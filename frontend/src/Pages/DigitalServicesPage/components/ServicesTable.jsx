@@ -24,7 +24,7 @@ import {
   Divider,
   Tooltip,
 } from "antd";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 
 const categories = [
   "Игры",
@@ -102,23 +102,17 @@ export function ServicesTable({
   }, [refresh]);
 
   async function fetchServices() {
-    const res = await fetch(`${BACKEND_URL}/api/admin/services/get`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-      },
-    });
-    const data = await res.json();
-    setServices(data);
+    try {
+      const data = await apiFetch("/api/admin/services/get");
+      setServices(data);
+    } catch (error) {
+      console.error("Ошибка загрузки услуг:", error);
+    }
   }
 
   async function fetchExecuters() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/executers/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/executers/get");
       setExecuters(data);
     } catch (error) {
       console.error("Ошибка загрузки исполнителей:", error);
@@ -126,13 +120,7 @@ export function ServicesTable({
   }
 
   async function handleDelete(id) {
-    await fetch(`${BACKEND_URL}/api/admin/services/delete/${id}`, {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-      },
-    });
+    await apiFetch(`/api/admin/services/delete/${id}`, { method: "DELETE" });
     fetchServices();
     if (onChange) onChange();
     message.success("Услуга удалена");
@@ -178,12 +166,8 @@ export function ServicesTable({
         selectedExecuters.length > 0 ? selectedExecuters[0] : null;
 
       // Обновляем данные услуги включая executer_id
-      await fetch(`${BACKEND_URL}/api/admin/services/update/${form.id}`, {
+      await apiFetch(`/api/admin/services/update/${form.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
         body: JSON.stringify({
           name: form.name,
           category: form.category,
@@ -195,15 +179,9 @@ export function ServicesTable({
 
       // Обновляем назначенных исполнителей через ServiceAccess (для множественного назначения)
       if (selectedExecuters.length > 0) {
-        await fetch(`${BACKEND_URL}/api/admin/services/${form.id}/executers`, {
+        await apiFetch(`/api/admin/services/${form.id}/executers`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-          body: JSON.stringify({
-            executerIds: selectedExecuters,
-          }),
+          body: JSON.stringify({ executerIds: selectedExecuters }),
         });
       }
 
@@ -248,32 +226,15 @@ export function ServicesTable({
     setMaterialsModal(true);
 
     try {
-      // Загружаем материалы
-      const materialsResponse = await fetch(
-        `${BACKEND_URL}/api/admin/materials/service/${service.id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-        }
-      );
-
-      // Загружаем статистику
-      const statsResponse = await fetch(
-        `${BACKEND_URL}/api/admin/materials/service/${service.id}/stats`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-        }
-      );
-
-      if (materialsResponse.ok && statsResponse.ok) {
-        const materials = await materialsResponse.json();
-        const stats = await statsResponse.json();
+      // Загружаем материалы и статистику параллельно
+      try {
+        const [materials, stats] = await Promise.all([
+          apiFetch(`/api/admin/materials/service/${service.id}`),
+          apiFetch(`/api/admin/materials/service/${service.id}/stats`),
+        ]);
         setServiceMaterials(materials);
         setMaterialStats(stats);
-      } else {
+      } catch (err) {
         message.error("Ошибка при загрузке материалов");
         setServiceMaterials([]);
         setMaterialStats(null);
@@ -292,43 +253,30 @@ export function ServicesTable({
 
     try {
       // Загружаем текущие индивидуальные цены для всех исполнителей
-      const pricingResponse = await fetch(
-        `${BACKEND_URL}/api/admin/pricing/all`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-        }
+      const allPricing = await apiFetch("/api/admin/pricing/all");
+      // Фильтруем только цены для текущей услуги
+      const servicePricing = allPricing.filter(
+        (p) => p.service_id === service.id
       );
 
-      if (pricingResponse.ok) {
-        const allPricing = await pricingResponse.json();
-        // Фильтруем только цены для текущей услуги
-        const servicePricing = allPricing.filter(
-          (p) => p.service_id === service.id
+      // Создаем массив с ценами для всех исполнителей
+      const prices = executers.map((executer) => {
+        const existingPrice = servicePricing.find(
+          (p) => p.executer_id === executer.id
         );
+        return {
+          executer_id: executer.id,
+          executer_name: executer.name,
+          service_id: service.id,
+          custom_price: existingPrice
+            ? existingPrice.custom_price
+            : service.price,
+          has_custom_price: !!existingPrice,
+          pricing_id: existingPrice ? existingPrice.id : null,
+        };
+      });
 
-        // Создаем массив с ценами для всех исполнителей
-        const prices = executers.map((executer) => {
-          const existingPrice = servicePricing.find(
-            (p) => p.executer_id === executer.id
-          );
-          return {
-            executer_id: executer.id,
-            executer_name: executer.name,
-            service_id: service.id,
-            custom_price: existingPrice
-              ? existingPrice.custom_price
-              : service.price,
-            has_custom_price: !!existingPrice,
-            pricing_id: existingPrice ? existingPrice.id : null,
-          };
-        });
-
-        setExecuterPrices(prices);
-      } else {
-        message.error("Ошибка при загрузке данных о ценах");
-      }
+      setExecuterPrices(prices);
     } catch (error) {
       console.error("Ошибка при загрузке цен:", error);
       message.error("Ошибка при загрузке данных о ценах");
@@ -349,24 +297,16 @@ export function ServicesTable({
     formData.append("service_id", selectedService.id);
 
     try {
-      const response = await fetch(
-        `${BACKEND_URL}/api/admin/materials/upload`,
-        {
+      try {
+        const result = await apiFetch("/api/admin/materials/upload", {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
           body: formData,
-        }
-      );
-
-      if (response.ok) {
-        const result = await response.json();
+        });
         message.success(`Загружено ${result.count || 0} расходников`);
         setUploadModal(false);
         fetchServices();
         if (onChange) onChange();
-      } else {
+      } catch (err) {
         message.error("Ошибка при загрузке файла");
       }
     } catch (error) {
@@ -382,29 +322,21 @@ export function ServicesTable({
     }
 
     try {
-      const response = await fetch(
-        `${BACKEND_URL}/api/admin/materials/add-single`,
-        {
+      try {
+        await apiFetch("/api/admin/materials/add-single", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
           body: JSON.stringify({
             service_id: selectedService.id,
             contents: manualInput.trim(),
             type_key: "manual",
           }),
-        }
-      );
-
-      if (response.ok) {
+        });
         message.success("Расходник добавлен");
         setManualInput("");
         setUploadModal(false);
         fetchServices();
         if (onChange) onChange();
-      } else {
+      } catch (err) {
         message.error("Ошибка при добавлении расходника");
       }
     } catch (error) {
@@ -460,29 +392,16 @@ export function ServicesTable({
           // Если есть индивидуальная цена и она отличается от базовой
           if (price.pricing_id) {
             // Обновляем существующую цену
-            await fetch(
-              `${BACKEND_URL}/api/admin/pricing/update/${price.pricing_id}`,
-              {
-                method: "PUT",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${localStorage.getItem(
-                    "admin_token"
-                  )}`,
-                },
-                body: JSON.stringify({
-                  custom_price: parseFloat(price.custom_price),
-                }),
-              }
-            );
+            await apiFetch(`/api/admin/pricing/update/${price.pricing_id}`, {
+              method: "PUT",
+              body: JSON.stringify({
+                custom_price: parseFloat(price.custom_price),
+              }),
+            });
           } else {
             // Создаем новую индивидуальную цену
-            await fetch(`${BACKEND_URL}/api/admin/pricing/add`, {
+            await apiFetch("/api/admin/pricing/add", {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-              },
               body: JSON.stringify({
                 executer_id: price.executer_id,
                 service_id: price.service_id,
@@ -492,15 +411,9 @@ export function ServicesTable({
           }
         } else if (!price.has_custom_price && price.pricing_id) {
           // Если убрали индивидуальную цену, удаляем запись
-          await fetch(
-            `${BACKEND_URL}/api/admin/pricing/delete/${price.pricing_id}`,
-            {
-              method: "DELETE",
-              headers: {
-                Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-              },
-            }
-          );
+          await apiFetch(`/api/admin/pricing/delete/${price.pricing_id}`, {
+            method: "DELETE",
+          });
         }
       }
 

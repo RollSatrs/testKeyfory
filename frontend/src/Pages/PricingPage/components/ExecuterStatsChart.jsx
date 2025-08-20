@@ -13,6 +13,7 @@ import {
 import { Card, Select, Spin, Statistic, Row, Col } from "antd";
 import { FaUser, FaMedal, FaChartBar } from "react-icons/fa";
 import { useState, useEffect } from "react";
+import apiFetch from "../../../lib/api";
 
 const { Option } = Select;
 
@@ -39,49 +40,31 @@ export function ExecuterStatsChart() {
   async function fetchExecuterStats() {
     setLoading(true);
     try {
-      console.log("Fetching executer stats...");
+      const data = await apiFetch("/api/admin/earnings/simple-executer-stats");
 
-      const res = await fetch(
-        `${BACKEND_URL}/admin/earnings/simple-executer-stats`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-        }
-      );
+      // Преобразуем данные в нужный формат
+      const stats = data.map((executer) => ({
+        name: executer.name,
+        earnings: executer.earnings,
+        orders: executer.orders,
+        rating: executer.rating.toFixed(1),
+        completionRate: executer.completionRate,
+      }));
 
-      if (res.ok) {
-        const data = await res.json();
-        console.log("Executer stats received:", data);
-
-        // Преобразуем данные в нужный формат
-        const stats = data.map((executer) => ({
-          name: executer.name,
-          earnings: executer.earnings,
-          orders: executer.orders,
-          rating: executer.rating.toFixed(1),
-          completionRate: executer.completionRate,
+      const topStats = stats
+        .sort((a, b) => b.earnings - a.earnings)
+        .slice(0, 6)
+        .map((item, index) => ({
+          ...item,
+          rank: index + 1,
+          percentage: (
+            (item.earnings / stats.reduce((sum, s) => sum + s.earnings, 0)) *
+            100
+          ).toFixed(1),
         }));
 
-        const topStats = stats
-          .sort((a, b) => b.earnings - a.earnings)
-          .slice(0, 6)
-          .map((item, index) => ({
-            ...item,
-            rank: index + 1,
-            percentage: (
-              (item.earnings / stats.reduce((sum, s) => sum + s.earnings, 0)) *
-              100
-            ).toFixed(1),
-          }));
-
-        setExecuterStats(stats);
-        setTopExecuters(topStats);
-      } else {
-        console.error("Ошибка загрузки статистики исполнителей");
-        // Показываем демо данные
-        generateDemoData();
-      }
+      setExecuterStats(stats);
+      setTopExecuters(topStats);
     } catch (error) {
       console.error("Ошибка:", error);
       // Показываем демо данные

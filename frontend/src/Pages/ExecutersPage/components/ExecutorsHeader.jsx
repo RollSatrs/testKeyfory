@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Input, Select, Button, Rate } from "antd";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { Input, Select, Button, Rate, message } from "antd";
+import { apiFetch } from "../../../lib/api";
 
 export function ExecutorsHeader({ onAdd, children }) {
   const [showModal, setShowModal] = useState(false);
@@ -24,17 +24,18 @@ export function ExecutorsHeader({ onAdd, children }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await fetch(`${BACKEND_URL}/api/admin/executers/add`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-      },
-      body: JSON.stringify(form),
-    });
-    setShowModal(false);
-    resetForm();
-    if (onAdd) onAdd();
+    try {
+      await apiFetch("/api/admin/executers/add", {
+        method: "POST",
+        body: JSON.stringify(form),
+      });
+      setShowModal(false);
+      resetForm();
+      if (onAdd) onAdd();
+    } catch (err) {
+      message.error("Ошибка при добавлении исполнителя");
+      console.error(err);
+    }
   };
 
   const handleClose = () => {

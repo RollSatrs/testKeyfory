@@ -1,6 +1,6 @@
 import { FaPercent, FaRubleSign, FaChartLine, FaCog } from "react-icons/fa";
 import { useEffect, useState } from "react";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 import { Statistic, Card, Row, Col, Spin } from "antd";
 
 export function PricingStats() {
@@ -18,32 +18,14 @@ export function PricingStats() {
 
   async function fetchEarningsStats() {
     try {
-      console.log("Fetching earnings stats...");
-
-      // Используем новый упрощенный endpoint
-      const response = await fetch(
-        `${BACKEND_URL}/admin/earnings/dashboard-summary`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Dashboard stats received:", data);
-
-        setStats({
-          totalEarnings: data.totalEarnings || 0,
-          monthlyEarnings: data.monthlyEarnings || 0,
-          activeExecuters: data.activeExecuters || 0,
-          completedOrders: data.completedOrders || 0,
-          loading: false,
-        });
-      } else {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      const data = await apiFetch("/api/admin/earnings/dashboard-summary");
+      setStats({
+        totalEarnings: data.totalEarnings || 0,
+        monthlyEarnings: data.monthlyEarnings || 0,
+        activeExecuters: data.activeExecuters || 0,
+        completedOrders: data.completedOrders || 0,
+        loading: false,
+      });
     } catch (error) {
       console.error("Ошибка загрузки статистики заработка:", error);
       // Показываем демо данные при ошибке

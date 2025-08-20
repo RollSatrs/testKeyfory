@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { BACKEND_URL } from "../../lib/backendUrl";
 import {
   Card,
   Select,
@@ -10,7 +9,6 @@ import {
   Col,
   message,
   Modal,
-  Table,
 } from "antd";
 import {
   FaKey,
@@ -38,81 +36,63 @@ export function ExecuterMaterials() {
   }, []);
 
   useEffect(() => {
-    if (selectedService) {
-      fetchMaterialStats(selectedService);
-    }
+    if (selectedService) fetchMaterialStats(selectedService);
   }, [selectedService]);
 
-  const fetchAvailableServices = async () => {
+  async function fetchAvailableServices() {
     try {
-      const response = await fetch(
-        `${BACKEND_URL}/api/executer/services/available`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("executer_token")}`,
-          },
-        }
-      );
-      const data = await response.json();
-      setServices(data);
-    } catch (error) {
-      console.error("Ошибка загрузки услуг:", error);
+      const res = await fetch("/api/executer/services/available", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("executer_token")}`,
+        },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setServices(data || []);
+    } catch (err) {
+      console.error("Ошибка загрузки услуг:", err);
       message.error("Ошибка загрузки доступных услуг");
     }
-  };
+  }
 
-  const fetchMaterialStats = async (serviceId) => {
+  async function fetchMaterialStats(serviceId) {
     try {
-      const response = await fetch(
-        `${BACKEND_URL}/api/executer/materials/stats/${serviceId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("executer_token")}`,
-          },
-        }
-      );
-      const data = await response.json();
-      setMaterialStats(data);
-    } catch (error) {
-      console.error("Ошибка загрузки статистики:", error);
+      const res = await fetch(`/api/executer/materials/stats/${serviceId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("executer_token")}`,
+        },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setMaterialStats(data || {});
+    } catch (err) {
+      console.error("Ошибка загрузки статистики:", err);
       message.error("Ошибка загрузки статистики материалов");
     }
-  };
+  }
 
-  const handleGetMaterial = async () => {
-    if (!orderNumber.trim()) {
-      message.error("Введите номер заказа");
-      return;
-    }
-
-    if (!selectedService) {
-      message.error("Выберите услугу");
-      return;
-    }
+  async function handleGetMaterial() {
+    if (!orderNumber.trim()) return message.error("Введите номер заказа");
+    if (!selectedService) return message.error("Выберите услугу");
 
     setLoading(true);
     try {
-      const response = await fetch(
-        `${BACKEND_URL}/api/executer/materials/get-by-order`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("executer_token")}`,
-          },
-          body: JSON.stringify({
-            service_id: selectedService,
-            order_number: orderNumber,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Ошибка получения материала");
+      const res = await fetch("/api/executer/materials/get-by-order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("executer_token")}`,
+        },
+        body: JSON.stringify({
+          service_id: selectedService,
+          order_number: orderNumber,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Ошибка получения материала");
       }
-
-      const data = await response.json();
+      const data = await res.json();
 
       Modal.success({
         title: "Материал получен",
@@ -133,20 +113,19 @@ export function ExecuterMaterials() {
         onOk: () => {
           setOrderNumber("");
           setShowOrderModal(false);
-          // Обновляем статистику
           fetchMaterialStats(selectedService);
         },
       });
-    } catch (error) {
-      message.error(error.message);
+    } catch (err) {
+      message.error(err.message || String(err));
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const getServiceName = (serviceId) => {
-    const service = services.find((s) => s.id === serviceId);
-    return service ? service.name : "Неизвестная услуга";
+    const s = services.find((x) => x.id === serviceId);
+    return s ? s.name : "Неизвестная услуга";
   };
 
   return (
@@ -171,7 +150,7 @@ export function ExecuterMaterials() {
           </Select>
         </div>
 
-        {selectedService && (
+        {selectedService ? (
           <>
             <Row gutter={[16, 16]} className="mb-6">
               <Col span={6}>
@@ -215,7 +194,6 @@ export function ExecuterMaterials() {
                 </Card>
               </Col>
             </Row>
-
             <div className="text-center">
               <Button
                 type="primary"
@@ -233,16 +211,13 @@ export function ExecuterMaterials() {
               )}
             </div>
           </>
-        )}
-
-        {!selectedService && (
+        ) : (
           <div className="text-center text-gray-500 py-8">
             Выберите услугу для просмотра статистики материалов
           </div>
         )}
       </Card>
 
-      {/* Модальное окно для ввода номера заказа */}
       <Modal
         title="Получить материал"
         open={showOrderModal}

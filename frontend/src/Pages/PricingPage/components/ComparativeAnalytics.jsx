@@ -19,7 +19,7 @@ import {
   FaChartLine,
 } from "react-icons/fa";
 import { useState, useEffect } from "react";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 
 const { Option } = Select;
 
@@ -41,22 +41,10 @@ export function ComparativeAnalytics() {
   async function fetchComparativeData() {
     setLoading(true);
     try {
-      const res = await fetch(
-        `${BACKEND_URL}/api/admin/earnings/comparative?period=${period}&comparison=${comparisonType}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-        }
+      const data = await apiFetch(
+        `/api/admin/earnings/comparative?period=${period}&comparison=${comparisonType}`
       );
-
-      if (res.ok) {
-        const data = await res.json();
-        setComparativeData(data);
-      } else {
-        console.error("Ошибка загрузки сравнительной аналитики");
-        generateDemoData();
-      }
+      setComparativeData(data);
     } catch (error) {
       console.error("Ошибка:", error);
       generateDemoData();

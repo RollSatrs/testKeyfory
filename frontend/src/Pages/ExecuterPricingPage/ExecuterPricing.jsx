@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BACKEND_URL } from "../../lib/backendUrl";
+import { apiFetch } from "../../lib/api";
 import {
   Table,
   Card,
@@ -54,17 +54,7 @@ export function ExecuterPricing() {
 
   const fetchExecuters = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/admin/executers/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await apiFetch("/api/admin/executers/get");
       console.log("Полученные исполнители:", data);
       setExecuters(data);
     } catch (error) {
@@ -75,12 +65,7 @@ export function ExecuterPricing() {
 
   const fetchServices = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/admin/services/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await response.json();
+      const data = await apiFetch("/api/admin/services/get");
       setServices(data);
     } catch (error) {
       console.error("Ошибка загрузки услуг:", error);
@@ -89,17 +74,7 @@ export function ExecuterPricing() {
 
   const fetchPricingData = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/admin/pricing/all`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await apiFetch("/api/admin/pricing/all");
       console.log("Полученные данные ценообразования:", data);
       setPricingData(data || []);
     } catch (error) {
@@ -111,24 +86,14 @@ export function ExecuterPricing() {
 
   const fetchEarningsData = async () => {
     try {
-      const url =
+      const path =
         dateRange.length === 2
-          ? `${BACKEND_URL}/api/admin/earnings/all?from=${dateRange[0].format(
+          ? `/api/admin/earnings/all?from=${dateRange[0].format(
               "YYYY-MM-DD"
             )}&to=${dateRange[1].format("YYYY-MM-DD")}`
-          : `${BACKEND_URL}/api/admin/earnings/all`;
+          : "/api/admin/earnings/all";
 
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await apiFetch(path);
       setEarningsData(data || []);
     } catch (error) {
       console.error("Ошибка загрузки заработка:", error);
@@ -139,24 +104,14 @@ export function ExecuterPricing() {
 
   const fetchExecuterStats = async () => {
     try {
-      const url =
+      const path =
         dateRange.length === 2
-          ? `${BACKEND_URL}/api/admin/earnings/summary?from=${dateRange[0].format(
+          ? `/api/admin/earnings/summary?from=${dateRange[0].format(
               "YYYY-MM-DD"
             )}&to=${dateRange[1].format("YYYY-MM-DD")}`
-          : `${BACKEND_URL}/api/admin/earnings/summary`;
+          : "/api/admin/earnings/summary";
 
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await apiFetch(path);
       setExecuterStats(data.executer_earnings || []);
     } catch (error) {
       console.error("Ошибка загрузки статистики:", error);

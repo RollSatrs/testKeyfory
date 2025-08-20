@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { MdListAlt } from "react-icons/md";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 
 const token = localStorage.getItem("admin_token");
 
@@ -13,14 +13,7 @@ export function ServicesStats({ refresh }) {
 
   async function fetchStats() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/services/stats`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/services/stats");
       setStats({
         total: data.total || 0,
         active: data.active || 0,

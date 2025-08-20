@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { MdListAlt } from "react-icons/md";
-import { BACKEND_URL } from "../../../lib/backendUrl";
-
-const token = localStorage.getItem("admin_token");
+import { apiFetch } from "../../../lib/api";
 
 export function OrdersStats({ refresh }) {
   const [stats, setStats] = useState({
@@ -15,14 +13,7 @@ export function OrdersStats({ refresh }) {
 
   async function fetchStats() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/orders/stats`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/orders/stats");
       setStats({
         total: data.total || 0,
         pending: data.pending || 0,

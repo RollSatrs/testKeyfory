@@ -1,8 +1,6 @@
 import { MdPeople, MdOutlinePersonOff, MdBlock } from "react-icons/md";
 import { useEffect, useState } from "react";
-import { BACKEND_URL } from "../../../lib/backendUrl";
-
-const token = localStorage.getItem("admin_token");
+import { apiFetch } from "../../../lib/api";
 
 export function ExecutorsStats({ refresh }) {
   const [stats, setStats] = useState({
@@ -13,14 +11,7 @@ export function ExecutorsStats({ refresh }) {
 
   async function fetchStats() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/executers/stats`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/admin/executers/stats", { method: "GET" });
       setStats({
         active: data.active || 0,
         inactive: data.inactive || 0,

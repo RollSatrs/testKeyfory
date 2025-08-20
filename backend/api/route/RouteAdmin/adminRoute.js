@@ -66,7 +66,8 @@ adminRoute.post('/check', async(req, res) =>{
 
 adminRoute.post('/login', async (req, res) =>{
   try{
-    const {telegramId, password} = req.body
+  console.log('Login request body:', req.body)
+  const {telegramId, password} = req.body
 
     if (!telegramId || !password) {
       return res.status(400).json({error: "Telegram ID и пароль обязательны"})
@@ -78,7 +79,7 @@ adminRoute.post('/login', async (req, res) =>{
     console.log(`✅ Токен создан для админа: ${telegramId}`)
     res.json({token})
   }catch(err){
-    console.error('Ошибка входа:', err.message);
+  console.error('Ошибка входа:', err);
     if(err.message === 'Нет такого админа') return res.status(400).json({error: "Нет такого админа"})
     if(err.message === 'Неверный пароль') return res.status(401).json({error: "Неверный пароль"})
     return res.status(500).json({error: "Ошибка сервера"})

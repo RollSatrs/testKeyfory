@@ -13,7 +13,7 @@ import {
 } from "antd";
 import { CSVLink } from "react-csv";
 import { DownloadOutlined } from "@ant-design/icons";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 
 export function OrdersTable({
   refresh,
@@ -42,12 +42,7 @@ export function OrdersTable({
 
   async function fetchOrders() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/orders/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/orders/get");
       setOrders(data);
     } catch (error) {
       console.error("Ошибка загрузки заказов:", error);
@@ -56,13 +51,12 @@ export function OrdersTable({
 
   async function fetchServices() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/services/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
-      setServices(data);
+      try {
+        const data = await apiFetch("/api/admin/services/get");
+        setServices(data);
+      } catch (error) {
+        console.error("Ошибка загрузки услуг:", error);
+      }
     } catch (error) {
       console.error("Ошибка загрузки услуг:", error);
     }
@@ -70,13 +64,12 @@ export function OrdersTable({
 
   async function fetchExecutors() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/executers/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
-      setExecutors(data);
+      try {
+        const data = await apiFetch("/api/admin/executers/get");
+        setExecutors(data);
+      } catch (error) {
+        console.error("Ошибка загрузки исполнителей:", error);
+      }
     } catch (error) {
       console.error("Ошибка загрузки исполнителей:", error);
     }
@@ -84,13 +77,7 @@ export function OrdersTable({
 
   async function handleDelete(id) {
     try {
-      await fetch(`${BACKEND_URL}/api/admin/orders/delete/${id}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
+      await apiFetch(`/api/admin/orders/delete/${id}`, { method: "DELETE" });
       fetchOrders();
       if (onChange) onChange();
       message.success("Заказ удален");
@@ -116,12 +103,8 @@ export function OrdersTable({
 
   async function handleEditSubmit() {
     try {
-      await fetch(`${BACKEND_URL}/api/admin/orders/update/${form.id}`, {
+      await apiFetch(`/api/admin/orders/update/${form.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
         body: JSON.stringify({
           service_id: form.service_id,
           executer_id: form.executer_id,

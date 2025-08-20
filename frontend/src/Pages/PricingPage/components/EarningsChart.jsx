@@ -10,7 +10,7 @@ import {
   Area,
 } from "recharts";
 import { Card, DatePicker, Select, Spin } from "antd";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 import { FaChartLine, FaRubleSign } from "react-icons/fa";
 import { useState, useEffect } from "react";
 
@@ -30,26 +30,18 @@ export function EarningsChart() {
   async function fetchEarningsData() {
     setLoading(true);
     try {
-      let url = `${BACKEND_URL}/api/admin/earnings/service-executions/chart`;
-
+      let path = "/api/admin/earnings/service-executions/chart";
       if (dateRange.length === 2) {
         const fromDate = dateRange[0].format("YYYY-MM-DD");
         const toDate = dateRange[1].format("YYYY-MM-DD");
-        url += `?from=${fromDate}&to=${toDate}`;
+        path += `?from=${fromDate}&to=${toDate}`;
       }
 
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-
-      if (res.ok) {
-        const data = await res.json();
+      try {
+        const data = await apiFetch(path);
         setEarningsData(data.chartData || []);
-      } else {
-        console.error("Ошибка загрузки данных заработка");
-        // Показываем демо данные
+      } catch (err) {
+        console.error("Ошибка загрузки данных заработка", err);
         setEarningsData(generateDemoData());
       }
     } catch (error) {

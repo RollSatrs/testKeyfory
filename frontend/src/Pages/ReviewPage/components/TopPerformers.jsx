@@ -11,10 +11,20 @@ export function TopPerformers() {
       try {
         setLoading(true);
 
-        // Получаем всех исполнителей и заказы (через прокси /api и с JWT)
+        // Backend routes expect '/get' or '/getAll' for lists — call those explicitly
+        // also ensure we have a token before calling protected admin routes
+        const token = localStorage.getItem("admin_token");
+        if (!token) {
+          // let ProtectedRoute / app handle redirect — surface a warning here
+          console.warn(
+            "TopPerformers: no admin_token found, skipping protected requests"
+          );
+          return;
+        }
+
         const [executers, orders] = await Promise.all([
-          apiFetch("/api/admin/executers"),
-          apiFetch("/api/admin/orders"),
+          apiFetch("/api/admin/executers/get"),
+          apiFetch("/api/admin/orders/getAll"),
         ]);
 
         // Подсчитываем количество заказов для каждого исполнителя

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 import { Input, Button, Select } from "antd";
 import { FiFilter } from "react-icons/fi";
 
@@ -20,12 +20,7 @@ export function OrdersSearch({
 
   async function fetchServices() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/services/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/services/get");
       setServices(data);
     } catch (error) {
       console.error("Ошибка загрузки услуг:", error);

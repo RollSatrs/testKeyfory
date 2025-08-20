@@ -1,7 +1,7 @@
 import { FiEdit, FiTrendingUp, FiDollarSign } from "react-icons/fi";
 import { FaRubleSign } from "react-icons/fa";
 import { useEffect, useState } from "react";
-import { BACKEND_URL } from "../../../lib/backendUrl";
+import { apiFetch } from "../../../lib/api";
 import {
   Table,
   Tag,
@@ -30,12 +30,7 @@ export function PricingTable() {
 
   async function fetchServices() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/services/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/services/get");
       setServices(data);
     } catch (error) {
       console.error("Ошибка загрузки услуг:", error);
@@ -47,12 +42,7 @@ export function PricingTable() {
 
   async function fetchExecuters() {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/admin/executers/get`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-        },
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/executers/get");
       setExecuters(data);
     } catch (error) {
       console.error("Ошибка загрузки исполнителей:", error);
@@ -77,31 +67,26 @@ export function PricingTable() {
     if (!selectedService) return;
 
     try {
-      const res = await fetch(
-        `${BACKEND_URL}/api/admin/services/update-pricing/${selectedService.id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-          body: JSON.stringify({
-            base_price: selectedService.price,
-            custom_pricing: Object.entries(customPrices)
-              .map(([executerId, price]) => ({
-                executer_id: parseInt(executerId),
-                custom_price: parseFloat(price) || 0,
-              }))
-              .filter((p) => p.custom_price > 0),
-          }),
-        }
-      );
-
-      if (res.ok) {
+      try {
+        await apiFetch(
+          `/api/admin/services/update-pricing/${selectedService.id}`,
+          {
+            method: "PUT",
+            body: JSON.stringify({
+              base_price: selectedService.price,
+              custom_pricing: Object.entries(customPrices)
+                .map(([executerId, price]) => ({
+                  executer_id: parseInt(executerId),
+                  custom_price: parseFloat(price) || 0,
+                }))
+                .filter((p) => p.custom_price > 0),
+            }),
+          }
+        );
         message.success("Цены обновлены");
         setEditModal(false);
         fetchServices();
-      } else {
+      } catch (err) {
         message.error("Ошибка при обновлении цен");
       }
     } catch (error) {
