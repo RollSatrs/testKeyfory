@@ -23,9 +23,12 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 3000
 
+// доверять заголовкам прокси (если сервер за прокси/nginx), чтобы корректно получать IP клиента
+app.set('trust proxy', true);
+
 app.use(cors({
-  origin: (origin, cb) => cb(null, true),  // разрешить любой Origin
-  credentials: true,                        // разрешить куки/Authorization
+  origin: true,       // отражать Origin из запроса — позволит любому хосту/IP обращаться
+  credentials: true,  // разрешить куки/Authorization (Access-Control-Allow-Credentials: true)
   methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization','X-Requested-With','Accept','Origin'],
 }));
