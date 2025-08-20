@@ -42,7 +42,7 @@ export function ExecuterStatsChart() {
       console.log("Fetching executer stats...");
 
       const res = await fetch(
-        `http://localhost:3000/admin/earnings/simple-executer-stats`,
+        `${BACKEND_URL}/admin/earnings/simple-executer-stats`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("admin_token")}`,

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { MdListAlt } from 'react-icons/md'
+import { useEffect, useState } from "react";
+import { MdListAlt } from "react-icons/md";
+import { BACKEND_URL } from "../../../lib/backendUrl";
 
 const token = localStorage.getItem("admin_token");
 
@@ -7,27 +8,26 @@ export function ServicesStats({ refresh }) {
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
-    inactive: 0
+    inactive: 0,
   });
 
   async function fetchStats() {
     try {
-
-      const res = await fetch('http://localhost:3000/api/admin/services/stats', {
-        method: 'GET',
+      const res = await fetch(`${BACKEND_URL}/api/admin/services/stats`, {
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
       const data = await res.json();
       setStats({
         total: data.total || 0,
         active: data.active || 0,
-        inactive: data.inactive || 0
+        inactive: data.inactive || 0,
       });
     } catch (e) {
-      console.error('Ошибка при получении статистики:', e);
+      console.error("Ошибка при получении статистики:", e);
     }
   }
   useEffect(() => {
@@ -55,8 +55,10 @@ export function ServicesStats({ refresh }) {
           <MdListAlt size={20} />
           Неактивных услуг
         </div>
-        <div className="text-2xl font-bold text-yellow-500">{stats.inactive}</div>
+        <div className="text-2xl font-bold text-yellow-500">
+          {stats.inactive}
+        </div>
       </div>
     </div>
-  )
+  );
 }

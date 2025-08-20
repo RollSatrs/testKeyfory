@@ -14,7 +14,9 @@ const projectRoot = path.resolve(__dirname, '..');
 const envPath = path.join(projectRoot, '.env');
 
 console.log(`📄 [bot/index.js] Использую .env файл: ${envPath}`);
-dotenv.config({ path: envPath });const token = process.env.ADMINBOT;
+dotenv.config({ path: envPath });
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+const token = process.env.ADMINBOT;
 const telegramId = process.env.TELEGRAMID;
 
 if (!token) {
@@ -63,7 +65,7 @@ bot.on('text', async (ctx) => {
 
     // Проверяем наличие админа
     try {
-      const res = await fetch('http://localhost:3000/api/admin/check', {
+      const res = await fetch(`${BACKEND_URL}/api/admin/check`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegramId: text })
@@ -92,7 +94,7 @@ bot.on('text', async (ctx) => {
     const password = text;
     const hash = await bcrypt.hash(password, 10);
     try {
-      const res = await fetch('http://localhost:3000/api/admin/add', {
+      const res = await fetch(`${BACKEND_URL}/api/admin/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegramId: tgId, passwordHash: hash })

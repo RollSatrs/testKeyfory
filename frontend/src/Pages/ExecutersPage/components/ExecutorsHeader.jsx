@@ -1,15 +1,14 @@
 import { useState } from "react";
-import { Input, Select, Button, Rate } from 'antd';
-
+import { Input, Select, Button, Rate } from "antd";
+import { BACKEND_URL } from "../../../lib/backendUrl";
 
 export function ExecutorsHeader({ onAdd, children }) {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({
-    name: '',
-    telegram_id: '',
-    rating: 0
+    name: "",
+    telegram_id: "",
+    rating: 0,
   });
-
 
   const handleChange = (name, value) => {
     setForm({ ...form, [name]: value });
@@ -17,33 +16,31 @@ export function ExecutorsHeader({ onAdd, children }) {
 
   const resetForm = () => {
     setForm({
-      name: '',
-      telegram_id: '',
-      rating: 0
+      name: "",
+      telegram_id: "",
+      rating: 0,
     });
   };
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    await fetch('http://localhost:3000/api/admin/executers/add', {
-      method: 'POST',
+    await fetch(`${BACKEND_URL}/api/admin/executers/add`, {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
       },
-      body: JSON.stringify(form)
+      body: JSON.stringify(form),
     });
     setShowModal(false);
     resetForm();
     if (onAdd) onAdd();
-
   };
 
   const handleClose = () => {
     setShowModal(false);
     resetForm();
   };
-
 
   return (
     <>
@@ -55,7 +52,7 @@ export function ExecutorsHeader({ onAdd, children }) {
           type="primary"
           style={{
             background: "linear-gradient(to right, #3b82f6, #06b6d4)",
-            border: "none"
+            border: "none",
           }}
           onClick={() => setShowModal(true)}
         >
@@ -67,38 +64,35 @@ export function ExecutorsHeader({ onAdd, children }) {
           <form
             className="bg-gradient-to-br from-white via-gray-50 to-blue-50 p-8 rounded-2xl shadow-2xl flex flex-col gap-6 min-w-[340px] animate-fade-in"
             onSubmit={handleSubmit}
-            style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37)' }}
+            style={{ boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.37)" }}
           >
-            <h2 className="text-2xl font-bold mb-2 text-blue-700 text-center">Добавить исполнителя</h2>
+            <h2 className="text-2xl font-bold mb-2 text-blue-700 text-center">
+              Добавить исполнителя
+            </h2>
             <Input
               name="name"
               value={form.name}
-              onChange={e => handleChange('name', e.target.value)}
+              onChange={(e) => handleChange("name", e.target.value)}
               placeholder="Имя исполнителя"
               required
-
             />
             <Input
               name="telegram_id"
               value={form.telegram_id}
-              onChange={e => handleChange('telegram_id', e.target.value)}
+              onChange={(e) => handleChange("telegram_id", e.target.value)}
               placeholder="Telegram ID"
               required
-
             />
             <div>
               <span className="block mb-1 text-gray-600">Рейтинг:</span>
               <Rate
                 value={form.rating}
-                onChange={value => handleChange('rating', value)}
+                onChange={(value) => handleChange("rating", value)}
                 count={5}
               />
             </div>
             <div className="flex gap-3 justify-end mt-2">
-              <Button
-                type="default"
-                onClick={handleClose}
-              >
+              <Button type="default" onClick={handleClose}>
                 Отмена
               </Button>
               <Button
@@ -106,7 +100,7 @@ export function ExecutorsHeader({ onAdd, children }) {
                 htmlType="submit"
                 style={{
                   background: "linear-gradient(to right, #3b82f6, #06b6d4)",
-                  border: "none"
+                  border: "none",
                 }}
               >
                 Сохранить

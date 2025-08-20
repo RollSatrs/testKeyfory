@@ -1,5 +1,6 @@
 import { FaPercent, FaRubleSign, FaChartLine, FaCog } from "react-icons/fa";
 import { useEffect, useState } from "react";
+import { BACKEND_URL } from "../../../lib/backendUrl";
 import { Statistic, Card, Row, Col, Spin } from "antd";
 
 export function PricingStats() {
@@ -21,7 +22,7 @@ export function PricingStats() {
 
       // Используем новый упрощенный endpoint
       const response = await fetch(
-        "http://localhost:3000/admin/earnings/dashboard-summary",
+        `${BACKEND_URL}/admin/earnings/dashboard-summary`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("admin_token")}`,

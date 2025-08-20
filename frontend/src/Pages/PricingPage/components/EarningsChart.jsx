@@ -10,6 +10,7 @@ import {
   Area,
 } from "recharts";
 import { Card, DatePicker, Select, Spin } from "antd";
+import { BACKEND_URL } from "../../../lib/backendUrl";
 import { FaChartLine, FaRubleSign } from "react-icons/fa";
 import { useState, useEffect } from "react";
 
@@ -29,8 +30,7 @@ export function EarningsChart() {
   async function fetchEarningsData() {
     setLoading(true);
     try {
-      let url =
-        "http://localhost:3000/api/admin/earnings/service-executions/chart";
+      let url = `${BACKEND_URL}/api/admin/earnings/service-executions/chart`;
 
       if (dateRange.length === 2) {
         const fromDate = dateRange[0].format("YYYY-MM-DD");

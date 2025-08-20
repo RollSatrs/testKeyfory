@@ -1,81 +1,141 @@
-import { FaEdit, FaTrash, FaUpload, FaBoxOpen, FaDollarSign } from 'react-icons/fa'
-import { useEffect, useState } from 'react'
-import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, message, Upload, Card, Row, Col, Statistic, Divider, Tooltip } from 'antd'
+import {
+  FaEdit,
+  FaTrash,
+  FaUpload,
+  FaBoxOpen,
+  FaDollarSign,
+} from "react-icons/fa";
+import { useEffect, useState } from "react";
+import {
+  Table,
+  Tag,
+  Button,
+  Modal,
+  Input,
+  Select,
+  Space,
+  Popconfirm,
+  message,
+  Upload,
+  Card,
+  Row,
+  Col,
+  Statistic,
+  Divider,
+  Tooltip,
+} from "antd";
+import { BACKEND_URL } from "../../../lib/backendUrl";
 
 const categories = [
-  "Игры", "Программное обеспечение", "Образование", "Развлечения", "Услуги", "Другое", "Музыка",
-  "Видео и кино", "Социальные сети", "Облако и хостинг", "Безопасность", "VPN и прокси",
-  "Дизайн и графика", "Разработка", "Фриланс", "Путешествия и билеты", "Электронные книги",
-  "Новости и СМИ", "Почта и коммуникации", "Финансы и банки", "Онлайн-магазины", "Здоровье и спорт",
-  "Авто и транспорт", "Дом и быт", "Для бизнеса", "Подарочные карты", "Мобильные приложения",
-  "Фото и видео", "Технологии", "Криптовалюты", "Маркетинг", "Общение и знакомства"
+  "Игры",
+  "Программное обеспечение",
+  "Образование",
+  "Развлечения",
+  "Услуги",
+  "Другое",
+  "Музыка",
+  "Видео и кино",
+  "Социальные сети",
+  "Облако и хостинг",
+  "Безопасность",
+  "VPN и прокси",
+  "Дизайн и графика",
+  "Разработка",
+  "Фриланс",
+  "Путешествия и билеты",
+  "Электронные книги",
+  "Новости и СМИ",
+  "Почта и коммуникации",
+  "Финансы и банки",
+  "Онлайн-магазины",
+  "Здоровье и спорт",
+  "Авто и транспорт",
+  "Дом и быт",
+  "Для бизнеса",
+  "Подарочные карты",
+  "Мобильные приложения",
+  "Фото и видео",
+  "Технологии",
+  "Криптовалюты",
+  "Маркетинг",
+  "Общение и знакомства",
 ];
 
-export function ServicesTable({ refresh, onChange, search = '', statusFilter = '', categoryFilter = '' }) {
-  const [services, setServices] = useState([])
-  const [executers, setExecuters] = useState([])
-  const [editForm, setEditForm] = useState(false)
-  const [uploadModal, setUploadModal] = useState(false)
-  const [apiModal, setApiModal] = useState(false)
-  const [manualModal, setManualModal] = useState(false)
-  const [materialsModal, setMaterialsModal] = useState(false)
-  const [pricingModal, setPricingModal] = useState(false)
-  const [selectedService, setSelectedService] = useState(null)
-  const [serviceMaterials, setServiceMaterials] = useState([])
-  const [materialStats, setMaterialStats] = useState(null)
-  const [fileList, setFileList] = useState([])
-  const [manualInput, setManualInput] = useState('')
-  const [apiConfig, setApiConfig] = useState({ url: '', headers: '', method: 'GET' })
-  const [selectedExecuters, setSelectedExecuters] = useState([])
-  const [executerPrices, setExecuterPrices] = useState([])
+export function ServicesTable({
+  refresh,
+  onChange,
+  search = "",
+  statusFilter = "",
+  categoryFilter = "",
+}) {
+  const [services, setServices] = useState([]);
+  const [executers, setExecuters] = useState([]);
+  const [editForm, setEditForm] = useState(false);
+  const [uploadModal, setUploadModal] = useState(false);
+  const [apiModal, setApiModal] = useState(false);
+  const [manualModal, setManualModal] = useState(false);
+  const [materialsModal, setMaterialsModal] = useState(false);
+  const [pricingModal, setPricingModal] = useState(false);
+  const [selectedService, setSelectedService] = useState(null);
+  const [serviceMaterials, setServiceMaterials] = useState([]);
+  const [materialStats, setMaterialStats] = useState(null);
+  const [fileList, setFileList] = useState([]);
+  const [manualInput, setManualInput] = useState("");
+  const [apiConfig, setApiConfig] = useState({
+    url: "",
+    headers: "",
+    method: "GET",
+  });
+  const [selectedExecuters, setSelectedExecuters] = useState([]);
+  const [executerPrices, setExecuterPrices] = useState([]);
   const [form, setForm] = useState({
     id: null,
-    name: '',
-    category: '',
-    status: '',
-    price: 0
-  })
+    name: "",
+    category: "",
+    status: "",
+    price: 0,
+  });
 
   useEffect(() => {
-    fetchServices()
-    fetchExecuters()
-  }, [refresh])
+    fetchServices();
+    fetchExecuters();
+  }, [refresh]);
 
   async function fetchServices() {
-    const res = await fetch('http://localhost:3000/api/admin/services/get', {
+    const res = await fetch(`${BACKEND_URL}/api/admin/services/get`, {
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-      }
-    })
-    const data = await res.json()
-    setServices(data)
+        Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+      },
+    });
+    const data = await res.json();
+    setServices(data);
   }
 
   async function fetchExecuters() {
     try {
-      const res = await fetch('http://localhost:3000/api/admin/executers/get', {
+      const res = await fetch(`${BACKEND_URL}/api/admin/executers/get`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        }
-      })
-      const data = await res.json()
-      setExecuters(data)
+          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+        },
+      });
+      const data = await res.json();
+      setExecuters(data);
     } catch (error) {
-      console.error('Ошибка загрузки исполнителей:', error)
+      console.error("Ошибка загрузки исполнителей:", error);
     }
   }
 
   async function handleDelete(id) {
-    await fetch(`http://localhost:3000/api/admin/services/delete/${id}`, {
-      method: 'DELETE',
+    await fetch(`${BACKEND_URL}/api/admin/services/delete/${id}`, {
+      method: "DELETE",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-      }
-    })
-    fetchServices()
-    if (onChange) onChange()
-    message.success('Услуга удалена')
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+      },
+    });
+    fetchServices();
+    if (onChange) onChange();
+    message.success("Услуга удалена");
   }
 
   function openEditModal(service) {
@@ -84,8 +144,8 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       name: service.name,
       category: service.category,
       status: service.status,
-      price: service.price || 0
-    })
+      price: service.price || 0,
+    });
 
     // Загружаем текущих исполнителей услуги
     let currentExecuters = [];
@@ -96,351 +156,393 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
     }
 
     // Затем добавляем исполнителей из ServiceAccess (если есть)
-    const serviceAccessExecuters = (service.assigned_executers || []).map(ex => ex.executer_id);
-    currentExecuters = [...new Set([...currentExecuters, ...serviceAccessExecuters])]; // убираем дубликаты
+    const serviceAccessExecuters = (service.assigned_executers || []).map(
+      (ex) => ex.executer_id
+    );
+    currentExecuters = [
+      ...new Set([...currentExecuters, ...serviceAccessExecuters]),
+    ]; // убираем дубликаты
 
-    setSelectedExecuters(currentExecuters)
-    setEditForm(true)
+    setSelectedExecuters(currentExecuters);
+    setEditForm(true);
   }
 
   function handleChange(name, value) {
-    setForm({ ...form, [name]: value })
+    setForm({ ...form, [name]: value });
   }
 
   async function handleEditSubmit() {
     try {
       // Определяем основного исполнителя (первый в списке) для прямого назначения
-      const primaryExecuterId = selectedExecuters.length > 0 ? selectedExecuters[0] : null;
+      const primaryExecuterId =
+        selectedExecuters.length > 0 ? selectedExecuters[0] : null;
 
       // Обновляем данные услуги включая executer_id
-      await fetch(`http://localhost:3000/api/admin/services/update/${form.id}`, {
-        method: 'PUT',
+      await fetch(`${BACKEND_URL}/api/admin/services/update/${form.id}`, {
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
         },
         body: JSON.stringify({
           name: form.name,
           category: form.category,
           status: form.status,
           price: parseFloat(form.price) || 0,
-          executer_id: primaryExecuterId
-        })
-      })
+          executer_id: primaryExecuterId,
+        }),
+      });
 
       // Обновляем назначенных исполнителей через ServiceAccess (для множественного назначения)
       if (selectedExecuters.length > 0) {
-        await fetch(`http://localhost:3000/api/admin/services/${form.id}/executers`, {
-          method: 'POST',
+        await fetch(`${BACKEND_URL}/api/admin/services/${form.id}/executers`, {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
           },
           body: JSON.stringify({
-            executerIds: selectedExecuters
-          })
-        })
+            executerIds: selectedExecuters,
+          }),
+        });
       }
 
-      setEditForm(false)
-      setSelectedExecuters([])
-      fetchServices()
-      if (onChange) onChange()
-      message.success('Услуга обновлена')
+      setEditForm(false);
+      setSelectedExecuters([]);
+      fetchServices();
+      if (onChange) onChange();
+      message.success("Услуга обновлена");
     } catch (error) {
-      console.error('Ошибка обновления услуги:', error)
-      message.error('Ошибка при обновлении услуги')
+      console.error("Ошибка обновления услуги:", error);
+      message.error("Ошибка при обновлении услуги");
     }
   }
 
   // Функция для открытия модального окна загрузки расходников
   function openUploadModal(service) {
-    setSelectedService(service)
+    setSelectedService(service);
 
     // Определяем какое окно открыть в зависимости от способа загрузки услуги
-    const loadingMethod = service.loadingMethod || 'file' // по умолчанию файл
+    const loadingMethod = service.loadingMethod || "file"; // по умолчанию файл
 
-    switch(loadingMethod) {
-      case 'file':
-        setUploadModal(true)
-        setFileList([])
-        break
-      case 'api':
-        setApiModal(true)
-        setApiConfig({ url: '', headers: '', method: 'GET' })
-        break
-      case 'manual':
+    switch (loadingMethod) {
+      case "file":
+        setUploadModal(true);
+        setFileList([]);
+        break;
+      case "api":
+        setApiModal(true);
+        setApiConfig({ url: "", headers: "", method: "GET" });
+        break;
+      case "manual":
       default:
-        setManualModal(true)
-        setManualInput('')
-        break
+        setManualModal(true);
+        setManualInput("");
+        break;
     }
   }
 
   // Функция для открытия модального окна с материалами
   async function openMaterialsModal(service) {
-    setSelectedService(service)
-    setMaterialsModal(true)
+    setSelectedService(service);
+    setMaterialsModal(true);
 
     try {
       // Загружаем материалы
-      const materialsResponse = await fetch(`http://localhost:3000/api/admin/materials/service/${service.id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+      const materialsResponse = await fetch(
+        `${BACKEND_URL}/api/admin/materials/service/${service.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+          },
         }
-      })
+      );
 
       // Загружаем статистику
-      const statsResponse = await fetch(`http://localhost:3000/api/admin/materials/service/${service.id}/stats`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+      const statsResponse = await fetch(
+        `${BACKEND_URL}/api/admin/materials/service/${service.id}/stats`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+          },
         }
-      })
+      );
 
       if (materialsResponse.ok && statsResponse.ok) {
-        const materials = await materialsResponse.json()
-        const stats = await statsResponse.json()
-        setServiceMaterials(materials)
-        setMaterialStats(stats)
+        const materials = await materialsResponse.json();
+        const stats = await statsResponse.json();
+        setServiceMaterials(materials);
+        setMaterialStats(stats);
       } else {
-        message.error('Ошибка при загрузке материалов')
-        setServiceMaterials([])
-        setMaterialStats(null)
+        message.error("Ошибка при загрузке материалов");
+        setServiceMaterials([]);
+        setMaterialStats(null);
       }
     } catch (error) {
-      message.error('Ошибка при загрузке материалов')
-      setServiceMaterials([])
-      setMaterialStats(null)
+      message.error("Ошибка при загрузке материалов");
+      setServiceMaterials([]);
+      setMaterialStats(null);
     }
   }
 
   // Функция для открытия модального окна ценообразования
   async function openPricingModal(service) {
-    setSelectedService(service)
-    setPricingModal(true)
+    setSelectedService(service);
+    setPricingModal(true);
 
     try {
       // Загружаем текущие индивидуальные цены для всех исполнителей
-      const pricingResponse = await fetch(`http://localhost:3000/api/admin/pricing/all`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+      const pricingResponse = await fetch(
+        `${BACKEND_URL}/api/admin/pricing/all`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+          },
         }
-      })
+      );
 
       if (pricingResponse.ok) {
-        const allPricing = await pricingResponse.json()
+        const allPricing = await pricingResponse.json();
         // Фильтруем только цены для текущей услуги
-        const servicePricing = allPricing.filter(p => p.service_id === service.id)
+        const servicePricing = allPricing.filter(
+          (p) => p.service_id === service.id
+        );
 
         // Создаем массив с ценами для всех исполнителей
-        const prices = executers.map(executer => {
-          const existingPrice = servicePricing.find(p => p.executer_id === executer.id)
+        const prices = executers.map((executer) => {
+          const existingPrice = servicePricing.find(
+            (p) => p.executer_id === executer.id
+          );
           return {
             executer_id: executer.id,
             executer_name: executer.name,
             service_id: service.id,
-            custom_price: existingPrice ? existingPrice.custom_price : service.price,
+            custom_price: existingPrice
+              ? existingPrice.custom_price
+              : service.price,
             has_custom_price: !!existingPrice,
-            pricing_id: existingPrice ? existingPrice.id : null
-          }
-        })
+            pricing_id: existingPrice ? existingPrice.id : null,
+          };
+        });
 
-        setExecuterPrices(prices)
+        setExecuterPrices(prices);
       } else {
-        message.error('Ошибка при загрузке данных о ценах')
+        message.error("Ошибка при загрузке данных о ценах");
       }
     } catch (error) {
-      console.error('Ошибка при загрузке цен:', error)
-      message.error('Ошибка при загрузке данных о ценах')
+      console.error("Ошибка при загрузке цен:", error);
+      message.error("Ошибка при загрузке данных о ценах");
     }
   }
 
   // Функция загрузки расходников из файла
   const handleFileUpload = async (options) => {
-    const { file } = options
+    const { file } = options;
 
     if (!selectedService) {
-      message.error('Услуга не выбрана')
-      return
+      message.error("Услуга не выбрана");
+      return;
     }
 
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('service_id', selectedService.id)
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("service_id", selectedService.id);
 
     try {
-      const response = await fetch('http://localhost:3000/api/admin/materials/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        },
-        body: formData
-      })
+      const response = await fetch(
+        `${BACKEND_URL}/api/admin/materials/upload`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+          },
+          body: formData,
+        }
+      );
 
       if (response.ok) {
-        const result = await response.json()
-        message.success(`Загружено ${result.count || 0} расходников`)
-        setUploadModal(false)
-        fetchServices()
-        if (onChange) onChange()
+        const result = await response.json();
+        message.success(`Загружено ${result.count || 0} расходников`);
+        setUploadModal(false);
+        fetchServices();
+        if (onChange) onChange();
       } else {
-        message.error('Ошибка при загрузке файла')
+        message.error("Ошибка при загрузке файла");
       }
     } catch (error) {
-      message.error('Ошибка при загрузке файла')
+      message.error("Ошибка при загрузке файла");
     }
-  }
+  };
 
   // Функция добавления расходника вручную
   const handleManualAdd = async () => {
     if (!manualInput.trim() || !selectedService) {
-      message.error('Введите содержимое расходника')
-      return
+      message.error("Введите содержимое расходника");
+      return;
     }
 
     try {
-      const response = await fetch('http://localhost:3000/api/admin/materials/add-single', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        },
-        body: JSON.stringify({
-          service_id: selectedService.id,
-          contents: manualInput.trim(),
-          type_key: 'manual'
-        })
-      })
+      const response = await fetch(
+        `${BACKEND_URL}/api/admin/materials/add-single`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+          },
+          body: JSON.stringify({
+            service_id: selectedService.id,
+            contents: manualInput.trim(),
+            type_key: "manual",
+          }),
+        }
+      );
 
       if (response.ok) {
-        message.success('Расходник добавлен')
-        setManualInput('')
-        setUploadModal(false)
-        fetchServices()
-        if (onChange) onChange()
+        message.success("Расходник добавлен");
+        setManualInput("");
+        setUploadModal(false);
+        fetchServices();
+        if (onChange) onChange();
       } else {
-        message.error('Ошибка при добавлении расходника')
+        message.error("Ошибка при добавлении расходника");
       }
     } catch (error) {
-      message.error('Ошибка при добавлении расходника')
+      message.error("Ошибка при добавлении расходника");
     }
-  }
+  };
 
   // Фильтрация перед отображением
-  const filteredServices = services.filter(s =>
-    s.name.toLowerCase().includes(search.toLowerCase()) &&
-    (statusFilter ? s.status === statusFilter : true) &&
-    (categoryFilter ? s.category === categoryFilter : true)
+  const filteredServices = services.filter(
+    (s) =>
+      s.name.toLowerCase().includes(search.toLowerCase()) &&
+      (statusFilter ? s.status === statusFilter : true) &&
+      (categoryFilter ? s.category === categoryFilter : true)
   );
 
   // Функция для перевода источника на русский
   const getSourceLabel = (source) => {
     const sourceLabels = {
-      'manual': 'Ручной ввод',
-      'manual_input': 'Ручной ввод',
-      'api': 'API',
-      'file': 'Со склада',
-      'file_upload': 'Со склада',
-      'upload': 'Со склада',
-      'warehouse': 'Со склада'
-    }
-    return sourceLabels[source] || source || 'Со склада'
-  }
+      manual: "Ручной ввод",
+      manual_input: "Ручной ввод",
+      api: "API",
+      file: "Со склада",
+      file_upload: "Со склада",
+      upload: "Со склада",
+      warehouse: "Со склада",
+    };
+    return sourceLabels[source] || source || "Со склада";
+  };
 
   // Функция для перевода типа ключа на русский
   const getTypeLabel = (type) => {
     const typeLabels = {
-      'key': 'Ключ',
-      'license': 'Лицензия',
-      'code': 'Код',
-      'password': 'Пароль',
-      'account': 'Аккаунт',
-      'token': 'Токен',
-      'imported': 'Импортирован',
-      'manual': 'Ручной'
-    }
-    return typeLabels[type] || type || 'Ключ'
-  }
+      key: "Ключ",
+      license: "Лицензия",
+      code: "Код",
+      password: "Пароль",
+      account: "Аккаунт",
+      token: "Токен",
+      imported: "Импортирован",
+      manual: "Ручной",
+    };
+    return typeLabels[type] || type || "Ключ";
+  };
 
   // Функция для сохранения индивидуальных цен
   async function handleSavePricing() {
     try {
       for (const price of executerPrices) {
-        if (price.has_custom_price && price.custom_price !== selectedService.price) {
+        if (
+          price.has_custom_price &&
+          price.custom_price !== selectedService.price
+        ) {
           // Если есть индивидуальная цена и она отличается от базовой
           if (price.pricing_id) {
             // Обновляем существующую цену
-            await fetch(`http://localhost:3000/api/admin/pricing/update/${price.pricing_id}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-              },
-              body: JSON.stringify({
-                custom_price: parseFloat(price.custom_price)
-              })
-            })
+            await fetch(
+              `${BACKEND_URL}/api/admin/pricing/update/${price.pricing_id}`,
+              {
+                method: "PUT",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${localStorage.getItem(
+                    "admin_token"
+                  )}`,
+                },
+                body: JSON.stringify({
+                  custom_price: parseFloat(price.custom_price),
+                }),
+              }
+            );
           } else {
             // Создаем новую индивидуальную цену
-            await fetch('http://localhost:3000/api/admin/pricing/add', {
-              method: 'POST',
+            await fetch(`${BACKEND_URL}/api/admin/pricing/add`, {
+              method: "POST",
               headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
               },
               body: JSON.stringify({
                 executer_id: price.executer_id,
                 service_id: price.service_id,
-                custom_price: parseFloat(price.custom_price)
-              })
-            })
+                custom_price: parseFloat(price.custom_price),
+              }),
+            });
           }
         } else if (!price.has_custom_price && price.pricing_id) {
           // Если убрали индивидуальную цену, удаляем запись
-          await fetch(`http://localhost:3000/api/admin/pricing/delete/${price.pricing_id}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+          await fetch(
+            `${BACKEND_URL}/api/admin/pricing/delete/${price.pricing_id}`,
+            {
+              method: "DELETE",
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+              },
             }
-          })
+          );
         }
       }
 
-      setPricingModal(false)
-      message.success('Индивидуальные цены сохранены')
-      fetchServices()
-      if (onChange) onChange()
+      setPricingModal(false);
+      message.success("Индивидуальные цены сохранены");
+      fetchServices();
+      if (onChange) onChange();
     } catch (error) {
-      console.error('Ошибка при сохранении цен:', error)
-      message.error('Ошибка при сохранении индивидуальных цен')
+      console.error("Ошибка при сохранении цен:", error);
+      message.error("Ошибка при сохранении индивидуальных цен");
     }
   }
 
   // Функция для изменения цены исполнителя
   function handlePriceChange(executerId, newPrice, hasCustomPrice) {
-    setExecuterPrices(prices =>
-      prices.map(price =>
+    setExecuterPrices((prices) =>
+      prices.map((price) =>
         price.executer_id === executerId
-          ? { ...price, custom_price: newPrice, has_custom_price: hasCustomPrice }
+          ? {
+              ...price,
+              custom_price: newPrice,
+              has_custom_price: hasCustomPrice,
+            }
           : price
       )
-    )
+    );
   }
 
   const columns = [
     {
-      title: 'Название услуги',
-      dataIndex: 'name',
-      key: 'name',
+      title: "Название услуги",
+      dataIndex: "name",
+      key: "name",
     },
     {
-      title: 'Категория',
-      dataIndex: 'category',
-      key: 'category',
+      title: "Категория",
+      dataIndex: "category",
+      key: "category",
     },
     {
-      title: 'Расходники',
-      key: 'materials',
+      title: "Расходники",
+      key: "materials",
       render: (_, record) => (
         <Button
           size="small"
@@ -449,12 +551,12 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
         >
           Посмотреть ключи
         </Button>
-      )
+      ),
     },
     {
-      title: 'Цена',
-      dataIndex: 'price',
-      key: 'price',
+      title: "Цена",
+      dataIndex: "price",
+      key: "price",
       width: 160,
       render: (price, record) => {
         const basePrice = `₽${price || 0}`;
@@ -466,10 +568,10 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
 
         const tooltipContent = (
           <div>
-            <div style={{ marginBottom: 8, fontWeight: 'bold' }}>
+            <div style={{ marginBottom: 8, fontWeight: "bold" }}>
               Базовая цена: {basePrice}
             </div>
-            <div style={{ fontWeight: 'bold', marginBottom: 4 }}>
+            <div style={{ fontWeight: "bold", marginBottom: 4 }}>
               Индивидуальные цены:
             </div>
             {customPricing.map((pricing, index) => (
@@ -482,21 +584,19 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
 
         return (
           <Tooltip title={tooltipContent} placement="topLeft">
-            <div style={{ cursor: 'pointer' }}>
-              <div style={{ fontWeight: 'bold' }}>
-                {basePrice}
-              </div>
-              <div style={{ fontSize: '11px', color: '#1890ff' }}>
+            <div style={{ cursor: "pointer" }}>
+              <div style={{ fontWeight: "bold" }}>{basePrice}</div>
+              <div style={{ fontSize: "11px", color: "#1890ff" }}>
                 +{customPricing.length} исключ.
               </div>
             </div>
           </Tooltip>
         );
-      }
+      },
     },
     {
-      title: 'Исполнители',
-      key: 'executers',
+      title: "Исполнители",
+      key: "executers",
       width: 200,
       render: (_, record) => {
         // Проверяем прямое назначение через executer_id
@@ -508,7 +608,9 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
         // Если есть прямое назначение
         if (directExecuter) {
           return (
-            <Tag color={directExecuter.status === 'active' ? 'green' : 'orange'}>
+            <Tag
+              color={directExecuter.status === "active" ? "green" : "orange"}
+            >
               {directExecuter.name || `ID: ${directExecuter.id}`}
               {directExecuter.telegram_id && ` (${directExecuter.telegram_id})`}
             </Tag>
@@ -520,7 +622,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           if (assignedExecuters.length === 1) {
             const executer = assignedExecuters[0];
             return (
-              <Tag color={executer.status === 'active' ? 'green' : 'orange'}>
+              <Tag color={executer.status === "active" ? "green" : "orange"}>
                 {executer.executer_name}
               </Tag>
             );
@@ -532,14 +634,20 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
                 <div>
                   {assignedExecuters.map((executer, index) => (
                     <div key={index}>
-                      • {executer.executer_name} ({executer.status === 'active' ? 'Активен' : 'Неактивен'})
+                      • {executer.executer_name} (
+                      {executer.status === "active" ? "Активен" : "Неактивен"})
                     </div>
                   ))}
                 </div>
               }
             >
               <Tag color="blue">
-                {assignedExecuters.length} исполнител{assignedExecuters.length === 1 ? 'ь' : assignedExecuters.length < 5 ? 'я' : 'ей'}
+                {assignedExecuters.length} исполнител
+                {assignedExecuters.length === 1
+                  ? "ь"
+                  : assignedExecuters.length < 5
+                  ? "я"
+                  : "ей"}
               </Tag>
             </Tooltip>
           );
@@ -547,48 +655,61 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
 
         // Если никого не назначено
         return <Tag color="default">Не назначены</Tag>;
-      }
+      },
     },
     {
-      title: 'Статус',
-      dataIndex: 'status',
-      key: 'status',
+      title: "Статус",
+      dataIndex: "status",
+      key: "status",
       render: (status) => (
-        <Tag color={
-          status === 'active' ? 'green' :
-          status === 'inactive' ? 'orange' :
-          status === 'ОЖИДАЕТ' ? 'default' :
-          status === 'ЗАВЕРШЕНА' ? 'blue' : 'default'
-        }>
-          {status === 'active' ? 'АКТИВНА' : status === 'inactive' ? 'НЕАКТИВНА' : status}
+        <Tag
+          color={
+            status === "active"
+              ? "green"
+              : status === "inactive"
+              ? "orange"
+              : status === "ОЖИДАЕТ"
+              ? "default"
+              : status === "ЗАВЕРШЕНА"
+              ? "blue"
+              : "default"
+          }
+        >
+          {status === "active"
+            ? "АКТИВНА"
+            : status === "inactive"
+            ? "НЕАКТИВНА"
+            : status}
         </Tag>
-      )
+      ),
     },
     {
-      title: 'Номера заказов',
-      dataIndex: 'active_orders',
-      key: 'active_orders',
+      title: "Номера заказов",
+      dataIndex: "active_orders",
+      key: "active_orders",
       width: 200,
       render: (active_orders, record) => {
         // Если нет активных заказов
         if (!active_orders || active_orders.length === 0) {
-          return <Tag color="default">Нет заказов</Tag>
+          return <Tag color="default">Нет заказов</Tag>;
         }
 
         return (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
             {active_orders.map((order, index) => (
               <Tooltip
                 key={`${order.order_number}-${index}`}
-                title={`Исполнитель: ${order.executer_name || 'Неизвестный'}\nНомер заказа: ${order.order_number}`}
+                title={`Исполнитель: ${
+                  order.executer_name || "Неизвестный"
+                }\nНомер заказа: ${order.order_number}`}
                 placement="top"
               >
                 <Tag
                   color="blue"
                   style={{
-                    cursor: 'pointer',
-                    margin: '2px',
-                    fontSize: '12px'
+                    cursor: "pointer",
+                    margin: "2px",
+                    fontSize: "12px",
                   }}
                 >
                   #{order.order_number}
@@ -596,12 +717,12 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
               </Tooltip>
             ))}
           </div>
-        )
-      }
+        );
+      },
     },
     {
-      title: 'Действия',
-      key: 'actions',
+      title: "Действия",
+      key: "actions",
       render: (_, record) => (
         <Space>
           <Button
@@ -616,7 +737,11 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
             icon={<FaDollarSign />}
             onClick={() => openPricingModal(record)}
             size="small"
-            style={{ backgroundColor: '#52c41a', borderColor: '#52c41a', color: 'white' }}
+            style={{
+              backgroundColor: "#52c41a",
+              borderColor: "#52c41a",
+              color: "white",
+            }}
             title="Индивидуальные цены"
           />
           <Button
@@ -630,15 +755,11 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
             okText="Да"
             cancelText="Нет"
           >
-            <Button
-              icon={<FaTrash />}
-              danger
-              size="small"
-            />
+            <Button icon={<FaTrash />} danger size="small" />
           </Popconfirm>
         </Space>
-      )
-    }
+      ),
+    },
   ];
 
   return (
@@ -661,20 +782,22 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
         <Input
           name="name"
           value={form.name}
-          onChange={e => handleChange('name', e.target.value)}
+          onChange={(e) => handleChange("name", e.target.value)}
           placeholder="Название услуги"
           style={{ marginBottom: 16 }}
         />
         <Select
           name="category"
           value={form.category || undefined}
-          onChange={value => handleChange('category', value)}
+          onChange={(value) => handleChange("category", value)}
           placeholder="Выберите категорию"
           className="w-full"
           style={{ marginBottom: 16 }}
         >
-          {categories.map(cat => (
-            <Select.Option key={cat} value={cat}>{cat}</Select.Option>
+          {categories.map((cat) => (
+            <Select.Option key={cat} value={cat}>
+              {cat}
+            </Select.Option>
           ))}
         </Select>
         <Input
@@ -683,14 +806,14 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           min={0}
           step={0.01}
           value={form.price}
-          onChange={e => handleChange('price', e.target.value)}
+          onChange={(e) => handleChange("price", e.target.value)}
           placeholder="Цена услуги (₽)"
           style={{ marginBottom: 16 }}
         />
         <Select
           name="status"
           value={form.status || undefined}
-          onChange={value => handleChange('status', value)}
+          onChange={(value) => handleChange("status", value)}
           placeholder="Выберите статус"
           className="w-full"
           style={{ marginBottom: 16 }}
@@ -710,7 +833,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
             option.children.toLowerCase().includes(input.toLowerCase())
           }
         >
-          {executers.map(executer => (
+          {executers.map((executer) => (
             <Select.Option key={executer.id} value={executer.id}>
               {executer.name || `ID: ${executer.id}`}
               {executer.telegram_id && ` (${executer.telegram_id})`}
@@ -729,7 +852,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       >
         <div style={{ marginBottom: 24 }}>
           <h4>Загрузить из файла (.csv, .xlsx, .txt)</h4>
-          <p style={{ color: '#666', marginBottom: 16 }}>
+          <p style={{ color: "#666", marginBottom: 16 }}>
             Каждая строка файла = один расходник (ключ, код и т.д.)
           </p>
           <Upload.Dragger
@@ -741,11 +864,13 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           >
             <p className="ant-upload-drag-icon">📁</p>
             <p className="ant-upload-text">Нажмите или перетащите файл сюда</p>
-            <p className="ant-upload-hint">Поддерживаются файлы .csv, .xlsx, .txt</p>
+            <p className="ant-upload-hint">
+              Поддерживаются файлы .csv, .xlsx, .txt
+            </p>
           </Upload.Dragger>
         </div>
 
-        <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 24 }}>
+        <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 24 }}>
           <h4>Или добавить вручную</h4>
           <Input.TextArea
             value={manualInput}
@@ -769,8 +894,8 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
         open={materialsModal}
         title={`Расходники для "${selectedService?.name}"`}
         onCancel={() => {
-          setMaterialsModal(false)
-          setMaterialStats(null)
+          setMaterialsModal(false);
+          setMaterialStats(null);
         }}
         footer={null}
         width={1400}
@@ -784,28 +909,28 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
                   <Statistic
                     title="Всего материалов"
                     value={materialStats.stats.total}
-                    valueStyle={{ color: '#1890ff' }}
+                    valueStyle={{ color: "#1890ff" }}
                   />
                 </Col>
                 <Col span={6}>
                   <Statistic
                     title="Доступно"
                     value={materialStats.stats.available}
-                    valueStyle={{ color: '#52c41a' }}
+                    valueStyle={{ color: "#52c41a" }}
                   />
                 </Col>
                 <Col span={6}>
                   <Statistic
                     title="Использовано"
                     value={materialStats.stats.used}
-                    valueStyle={{ color: '#ff4d4f' }}
+                    valueStyle={{ color: "#ff4d4f" }}
                   />
                 </Col>
                 <Col span={6}>
                   <Statistic
                     title="На замене"
                     value={materialStats.stats.pending_replace}
-                    valueStyle={{ color: '#faad14' }}
+                    valueStyle={{ color: "#faad14" }}
                   />
                 </Col>
               </Row>
@@ -822,101 +947,113 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
             size="small"
             columns={[
               {
-                title: 'ID',
-                dataIndex: 'id',
-                key: 'id',
-                width: 60
+                title: "ID",
+                dataIndex: "id",
+                key: "id",
+                width: 60,
               },
               {
-                title: 'Содержимое (Ключ/Код)',
-                dataIndex: 'contents',
-                key: 'contents',
-                ellipsis: true
+                title: "Содержимое (Ключ/Код)",
+                dataIndex: "contents",
+                key: "contents",
+                ellipsis: true,
               },
               {
-                title: 'Статус',
-                dataIndex: 'status',
-                key: 'status',
+                title: "Статус",
+                dataIndex: "status",
+                key: "status",
                 width: 120,
                 render: (status) => {
                   const statusColors = {
-                    'available': 'green',
-                    'used': 'red',
-                    'pending_replace': 'orange',
-                    'replaced': 'gray'
-                  }
+                    available: "green",
+                    used: "red",
+                    pending_replace: "orange",
+                    replaced: "gray",
+                  };
                   const statusTexts = {
-                    'available': 'Доступен',
-                    'used': 'Использован',
-                    'pending_replace': 'На замене',
-                    'replaced': 'Использован'
-                  }
+                    available: "Доступен",
+                    used: "Использован",
+                    pending_replace: "На замене",
+                    replaced: "Использован",
+                  };
                   return (
-                    <Tag color={statusColors[status] || 'default'}>
+                    <Tag color={statusColors[status] || "default"}>
                       {statusTexts[status] || status}
                     </Tag>
-                  )
-                }
+                  );
+                },
               },
               {
-                title: 'Источник',
-                dataIndex: 'source',
-                key: 'source',
+                title: "Источник",
+                dataIndex: "source",
+                key: "source",
                 width: 120,
-                render: (source) => getSourceLabel(source)
+                render: (source) => getSourceLabel(source),
               },
               {
-                title: 'Дата добавления',
-                dataIndex: 'added_date',
-                key: 'added_date',
+                title: "Дата добавления",
+                dataIndex: "added_date",
+                key: "added_date",
                 width: 120,
-                render: (date) => date ? new Date(date).toLocaleDateString('ru-RU') : '-'
+                render: (date) =>
+                  date ? new Date(date).toLocaleDateString("ru-RU") : "-",
               },
               {
-                title: 'Дата использования',
-                dataIndex: 'used_date',
-                key: 'used_date',
+                title: "Дата использования",
+                dataIndex: "used_date",
+                key: "used_date",
                 width: 140,
                 render: (date, record) => {
-                  if (record.status === 'used' || record.status === 'replaced' || record.status === 'pending_replace') {
-                    return date ? new Date(date).toLocaleString('ru-RU', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    }) : '-'
+                  if (
+                    record.status === "used" ||
+                    record.status === "replaced" ||
+                    record.status === "pending_replace"
+                  ) {
+                    return date
+                      ? new Date(date).toLocaleString("ru-RU", {
+                          year: "numeric",
+                          month: "2-digit",
+                          day: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "-";
                   }
-                  return '-'
-                }
+                  return "-";
+                },
               },
               {
-                title: 'Дата запроса замены',
-                dataIndex: 'replacement_requested_date',
-                key: 'replacement_requested_date',
+                title: "Дата запроса замены",
+                dataIndex: "replacement_requested_date",
+                key: "replacement_requested_date",
                 width: 150,
                 render: (date, record) => {
-                  if (record.status === 'pending_replace') {
-                    return date ? new Date(date).toLocaleString('ru-RU', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    }) : '-'
+                  if (record.status === "pending_replace") {
+                    return date
+                      ? new Date(date).toLocaleString("ru-RU", {
+                          year: "numeric",
+                          month: "2-digit",
+                          day: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "-";
                   }
-                  return '-'
-                }
-              }
+                  return "-";
+                },
+              },
             ]}
           />
         ) : (
-          <div style={{ textAlign: 'center', padding: '40px' }}>
+          <div style={{ textAlign: "center", padding: "40px" }}>
             <p>Нет расходников для этой услуги</p>
-            <Button type="primary" onClick={() => {
-              setMaterialsModal(false)
-              openUploadModal(selectedService)
-            }}>
+            <Button
+              type="primary"
+              onClick={() => {
+                setMaterialsModal(false);
+                openUploadModal(selectedService);
+              }}
+            >
               Добавить расходники
             </Button>
           </div>
@@ -933,7 +1070,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       >
         <div style={{ marginBottom: 24 }}>
           <h4>Настройки API</h4>
-          <p style={{ color: '#666', marginBottom: 16 }}>
+          <p style={{ color: "#666", marginBottom: 16 }}>
             Настройте API для автоматической загрузки расходников
           </p>
 
@@ -941,7 +1078,9 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
             <label>URL API:</label>
             <Input
               value={apiConfig.url}
-              onChange={(e) => setApiConfig({...apiConfig, url: e.target.value})}
+              onChange={(e) =>
+                setApiConfig({ ...apiConfig, url: e.target.value })
+              }
               placeholder="https://api.example.com/materials"
               style={{ marginTop: 8 }}
             />
@@ -951,8 +1090,10 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
             <label>Метод:</label>
             <Select
               value={apiConfig.method}
-              onChange={(value) => setApiConfig({...apiConfig, method: value})}
-              style={{ width: '100%', marginTop: 8 }}
+              onChange={(value) =>
+                setApiConfig({ ...apiConfig, method: value })
+              }
+              style={{ width: "100%", marginTop: 8 }}
             >
               <Select.Option value="GET">GET</Select.Option>
               <Select.Option value="POST">POST</Select.Option>
@@ -963,17 +1104,22 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
             <label>Заголовки (JSON):</label>
             <Input.TextArea
               value={apiConfig.headers}
-              onChange={(e) => setApiConfig({...apiConfig, headers: e.target.value})}
+              onChange={(e) =>
+                setApiConfig({ ...apiConfig, headers: e.target.value })
+              }
               placeholder='{"Authorization": "Bearer your-token", "Content-Type": "application/json"}'
               rows={3}
               style={{ marginTop: 8 }}
             />
           </div>
 
-          <Button type="primary" onClick={() => {
-            message.info('API настройка сохранена (функция в разработке)')
-            setApiModal(false)
-          }}>
+          <Button
+            type="primary"
+            onClick={() => {
+              message.info("API настройка сохранена (функция в разработке)");
+              setApiModal(false);
+            }}
+          >
             Сохранить настройки API
           </Button>
         </div>
@@ -989,7 +1135,7 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
       >
         <div style={{ marginBottom: 24 }}>
           <h4>Ручное добавление</h4>
-          <p style={{ color: '#666', marginBottom: 16 }}>
+          <p style={{ color: "#666", marginBottom: 16 }}>
             Введите содержимое расходника (ключ, код и т.д.)
           </p>
           <Input.TextArea
@@ -1022,64 +1168,93 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
           </Button>,
           <Button key="save" type="primary" onClick={handleSavePricing}>
             Сохранить цены
-          </Button>
+          </Button>,
         ]}
       >
         <div style={{ marginBottom: 16 }}>
-          <div style={{
-            padding: '12px 16px',
-            backgroundColor: '#f0f9ff',
-            border: '1px solid #bae6fd',
-            borderRadius: '8px',
-            marginBottom: '20px'
-          }}>
-            <div style={{ fontWeight: 'bold', color: '#0369a1', marginBottom: '4px' }}>
+          <div
+            style={{
+              padding: "12px 16px",
+              backgroundColor: "#f0f9ff",
+              border: "1px solid #bae6fd",
+              borderRadius: "8px",
+              marginBottom: "20px",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: "bold",
+                color: "#0369a1",
+                marginBottom: "4px",
+              }}
+            >
               Базовая цена услуги: ₽{selectedService?.price || 0}
             </div>
-            <div style={{ color: '#0369a1', fontSize: '14px' }}>
-              Установите индивидуальные цены для каждого исполнителя или оставьте базовую цену
+            <div style={{ color: "#0369a1", fontSize: "14px" }}>
+              Установите индивидуальные цены для каждого исполнителя или
+              оставьте базовую цену
             </div>
           </div>
 
-          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+          <div style={{ maxHeight: "400px", overflowY: "auto" }}>
             {executerPrices.map((price, index) => (
-              <div key={price.executer_id} style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '12px 16px',
-                backgroundColor: index % 2 === 0 ? '#fafafa' : 'white',
-                borderRadius: '8px',
-                marginBottom: '8px',
-                border: '1px solid #f0f0f0'
-              }}>
-                <div style={{ flex: 1, fontWeight: '500' }}>
+              <div
+                key={price.executer_id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "12px 16px",
+                  backgroundColor: index % 2 === 0 ? "#fafafa" : "white",
+                  borderRadius: "8px",
+                  marginBottom: "8px",
+                  border: "1px solid #f0f0f0",
+                }}
+              >
+                <div style={{ flex: 1, fontWeight: "500" }}>
                   {price.executer_name}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ fontSize: '14px', color: '#666' }}>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "12px" }}
+                >
+                  <div style={{ fontSize: "14px", color: "#666" }}>
                     Базовая: ₽{selectedService?.price || 0}
                   </div>
-                  <div style={{ fontSize: '14px', color: '#666' }}>→</div>
+                  <div style={{ fontSize: "14px", color: "#666" }}>→</div>
                   <Input
                     type="number"
                     min={0}
                     step={0.01}
                     value={price.custom_price}
-                    onChange={(e) => handlePriceChange(
-                      price.executer_id,
-                      e.target.value,
-                      parseFloat(e.target.value) !== selectedService?.price
-                    )}
-                    style={{ width: '120px' }}
+                    onChange={(e) =>
+                      handlePriceChange(
+                        price.executer_id,
+                        e.target.value,
+                        parseFloat(e.target.value) !== selectedService?.price
+                      )
+                    }
+                    style={{ width: "120px" }}
                     prefix="₽"
                   />
-                  <div style={{
-                    fontSize: '12px',
-                    color: price.has_custom_price && price.custom_price !== selectedService?.price ? '#52c41a' : '#666',
-                    fontWeight: price.has_custom_price && price.custom_price !== selectedService?.price ? 'bold' : 'normal',
-                    minWidth: '80px'
-                  }}>
-                    {price.has_custom_price && price.custom_price !== selectedService?.price ? 'Индивид.' : 'Базовая'}
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color:
+                        price.has_custom_price &&
+                        price.custom_price !== selectedService?.price
+                          ? "#52c41a"
+                          : "#666",
+                      fontWeight:
+                        price.has_custom_price &&
+                        price.custom_price !== selectedService?.price
+                          ? "bold"
+                          : "normal",
+                      minWidth: "80px",
+                    }}
+                  >
+                    {price.has_custom_price &&
+                    price.custom_price !== selectedService?.price
+                      ? "Индивид."
+                      : "Базовая"}
                   </div>
                 </div>
               </div>
@@ -1088,5 +1263,5 @@ export function ServicesTable({ refresh, onChange, search = '', statusFilter = '
         </div>
       </Modal>
     </div>
-  )
+  );
 }

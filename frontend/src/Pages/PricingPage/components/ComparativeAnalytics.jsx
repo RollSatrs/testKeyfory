@@ -19,6 +19,7 @@ import {
   FaChartLine,
 } from "react-icons/fa";
 import { useState, useEffect } from "react";
+import { BACKEND_URL } from "../../../lib/backendUrl";
 
 const { Option } = Select;
 
@@ -41,7 +42,7 @@ export function ComparativeAnalytics() {
     setLoading(true);
     try {
       const res = await fetch(
-        `http://localhost:3000/api/admin/earnings/comparative?period=${period}&comparison=${comparisonType}`,
+        `${BACKEND_URL}/api/admin/earnings/comparative?period=${period}&comparison=${comparisonType}`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("admin_token")}`,

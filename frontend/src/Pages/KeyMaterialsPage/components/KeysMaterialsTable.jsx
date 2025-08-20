@@ -13,13 +13,14 @@ import {
   Tooltip,
 } from "antd";
 import { CSVLink } from "react-csv";
+import { BACKEND_URL } from "../../../lib/backendUrl";
 import { DownloadOutlined } from "@ant-design/icons";
 
 let successCount = 0;
 
 async function getMateriallsServices(nameService) {
   try {
-    await fetch("http://localhost:3000/api/admin/materials/service", {
+    await fetch(`${BACKEND_URL}/api/admin/materials/service`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -33,7 +34,7 @@ async function getMateriallsServices(nameService) {
 
 async function addMaterialls(row) {
   try {
-    await fetch("http://localhost:3000/api/admin/materials/add", {
+    await fetch(`${BACKEND_URL}/api/admin/materials/add`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -73,7 +74,7 @@ export function KeysMaterialsTable({
 
   async function fetchMaterials() {
     try {
-      const res = await fetch("http://localhost:3000/api/admin/materials/get", {
+      const res = await fetch(`${BACKEND_URL}/api/admin/materials/get`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
         },
@@ -87,7 +88,7 @@ export function KeysMaterialsTable({
 
   async function fetchServices() {
     try {
-      const res = await fetch("http://localhost:3000/api/admin/services/get", {
+      const res = await fetch(`${BACKEND_URL}/api/admin/services/get`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
         },
@@ -101,7 +102,7 @@ export function KeysMaterialsTable({
 
   async function handleDelete(id) {
     try {
-      await fetch(`http://localhost:3000/api/admin/materials/delete/${id}`, {
+      await fetch(`${BACKEND_URL}/api/admin/materials/delete/${id}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -118,17 +119,14 @@ export function KeysMaterialsTable({
 
   async function handleStatusChange(id, newStatus) {
     try {
-      await fetch(
-        `http://localhost:3000/api/admin/materials/update-status/${id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-          body: JSON.stringify({ status: newStatus }),
-        }
-      );
+      await fetch(`${BACKEND_URL}/api/admin/materials/update-status/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
       fetchMaterials();
       if (onChange) onChange();
       message.success("Статус материала обновлен");
@@ -153,21 +151,18 @@ export function KeysMaterialsTable({
 
   async function handleEditSubmit() {
     try {
-      await fetch(
-        `http://localhost:3000/api/admin/materials/update/${form.id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
-          },
-          body: JSON.stringify({
-            service_id: form.service_id,
-            contents: form.contents,
-            status: form.status,
-          }),
-        }
-      );
+      await fetch(`${BACKEND_URL}/api/admin/materials/update/${form.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+        },
+        body: JSON.stringify({
+          service_id: form.service_id,
+          contents: form.contents,
+          status: form.status,
+        }),
+      });
       setEditForm(false);
       fetchMaterials();
       if (onChange) onChange();
@@ -185,7 +180,7 @@ export function KeysMaterialsTable({
 
   async function fetchReplacementMaterials(serviceId) {
     try {
-      const res = await fetch(`http://localhost:3000/api/admin/materials/get`, {
+      const res = await fetch(`${BACKEND_URL}/api/admin/materials/get`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
         },
@@ -204,7 +199,7 @@ export function KeysMaterialsTable({
   async function handleReplaceSubmit(newMaterialId) {
     try {
       const response = await fetch(
-        `http://localhost:3000/api/admin/materials/replace`,
+        `${BACKEND_URL}/api/admin/materials/replace`,
         {
           method: "POST",
           headers: {

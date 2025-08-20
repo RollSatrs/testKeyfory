@@ -13,6 +13,7 @@ import {
   Line,
 } from "recharts";
 import { Card, Select, Spin, Statistic, Row, Col, Tabs } from "antd";
+import { BACKEND_URL } from "../../../lib/backendUrl";
 import {
   FaChartPie,
   FaTrophy,
@@ -56,7 +57,7 @@ export function ServicesAnalytics() {
     setLoading(true);
     try {
       const res = await fetch(
-        `http://localhost:3000/api/admin/earnings/services/performance?period=${period}`,
+        `${BACKEND_URL}/api/admin/earnings/services/performance?period=${period}`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("admin_token")}`,

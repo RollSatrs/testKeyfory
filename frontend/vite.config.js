@@ -15,7 +15,7 @@ export default defineConfig({
       '/api': {
         // Use Vite env var VITE_BACKEND_URL when provided (set in Docker or .env),
         // otherwise default to localhost for local dev.
-        target: process.env.VITE_BACKEND_URL || 'http://localhost:3000',
+        target: process.env.VITE_BACKEND_URL || process.env.BACKEND_URL || 'http://localhost:3000',
         changeOrigin: true,
         secure: false
       }

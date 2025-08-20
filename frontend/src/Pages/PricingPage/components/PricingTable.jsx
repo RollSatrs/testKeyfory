@@ -1,119 +1,136 @@
-import { FiEdit, FiTrendingUp, FiDollarSign } from 'react-icons/fi'
-import { FaRubleSign } from 'react-icons/fa'
-import { useEffect, useState } from 'react'
-import { Table, Tag, Button, Modal, Input, Select, Space, message, Tooltip, Statistic } from 'antd'
+import { FiEdit, FiTrendingUp, FiDollarSign } from "react-icons/fi";
+import { FaRubleSign } from "react-icons/fa";
+import { useEffect, useState } from "react";
+import { BACKEND_URL } from "../../../lib/backendUrl";
+import {
+  Table,
+  Tag,
+  Button,
+  Modal,
+  Input,
+  Select,
+  Space,
+  message,
+  Tooltip,
+  Statistic,
+} from "antd";
 
 export function PricingTable() {
-  const [services, setServices] = useState([])
-  const [executers, setExecuters] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [editModal, setEditModal] = useState(false)
-  const [selectedService, setSelectedService] = useState(null)
-  const [customPrices, setCustomPrices] = useState({})
+  const [services, setServices] = useState([]);
+  const [executers, setExecuters] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editModal, setEditModal] = useState(false);
+  const [selectedService, setSelectedService] = useState(null);
+  const [customPrices, setCustomPrices] = useState({});
 
   useEffect(() => {
-    fetchServices()
-    fetchExecuters()
-  }, [])
+    fetchServices();
+    fetchExecuters();
+  }, []);
 
   async function fetchServices() {
     try {
-      const res = await fetch('http://localhost:3000/api/admin/services/get', {
+      const res = await fetch(`${BACKEND_URL}/api/admin/services/get`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        }
-      })
-      const data = await res.json()
-      setServices(data)
+          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+        },
+      });
+      const data = await res.json();
+      setServices(data);
     } catch (error) {
-      console.error('Ошибка загрузки услуг:', error)
-      message.error('Ошибка загрузки услуг')
+      console.error("Ошибка загрузки услуг:", error);
+      message.error("Ошибка загрузки услуг");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function fetchExecuters() {
     try {
-      const res = await fetch('http://localhost:3000/api/admin/executers/get', {
+      const res = await fetch(`${BACKEND_URL}/api/admin/executers/get`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        }
-      })
-      const data = await res.json()
-      setExecuters(data)
+          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+        },
+      });
+      const data = await res.json();
+      setExecuters(data);
     } catch (error) {
-      console.error('Ошибка загрузки исполнителей:', error)
+      console.error("Ошибка загрузки исполнителей:", error);
     }
   }
 
   function openPricingModal(service) {
-    setSelectedService(service)
-    setEditModal(true)
+    setSelectedService(service);
+    setEditModal(true);
 
     // Инициализируем кастомные цены
-    const initialPrices = {}
+    const initialPrices = {};
     if (service.custom_pricing) {
-      service.custom_pricing.forEach(pricing => {
-        initialPrices[pricing.executer_id] = pricing.custom_price
-      })
+      service.custom_pricing.forEach((pricing) => {
+        initialPrices[pricing.executer_id] = pricing.custom_price;
+      });
     }
-    setCustomPrices(initialPrices)
+    setCustomPrices(initialPrices);
   }
 
   async function handleSavePricing() {
-    if (!selectedService) return
+    if (!selectedService) return;
 
     try {
-      const res = await fetch(`http://localhost:3000/api/admin/services/update-pricing/${selectedService.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        },
-        body: JSON.stringify({
-          base_price: selectedService.price,
-          custom_pricing: Object.entries(customPrices).map(([executerId, price]) => ({
-            executer_id: parseInt(executerId),
-            custom_price: parseFloat(price) || 0
-          })).filter(p => p.custom_price > 0)
-        })
-      })
+      const res = await fetch(
+        `${BACKEND_URL}/api/admin/services/update-pricing/${selectedService.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+          },
+          body: JSON.stringify({
+            base_price: selectedService.price,
+            custom_pricing: Object.entries(customPrices)
+              .map(([executerId, price]) => ({
+                executer_id: parseInt(executerId),
+                custom_price: parseFloat(price) || 0,
+              }))
+              .filter((p) => p.custom_price > 0),
+          }),
+        }
+      );
 
       if (res.ok) {
-        message.success('Цены обновлены')
-        setEditModal(false)
-        fetchServices()
+        message.success("Цены обновлены");
+        setEditModal(false);
+        fetchServices();
       } else {
-        message.error('Ошибка при обновлении цен')
+        message.error("Ошибка при обновлении цен");
       }
     } catch (error) {
-      message.error('Ошибка при сохранении')
+      message.error("Ошибка при сохранении");
     }
   }
 
   function calculateMargin(basePrice, cost = 0) {
-    if (!basePrice || !cost) return '—'
-    const margin = ((basePrice - cost) / cost * 100).toFixed(1)
-    return `${margin}%`
+    if (!basePrice || !cost) return "—";
+    const margin = (((basePrice - cost) / cost) * 100).toFixed(1);
+    return `${margin}%`;
   }
 
   function getPriceRange(basePrice, customPricing = []) {
-    if (!basePrice) return '—'
+    if (!basePrice) return "—";
 
-    const prices = [basePrice, ...customPricing.map(p => p.custom_price)]
-    const min = Math.min(...prices)
-    const max = Math.max(...prices)
+    const prices = [basePrice, ...customPricing.map((p) => p.custom_price)];
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
 
-    if (min === max) return `₽${basePrice}`
-    return `₽${min} - ₽${max}`
+    if (min === max) return `₽${basePrice}`;
+    return `₽${min} - ₽${max}`;
   }
 
   const columns = [
     {
-      title: 'Услуга',
-      dataIndex: 'name',
-      key: 'name',
+      title: "Услуга",
+      dataIndex: "name",
+      key: "name",
       width: 300,
       render: (name, record) => (
         <div>
@@ -125,59 +142,63 @@ export function PricingTable() {
             </Tag>
           )}
         </div>
-      )
+      ),
     },
     {
-      title: 'Базовая цена',
-      dataIndex: 'price',
-      key: 'price',
+      title: "Базовая цена",
+      dataIndex: "price",
+      key: "price",
       width: 130,
       render: (price) => (
         <div className="font-semibold text-green-600">
-          {price ? `₽${price}` : '—'}
+          {price ? `₽${price}` : "—"}
         </div>
-      )
+      ),
     },
     {
-      title: 'Наценка',
-      key: 'margin',
+      title: "Наценка",
+      key: "margin",
       width: 100,
       render: (_, record) => {
-        const cost = 100 // Примерная себестоимость
-        const margin = calculateMargin(record.price, cost)
+        const cost = 100; // Примерная себестоимость
+        const margin = calculateMargin(record.price, cost);
         return (
           <div className="flex items-center">
             <FiTrendingUp className="mr-1 text-blue-500" size={14} />
-            <span className={margin !== '—' ? 'text-blue-600 font-medium' : 'text-gray-400'}>
+            <span
+              className={
+                margin !== "—" ? "text-blue-600 font-medium" : "text-gray-400"
+              }
+            >
               {margin}
             </span>
           </div>
-        )
-      }
+        );
+      },
     },
     {
-      title: 'Диапазон цен',
-      key: 'range',
+      title: "Диапазон цен",
+      key: "range",
       width: 150,
       render: (_, record) => (
         <div className="text-sm">
           {getPriceRange(record.price, record.custom_pricing)}
         </div>
-      )
+      ),
     },
     {
-      title: 'Индивидуальные цены',
-      key: 'custom_pricing',
+      title: "Индивидуальные цены",
+      key: "custom_pricing",
       width: 200,
       render: (_, record) => {
-        const customCount = record.custom_pricing?.length || 0
+        const customCount = record.custom_pricing?.length || 0;
         return (
           <div>
             {customCount > 0 ? (
               <Tooltip
                 title={
                   <div>
-                    {record.custom_pricing?.map(pricing => (
+                    {record.custom_pricing?.map((pricing) => (
                       <div key={pricing.executer_id}>
                         {pricing.executer_name}: ₽{pricing.custom_price}
                       </div>
@@ -186,30 +207,31 @@ export function PricingTable() {
                 }
               >
                 <Tag color="orange">
-                  {customCount} исполнител{customCount === 1 ? 'ь' : customCount < 5 ? 'я' : 'ей'}
+                  {customCount} исполнител
+                  {customCount === 1 ? "ь" : customCount < 5 ? "я" : "ей"}
                 </Tag>
               </Tooltip>
             ) : (
               <Tag color="default">Стандартная цена</Tag>
             )}
           </div>
-        )
-      }
+        );
+      },
     },
     {
-      title: 'Статус',
-      dataIndex: 'status',
-      key: 'status',
+      title: "Статус",
+      dataIndex: "status",
+      key: "status",
       width: 100,
       render: (status) => (
-        <Tag color={status === 'active' ? 'green' : 'red'}>
-          {status === 'active' ? 'АКТИВНА' : 'НЕАКТИВНА'}
+        <Tag color={status === "active" ? "green" : "red"}>
+          {status === "active" ? "АКТИВНА" : "НЕАКТИВНА"}
         </Tag>
-      )
+      ),
     },
     {
-      title: 'Действия',
-      key: 'actions',
+      title: "Действия",
+      key: "actions",
       width: 100,
       render: (_, record) => (
         <Button
@@ -221,9 +243,9 @@ export function PricingTable() {
         >
           Настроить
         </Button>
-      )
-    }
-  ]
+      ),
+    },
+  ];
 
   return (
     <div className="bg-white rounded-2xl shadow p-6">
@@ -272,10 +294,12 @@ export function PricingTable() {
               <Input
                 type="number"
                 value={selectedService.price}
-                onChange={(e) => setSelectedService({
-                  ...selectedService,
-                  price: parseFloat(e.target.value) || 0
-                })}
+                onChange={(e) =>
+                  setSelectedService({
+                    ...selectedService,
+                    price: parseFloat(e.target.value) || 0,
+                  })
+                }
                 prefix={<FaRubleSign className="text-gray-400" />}
                 placeholder="Введите базовую цену"
                 size="large"
@@ -288,8 +312,11 @@ export function PricingTable() {
                 Индивидуальные цены для исполнителей
               </label>
               <div className="space-y-3 max-h-60 overflow-y-auto">
-                {executers.map(executer => (
-                  <div key={executer.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                {executers.map((executer) => (
+                  <div
+                    key={executer.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                  >
                     <div>
                       <div className="font-medium text-gray-900">
                         {executer.name || `Исполнитель ${executer.id}`}
@@ -301,12 +328,16 @@ export function PricingTable() {
                     <div className="w-32">
                       <Input
                         type="number"
-                        value={customPrices[executer.id] || ''}
-                        onChange={(e) => setCustomPrices({
-                          ...customPrices,
-                          [executer.id]: e.target.value
-                        })}
-                        prefix={<FaRubleSign className="text-gray-400" size={12} />}
+                        value={customPrices[executer.id] || ""}
+                        onChange={(e) =>
+                          setCustomPrices({
+                            ...customPrices,
+                            [executer.id]: e.target.value,
+                          })
+                        }
+                        prefix={
+                          <FaRubleSign className="text-gray-400" size={12} />
+                        }
                         placeholder="Цена"
                         size="small"
                       />
@@ -334,5 +365,5 @@ export function PricingTable() {
         }
       `}</style>
     </div>
-  )
+  );
 }

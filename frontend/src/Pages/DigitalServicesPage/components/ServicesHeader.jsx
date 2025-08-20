@@ -1,8 +1,19 @@
-import { useState, useEffect } from 'react'
-import { Input, Select, Button, Card, Space, InputNumber, Modal, Upload, message } from 'antd'
-import { FaTrash, FaPlus, FaUpload } from 'react-icons/fa'
+import { useState, useEffect } from "react";
+import { BACKEND_URL } from "../../../lib/backendUrl";
+import {
+  Input,
+  Select,
+  Button,
+  Card,
+  Space,
+  InputNumber,
+  Modal,
+  Upload,
+  message,
+} from "antd";
+import { FaTrash, FaPlus, FaUpload } from "react-icons/fa";
 
-const { TextArea } = Input
+const { TextArea } = Input;
 
 const categories = [
   "Другое",
@@ -36,54 +47,58 @@ const categories = [
   "Технологии",
   "Криптовалюты",
   "Маркетинг",
-  "Общение и знакомства"
+  "Общение и знакомства",
 ];
 
 export function ServicesHeader({ onAdd, children }) {
-  const [showModal, setShowModal] = useState(false)
-  const [executers, setExecuters] = useState([])
-  const [showLoadingModal, setShowLoadingModal] = useState(false)
-  const [loadingModalType, setLoadingModalType] = useState(null)
-  const [fileList, setFileList] = useState([])
-  const [manualInput, setManualInput] = useState('')
-  const [apiConfig, setApiConfig] = useState({ url: '', headers: '', method: 'GET' })
+  const [showModal, setShowModal] = useState(false);
+  const [executers, setExecuters] = useState([]);
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [loadingModalType, setLoadingModalType] = useState(null);
+  const [fileList, setFileList] = useState([]);
+  const [manualInput, setManualInput] = useState("");
+  const [apiConfig, setApiConfig] = useState({
+    url: "",
+    headers: "",
+    method: "GET",
+  });
 
   const [form, setForm] = useState({
-    name: '',
-    category: '',
-    price: '',
-    status: '',
-    loadingMethod: 'manual',
-    executer_id: '',
-    customPricing: [] // [{executer_id, executer_name, custom_price}]
-  })
+    name: "",
+    category: "",
+    price: "",
+    status: "",
+    loadingMethod: "manual",
+    executer_id: "",
+    customPricing: [], // [{executer_id, executer_name, custom_price}]
+  });
 
   useEffect(() => {
     if (showModal) {
-      fetchExecuters()
+      fetchExecuters();
     }
-  }, [showModal])
+  }, [showModal]);
 
   const fetchExecuters = async () => {
     try {
-      console.log('🔄 Загружаем исполнителей...');
+      console.log("🔄 Загружаем исполнителей...");
 
-      const response = await fetch('http://localhost:3000/api/admin/executers/get', {
+      const response = await fetch(`${BACKEND_URL}/api/admin/executers/get`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
-          'Content-Type': 'application/json'
-        }
-      })
+          Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+          "Content-Type": "application/json",
+        },
+      });
 
-      console.log('📡 Ответ от API:', response.status);
+      console.log("📡 Ответ от API:", response.status);
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json()
-      console.log('✅ Получены исполнители:', data);
-      console.log('📊 Количество исполнителей:', data.length);
+      const data = await response.json();
+      console.log("✅ Получены исполнители:", data);
+      console.log("📊 Количество исполнителей:", data.length);
 
       // Детальный лог каждого исполнителя
       data.forEach((executer, index) => {
@@ -92,181 +107,198 @@ export function ServicesHeader({ onAdd, children }) {
           name: executer.name,
           telegram_id: executer.telegram_id,
           status: executer.status,
-          fullObject: executer
+          fullObject: executer,
         });
       });
 
-      setExecuters(data)
+      setExecuters(data);
     } catch (error) {
-      console.error('❌ Ошибка загрузки исполнителей:', error)
-      message.error('Ошибка загрузки исполнителей: ' + error.message)
+      console.error("❌ Ошибка загрузки исполнителей:", error);
+      message.error("Ошибка загрузки исполнителей: " + error.message);
     }
-  }
+  };
 
   const addCustomPricing = () => {
     setForm({
       ...form,
-      customPricing: [...form.customPricing, { executer_id: '', executer_name: '', custom_price: '' }]
-    })
-  }
+      customPricing: [
+        ...form.customPricing,
+        { executer_id: "", executer_name: "", custom_price: "" },
+      ],
+    });
+  };
 
   const removeCustomPricing = (index) => {
-    const newPricing = form.customPricing.filter((_, i) => i !== index)
-    setForm({ ...form, customPricing: newPricing })
-  }
+    const newPricing = form.customPricing.filter((_, i) => i !== index);
+    setForm({ ...form, customPricing: newPricing });
+  };
 
   const updateCustomPricing = (index, field, value) => {
-    const newPricing = [...form.customPricing]
-    if (field === 'executer_id') {
-      const executer = executers.find(e => (e.id || e.executer_id) === value)
-      console.log('🔄 Обновляем индивидуальную цену для исполнителя:', executer);
+    const newPricing = [...form.customPricing];
+    if (field === "executer_id") {
+      const executer = executers.find((e) => (e.id || e.executer_id) === value);
+      console.log(
+        "🔄 Обновляем индивидуальную цену для исполнителя:",
+        executer
+      );
 
       newPricing[index] = {
         ...newPricing[index],
         executer_id: value,
-        executer_name: executer ? (executer.name || executer.executer_name || `Исполнитель ${value}`) : ''
-      }
+        executer_name: executer
+          ? executer.name || executer.executer_name || `Исполнитель ${value}`
+          : "",
+      };
     } else {
-      newPricing[index][field] = value
+      newPricing[index][field] = value;
     }
-    setForm({ ...form, customPricing: newPricing })
-  }
+    setForm({ ...form, customPricing: newPricing });
+  };
 
   const handleChange = (name, value) => {
-    setForm({ ...form, [name]: value })
+    setForm({ ...form, [name]: value });
 
     // Если изменился способ загрузки, показываем соответствующее модальное окно
-    if (name === 'loadingMethod' && value !== 'manual') {
-      setLoadingModalType(value)
-      setShowLoadingModal(true)
+    if (name === "loadingMethod" && value !== "manual") {
+      setLoadingModalType(value);
+      setShowLoadingModal(true);
 
       // Очищаем предыдущие данные
-      if (value === 'file') {
-        setFileList([])
-      } else if (value === 'api') {
-        setApiConfig({ url: '', headers: '', method: 'GET' })
+      if (value === "file") {
+        setFileList([]);
+      } else if (value === "api") {
+        setApiConfig({ url: "", headers: "", method: "GET" });
       }
     }
-  }
+  };
 
-  const handleSubmit = async e => {
-    e.preventDefault()
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
     try {
       // Создаем услугу
-      const serviceResponse = await fetch('http://localhost:3000/api/admin/services/add', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-        },
-        body: JSON.stringify({
-          name: form.name,
-          category: form.category,
-          price: parseFloat(form.price) || 0,
-          status: form.status,
-          loading_method: form.loadingMethod,
-          executer_id: form.executer_id || null
-        })
-      })
+      const serviceResponse = await fetch(
+        `${BACKEND_URL}/api/admin/services/add`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+          },
+          body: JSON.stringify({
+            name: form.name,
+            category: form.category,
+            price: parseFloat(form.price) || 0,
+            status: form.status,
+            loading_method: form.loadingMethod,
+            executer_id: form.executer_id || null,
+          }),
+        }
+      );
 
       if (!serviceResponse.ok) {
-        throw new Error('Ошибка создания услуги')
+        throw new Error("Ошибка создания услуги");
       }
 
-      const serviceData = await serviceResponse.json()
-      const serviceId = serviceData.id
+      const serviceData = await serviceResponse.json();
+      const serviceId = serviceData.id;
 
       // Добавляем материалы в зависимости от способа загрузки
-      if (form.loadingMethod === 'manual' && manualInput.trim()) {
-        console.log('📝 Добавляем материалы вручную...');
-        const materials = manualInput.split('\n')
-          .map(line => line.trim())
-          .filter(line => line.length > 0)
+      if (form.loadingMethod === "manual" && manualInput.trim()) {
+        console.log("📝 Добавляем материалы вручную...");
+        const materials = manualInput
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
 
         for (const material of materials) {
-          await fetch('http://localhost:3000/api/admin/materials/add-single', {
-            method: 'POST',
+          await fetch(`${BACKEND_URL}/api/admin/materials/add-single`, {
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
             },
             body: JSON.stringify({
               service_id: serviceId,
               contents: material,
-              source: 'manual'
-            })
-          })
+              source: "manual",
+            }),
+          });
         }
       }
 
       // Загружаем файл, если выбран файловый способ
-      if (form.loadingMethod === 'file' && fileList.length > 0) {
-        console.log('📁 Загружаем файл с материалами...');
-        const formData = new FormData()
-        formData.append('file', fileList[0].originFileObj || fileList[0])
-        formData.append('service_id', serviceId)
+      if (form.loadingMethod === "file" && fileList.length > 0) {
+        console.log("📁 Загружаем файл с материалами...");
+        const formData = new FormData();
+        formData.append("file", fileList[0].originFileObj || fileList[0]);
+        formData.append("service_id", serviceId);
 
-        const uploadResponse = await fetch('http://localhost:3000/api/admin/materials/upload', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
-          },
-          body: formData
-        })
+        const uploadResponse = await fetch(
+          `${BACKEND_URL}/api/admin/materials/upload`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
+            },
+            body: formData,
+          }
+        );
 
         if (uploadResponse.ok) {
-          const uploadResult = await uploadResponse.json()
-          console.log('✅ Файл загружен, материалов:', uploadResult.count);
-          message.success(`Загружено ${uploadResult.count || 0} материалов из файла`)
+          const uploadResult = await uploadResponse.json();
+          console.log("✅ Файл загружен, материалов:", uploadResult.count);
+          message.success(
+            `Загружено ${uploadResult.count || 0} материалов из файла`
+          );
         } else {
-          console.error('❌ Ошибка загрузки файла');
-          message.error('Ошибка при загрузке файла')
+          console.error("❌ Ошибка загрузки файла");
+          message.error("Ошибка при загрузке файла");
         }
       }
 
       // Добавляем индивидуальные цены для исполнителей
       for (const pricing of form.customPricing) {
         if (pricing.executer_id && pricing.custom_price) {
-          await fetch('http://localhost:3000/api/admin/pricing/add', {
-            method: 'POST',
+          await fetch(`${BACKEND_URL}/api/admin/pricing/add`, {
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem("admin_token")}`,
             },
             body: JSON.stringify({
               executer_id: pricing.executer_id,
               service_id: serviceId,
-              custom_price: parseFloat(pricing.custom_price)
-            })
-          })
+              custom_price: parseFloat(pricing.custom_price),
+            }),
+          });
         }
       }
 
-      message.success('Услуга создана успешно')
-      setShowModal(false)
-      resetForm()
-      if (onAdd) onAdd()
+      message.success("Услуга создана успешно");
+      setShowModal(false);
+      resetForm();
+      if (onAdd) onAdd();
     } catch (error) {
-      message.error('Ошибка при создании услуги')
-      console.error(error)
+      message.error("Ошибка при создании услуги");
+      console.error(error);
     }
-  }
+  };
 
   const resetForm = () => {
     setForm({
-      name: '',
-      category: '',
-      price: '',
-      status: '',
-      loadingMethod: 'manual',
-      executer_id: '',
-      customPricing: []
-    })
-    setFileList([])
-    setManualInput('')
-    setApiConfig({ url: '', headers: '', method: 'GET' })
-  }
+      name: "",
+      category: "",
+      price: "",
+      status: "",
+      loadingMethod: "manual",
+      executer_id: "",
+      customPricing: [],
+    });
+    setFileList([]);
+    setManualInput("");
+    setApiConfig({ url: "", headers: "", method: "GET" });
+  };
 
   return (
     <>
@@ -278,7 +310,7 @@ export function ServicesHeader({ onAdd, children }) {
               type="primary"
               style={{
                 background: "linear-gradient(to right, #3b82f6, #06b6d4)",
-                border: "none"
+                border: "none",
               }}
               onClick={() => {
                 resetForm();
@@ -296,26 +328,30 @@ export function ServicesHeader({ onAdd, children }) {
           <form
             className="bg-gradient-to-br from-white via-gray-50 to-blue-50 p-8 rounded-2xl shadow-2xl flex flex-col gap-6 min-w-[340px] animate-fade-in"
             onSubmit={handleSubmit}
-            style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37)' }}
+            style={{ boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.37)" }}
           >
-            <h2 className="text-2xl font-bold mb-2 text-blue-700 text-center">Добавить услугу</h2>
+            <h2 className="text-2xl font-bold mb-2 text-blue-700 text-center">
+              Добавить услугу
+            </h2>
             <Input
               name="name"
               value={form.name}
-              onChange={e => handleChange('name', e.target.value)}
+              onChange={(e) => handleChange("name", e.target.value)}
               placeholder="Название услуги"
               required
             />
             <Select
               name="category"
               value={form.category || undefined} // важно!
-              onChange={value => handleChange('category', value)}
+              onChange={(value) => handleChange("category", value)}
               placeholder="Выберите категорию"
               className="w-full"
               required
             >
-              {categories.map(cat => (
-                <Select.Option key={cat} value={cat}>{cat}</Select.Option>
+              {categories.map((cat) => (
+                <Select.Option key={cat} value={cat}>
+                  {cat}
+                </Select.Option>
               ))}
             </Select>
             <Input
@@ -324,13 +360,13 @@ export function ServicesHeader({ onAdd, children }) {
               min={0}
               step={0.01}
               value={form.price}
-              onChange={e => handleChange('price', e.target.value)}
+              onChange={(e) => handleChange("price", e.target.value)}
               placeholder="Цена услуги (₽)"
             />
             <Select
               name="loadingMethod"
               value={form.loadingMethod || undefined}
-              onChange={value => handleChange('loadingMethod', value)}
+              onChange={(value) => handleChange("loadingMethod", value)}
               placeholder="Способ загрузки ключей"
               className="w-full"
             >
@@ -340,7 +376,7 @@ export function ServicesHeader({ onAdd, children }) {
             </Select>
 
             {/* Поле для ручного ввода материалов */}
-            {form.loadingMethod === 'manual' && (
+            {form.loadingMethod === "manual" && (
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700">
                   Материалы (каждый с новой строки):
@@ -348,19 +384,20 @@ export function ServicesHeader({ onAdd, children }) {
                 <TextArea
                   placeholder="Введите материалы, каждый с новой строки:&#10;material1&#10;material2&#10;material3"
                   value={manualInput}
-                  onChange={e => setManualInput(e.target.value)}
+                  onChange={(e) => setManualInput(e.target.value)}
                   rows={4}
                   className="w-full"
                 />
                 <div className="text-xs text-gray-500 mt-1">
-                  Каждая строка = один материал. Пустые строки будут игнорироваться.
+                  Каждая строка = один материал. Пустые строки будут
+                  игнорироваться.
                 </div>
               </div>
             )}
             <Select
               name="executer_id"
               value={form.executer_id || undefined}
-              onChange={value => handleChange('executer_id', value)}
+              onChange={(value) => handleChange("executer_id", value)}
               placeholder="Выберите исполнителя (опционально)"
               className="w-full"
               allowClear
@@ -369,12 +406,14 @@ export function ServicesHeader({ onAdd, children }) {
                 option.children.toLowerCase().includes(input.toLowerCase())
               }
             >
-              {executers.map(executer => {
-                console.log('🔍 Отображаем исполнителя:', executer);
+              {executers.map((executer) => {
+                console.log("🔍 Отображаем исполнителя:", executer);
 
                 // Получаем имя исполнителя (проверяем разные варианты)
-                const executerName = executer.name || executer.executer_name || 'Без имени';
-                const telegramId = executer.telegram_id || executer.telegramId || 'ID не указан';
+                const executerName =
+                  executer.name || executer.executer_name || "Без имени";
+                const telegramId =
+                  executer.telegram_id || executer.telegramId || "ID не указан";
                 const executerId = executer.id || executer.executer_id;
 
                 return (
@@ -388,7 +427,7 @@ export function ServicesHeader({ onAdd, children }) {
             <Select
               name="status"
               value={form.status || undefined}
-              onChange={value => handleChange('status', value)}
+              onChange={(value) => handleChange("status", value)}
               placeholder="Выберите статус"
               className="w-full"
               required
@@ -400,7 +439,9 @@ export function ServicesHeader({ onAdd, children }) {
             {/* Секция индивидуального ценообразования */}
             <div className="border-t pt-4">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="text-lg font-semibold text-gray-700">Индивидуальные цены</h3>
+                <h3 className="text-lg font-semibold text-gray-700">
+                  Индивидуальные цены
+                </h3>
                 <Button
                   type="dashed"
                   icon={<FaPlus />}
@@ -418,15 +459,25 @@ export function ServicesHeader({ onAdd, children }) {
                       placeholder="Выберите исполнителя"
                       style={{ flex: 1 }}
                       value={pricing.executer_id || undefined}
-                      onChange={value => updateCustomPricing(index, 'executer_id', value)}
+                      onChange={(value) =>
+                        updateCustomPricing(index, "executer_id", value)
+                      }
                       showSearch
                       filterOption={(input, option) =>
-                        option.children.toLowerCase().includes(input.toLowerCase())
+                        option.children
+                          .toLowerCase()
+                          .includes(input.toLowerCase())
                       }
                     >
-                      {executers.map(executer => {
-                        const executerName = executer.name || executer.executer_name || 'Без имени';
-                        const telegramId = executer.telegram_id || executer.telegramId || 'ID не указан';
+                      {executers.map((executer) => {
+                        const executerName =
+                          executer.name ||
+                          executer.executer_name ||
+                          "Без имени";
+                        const telegramId =
+                          executer.telegram_id ||
+                          executer.telegramId ||
+                          "ID не указан";
                         const executerId = executer.id || executer.executer_id;
 
                         return (
@@ -442,7 +493,9 @@ export function ServicesHeader({ onAdd, children }) {
                       step={0.01}
                       style={{ width: 120 }}
                       value={pricing.custom_price}
-                      onChange={value => updateCustomPricing(index, 'custom_price', value)}
+                      onChange={(value) =>
+                        updateCustomPricing(index, "custom_price", value)
+                      }
                       addonAfter="₽"
                     />
                     <Button
@@ -458,15 +511,13 @@ export function ServicesHeader({ onAdd, children }) {
 
               {form.customPricing.length === 0 && (
                 <div className="text-gray-500 text-sm text-center py-2">
-                  Индивидуальные цены не заданы. Будет использоваться базовая цена услуги.
+                  Индивидуальные цены не заданы. Будет использоваться базовая
+                  цена услуги.
                 </div>
               )}
             </div>
             <div className="flex gap-3 justify-end mt-2">
-              <Button
-                type="default"
-                onClick={() => setShowModal(false)}
-              >
+              <Button type="default" onClick={() => setShowModal(false)}>
                 Отмена
               </Button>
               <Button
@@ -474,7 +525,7 @@ export function ServicesHeader({ onAdd, children }) {
                 htmlType="submit"
                 style={{
                   background: "linear-gradient(to right, #3b82f6, #06b6d4)",
-                  border: "none"
+                  border: "none",
                 }}
               >
                 Сохранить
@@ -498,20 +549,28 @@ export function ServicesHeader({ onAdd, children }) {
       {/* Модальные окна для способов загрузки */}
       <Modal
         open={showLoadingModal}
-        title={`Настройка ${loadingModalType === 'file' ? 'файловой загрузки' : 'API загрузки'}`}
+        title={`Настройка ${
+          loadingModalType === "file" ? "файловой загрузки" : "API загрузки"
+        }`}
         onCancel={() => setShowLoadingModal(false)}
         footer={[
           <Button key="cancel" onClick={() => setShowLoadingModal(false)}>
             Отмена
           </Button>,
-          <Button key="ok" type="primary" onClick={() => setShowLoadingModal(false)}>
+          <Button
+            key="ok"
+            type="primary"
+            onClick={() => setShowLoadingModal(false)}
+          >
             Сохранить
-          </Button>
+          </Button>,
         ]}
       >
-        {loadingModalType === 'file' && (
+        {loadingModalType === "file" && (
           <div>
-            <p className="mb-4">Выберите файл с материалами (.txt, .csv, .xlsx):</p>
+            <p className="mb-4">
+              Выберите файл с материалами (.txt, .csv, .xlsx):
+            </p>
             <Upload.Dragger
               fileList={fileList}
               onChange={({ fileList }) => setFileList(fileList)}
@@ -520,10 +579,14 @@ export function ServicesHeader({ onAdd, children }) {
               maxCount={1}
             >
               <p className="ant-upload-drag-icon">
-                <FaUpload style={{ fontSize: '48px', color: '#1890ff' }} />
+                <FaUpload style={{ fontSize: "48px", color: "#1890ff" }} />
               </p>
-              <p className="ant-upload-text">Выберите файл или перетащите его сюда</p>
-              <p className="ant-upload-hint">Поддерживаются файлы .txt, .csv, .xlsx</p>
+              <p className="ant-upload-text">
+                Выберите файл или перетащите его сюда
+              </p>
+              <p className="ant-upload-hint">
+                Поддерживаются файлы .txt, .csv, .xlsx
+              </p>
               <p className="text-sm text-gray-500 mt-2">
                 Каждая строка файла = один материал
               </p>
@@ -538,22 +601,28 @@ export function ServicesHeader({ onAdd, children }) {
           </div>
         )}
 
-        {loadingModalType === 'api' && (
+        {loadingModalType === "api" && (
           <div className="space-y-4">
-            <p className="mb-4">Настройте параметры API для загрузки материалов:</p>
+            <p className="mb-4">
+              Настройте параметры API для загрузки материалов:
+            </p>
             <div>
               <label className="block text-sm font-medium mb-1">URL API:</label>
               <Input
                 placeholder="https://api.example.com/materials"
                 value={apiConfig.url}
-                onChange={e => setApiConfig({...apiConfig, url: e.target.value})}
+                onChange={(e) =>
+                  setApiConfig({ ...apiConfig, url: e.target.value })
+                }
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Метод:</label>
               <Select
                 value={apiConfig.method}
-                onChange={value => setApiConfig({...apiConfig, method: value})}
+                onChange={(value) =>
+                  setApiConfig({ ...apiConfig, method: value })
+                }
                 className="w-full"
               >
                 <Select.Option value="GET">GET</Select.Option>
@@ -561,11 +630,15 @@ export function ServicesHeader({ onAdd, children }) {
               </Select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Заголовки (JSON):</label>
+              <label className="block text-sm font-medium mb-1">
+                Заголовки (JSON):
+              </label>
               <TextArea
                 placeholder='{"Authorization": "Bearer token", "Content-Type": "application/json"}'
                 value={apiConfig.headers}
-                onChange={e => setApiConfig({...apiConfig, headers: e.target.value})}
+                onChange={(e) =>
+                  setApiConfig({ ...apiConfig, headers: e.target.value })
+                }
                 rows={3}
               />
             </div>
@@ -573,5 +646,5 @@ export function ServicesHeader({ onAdd, children }) {
         )}
       </Modal>
     </>
-  )
+  );
 }

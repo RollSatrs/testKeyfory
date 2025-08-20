@@ -1,5 +1,4 @@
 import { Telegraf, Markup, session } from 'telegraf';
-import axios from 'axios';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,12 +16,34 @@ dotenv.config({ path: envPath });
 
 // Конфигурация
 const BOT_TOKEN = process.env.EXECUTER_BOT_TOKEN;
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 
 if (!BOT_TOKEN) {
   console.error('❌ EXECUTER_BOT_TOKEN не найден в .env файле');
   process.exit(1);
 }
+
+// Lightweight fetch wrapper that mimics axios response shape { status, data, ok }
+const buildQuery = (params) => {
+  if (!params) return '';
+  const esc = encodeURIComponent;
+  const parts = Object.keys(params).map(k => `${esc(k)}=${esc(params[k])}`);
+  return parts.length ? `?${parts.join('&')}` : '';
+};
+
+const fetchAsAxios = async (method, path, body = null, params = null) => {
+  const url = `${API_BASE_URL}${path}${buildQuery(params)}`;
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' }
+  };
+  if (body) opts.body = JSON.stringify(body);
+
+  const res = await fetch(url, opts);
+  let data = null;
+  try { data = await res.json(); } catch (e) { data = null; }
+  return { status: res.status, data, ok: res.ok, statusText: res.statusText };
+};
 
 // Создание бота
 const bot = new Telegraf(BOT_TOKEN);
@@ -115,7 +136,7 @@ export const notifyMaterialReplacement = async (notificationData) => {
 // Функция логирования активности
 const logActivity = async (executerId, action, description, orderId = null) => {
   try {
-    await axios.post(`${API_BASE_URL}/api/executers/log`, {
+    await fetchAsAxios('POST', '/api/executers/log', {
       executerId,
       action,
       description,
@@ -153,7 +174,7 @@ bot.start(async (ctx) => {
     console.log(`👋 Имя: ${firstName}`);
 
     // Авторизация исполнителя
-    const response = await axios.post(`${API_BASE_URL}/api/executers/auth`, {
+    const response = await fetchAsAxios('POST', '/api/executers/auth', {
       telegram_id: telegramId
     });
 
@@ -220,7 +241,7 @@ const showMyServices = async (ctx) => {
     console.log(`\n🛠️ === МОИ УСЛУГИ ===`);
     console.log(`👤 Executer ID: ${session.executerId}`);
 
-    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/services/${session.executerId}`);
+  const response = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
 
     // Дополнительная фильтрация на стороне бота - только активные услуги
     const activeServices = response.data.filter(service => {
@@ -276,7 +297,7 @@ const showActiveServices = async (ctx) => {
     console.log(`\n📋 === АКТИВНЫЕ УСЛУГИ ===`);
     console.log(`👤 Executer ID: ${session.executerId}`);
 
-    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/active-executions/${session.executerId}`);
+  const response = await fetchAsAxios('GET', `/api/executers-bot/active-executions/${session.executerId}`);
 
     // Дополнительная фильтрация на стороне бота - убираем отмененные и завершенные заказы
     const activeOrders = response.data.filter(order => {
@@ -337,22 +358,22 @@ const showStatistics = async (ctx) => {
     console.log(`\n📊 === СТАТИСТИКА ===`);
     console.log(`👤 Executer ID: ${session.executerId}`);
 
-    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/stats/${session.executerId}`);
-    const stats = response.data;
+  const response = await fetchAsAxios('GET', `/api/executers-bot/stats/${session.executerId}`);
+  const stats = response.data || {};
 
     // Получаем выполненные заказы для расчета общей суммы
     let completedOrdersData = [];
     let totalEarningsCalculated = 0;
 
     try {
-      const completedResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/completed-orders/${session.executerId}`);
+  const completedResponse = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
       completedOrdersData = completedResponse.data || [];
 
       // Получаем индивидуальные цены исполнителя для услуг
       let executerServices = [];
       try {
-        const servicesResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/services/${session.executerId}`);
-        executerServices = servicesResponse.data || [];
+  const servicesResponse = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
+  executerServices = servicesResponse.data || [];
         console.log(`📊 Loaded ${executerServices.length} services with individual prices for executer ${session.executerId}`);
       } catch (servicesError) {
         console.error('❌ Ошибка получения индивидуальных цен:', servicesError.message);
@@ -400,8 +421,8 @@ const showStatistics = async (ctx) => {
       // Получаем индивидуальные цены исполнителя для услуг (для отображения)
       let executerServicesForDisplay = [];
       try {
-        const servicesResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/services/${session.executerId}`);
-        executerServicesForDisplay = servicesResponse.data || [];
+    const servicesResponse = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
+    executerServicesForDisplay = servicesResponse.data || [];
       } catch (servicesError) {
         console.error('❌ Ошибка получения услуг для отображения:', servicesError.message);
       }
@@ -448,7 +469,7 @@ const manageOrder = async (ctx, orderNumber) => {
     console.log(`📋 Order Number: ${orderNumber}`);
 
     // Получаем информацию о заказе через execution ID
-    const activeOrdersResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/active-executions/${session.executerId}`);
+  const activeOrdersResponse = await fetchAsAxios('GET', `/api/executers-bot/active-executions/${session.executerId}`);
 
     if (!activeOrdersResponse.data || activeOrdersResponse.data.length === 0) {
       return ctx.reply('❌ Активные заказы не найдены');
@@ -462,7 +483,7 @@ const manageOrder = async (ctx, orderNumber) => {
     }
 
     // Получаем детали заказа
-    const orderResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/execution/${orderExecution.id}`);
+  const orderResponse = await fetchAsAxios('GET', `/api/executers-bot/execution/${orderExecution.id}`);
 
     if (!orderResponse.data || !orderResponse.data.success) {
       return ctx.reply('❌ Заказ не найден или недоступен');
@@ -477,9 +498,7 @@ const manageOrder = async (ctx, orderNumber) => {
       console.log(`🔗 URL: ${API_BASE_URL}/api/executers-bot/order-materials/${orderNumber}`);
       console.log(`👤 Executer ID: ${session.executerId}`);
 
-      const materialsResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/order-materials/${orderNumber}`, {
-        params: { telegramId: session.telegramId }
-      });
+  const materialsResponse = await fetchAsAxios('GET', `/api/executers-bot/order-materials/${orderNumber}`, null, { telegramId: session.telegramId });
 
       console.log(`📦 Materials Response Status:`, materialsResponse.status);
       console.log(`📦 Materials Response Data:`, JSON.stringify(materialsResponse.data, null, 2));
@@ -512,7 +531,7 @@ const manageOrder = async (ctx, orderNumber) => {
 
     // Получаем индивидуальную цену для исполнителя
     try {
-      const servicesResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/services/${session.executerId}`);
+  const servicesResponse = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
       const serviceWithPrice = servicesResponse.data.find(s => s.id === orderData.service_id);
       const individualPrice = serviceWithPrice?.price || orderData.Service?.price || 'Не указана';
       message += `💰 Ваша цена: ${individualPrice}₽\n`;
@@ -588,9 +607,7 @@ const showMaterialsText = async (ctx, orderNumber) => {
     console.log(`\n📝 === МАТЕРИАЛЫ В ВИДЕ ТЕКСТА ===`);
     console.log(`📋 Order Number: ${orderNumber}`);
 
-    const response = await axios.get(`${API_BASE_URL}/api/executers/materials/${orderNumber}`, {
-      params: { executerId: session.executerId }
-    });
+  const response = await fetchAsAxios('GET', `/api/executers/materials/${orderNumber}`, null, { executerId: session.executerId });
 
     if (!response.data.success || response.data.data.length === 0) {
       return ctx.reply('📦 Материалы для этого заказа не назначены');
@@ -705,7 +722,7 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
     console.log(`🛠️ Service ID: ${waitingData.serviceId}`);
 
     // Создаем ServiceExecution с автоматическим назначением материала
-    const response = await axios.post(`${API_BASE_URL}/api/executers/service-execution`, {
+    const response = await fetchAsAxios('POST', '/api/executers/service-execution', {
       serviceId: waitingData.serviceId,
       executerId: session.executerId,
       orderNumber: orderNumber,
@@ -724,9 +741,7 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
         console.log(`🔍 Получаем материалы для заказа ${orderNumber}`);
 
         // Получаем материалы через bot endpoint
-        const materialsResponse = await axios.get(`${API_BASE_URL}/api/executers-bot/order-materials/${orderNumber}`, {
-          params: { telegramId: session.telegramId }
-        });
+  const materialsResponse = await fetchAsAxios('GET', `/api/executers-bot/order-materials/${orderNumber}`, null, { telegramId: session.telegramId });
 
         if (materialsResponse.data && materialsResponse.data.success && materialsResponse.data.data) {
           const orderMaterials = materialsResponse.data.data;
@@ -755,7 +770,7 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
 
             // Пытаемся назначить материал вручную через API
             try {
-              const assignResponse = await axios.post(`${API_BASE_URL}/api/executers/assign-material-to-order`, {
+              const assignResponse = await fetchAsAxios('POST', '/api/executers/assign-material-to-order', {
                 orderNumber: orderNumber,
                 serviceId: waitingData.serviceId,
                 executerId: session.executerId
@@ -841,7 +856,7 @@ const handleCancellationReasonInput = async (ctx, reason) => {
     console.log(`📝 Reason: ${reason}`);
 
     // Отменяем заказ
-    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/bot-cancel-order`, {
+    const response = await fetchAsAxios('POST', '/api/executers-bot/bot-cancel-order', {
       orderNumber: waitingData.orderNumber,
       telegramId: session.telegramId,
       reason: reason
@@ -893,7 +908,7 @@ const handleReplacementReasonInput = async (ctx, reason) => {
     console.log(`📝 Reason: ${reason}`);
 
     // Отправляем запрос на замену
-    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/request-replacement`, {
+    const response = await fetchAsAxios('POST', '/api/executers-bot/request-replacement', {
       orderNumber: waitingData.orderNumber,
       materialId: waitingData.materialId,
       telegramId: session.telegramId,
@@ -958,8 +973,8 @@ bot.action(/^select_service_(\d+)$/, async (ctx) => {
     console.log(`🛠️ Service ID: ${serviceId}`);
 
     // Получаем информацию об услуге
-    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/services/${session.executerId}`);
-    const service = response.data.find(s => s.id == serviceId);
+  const response = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
+  const service = (response.data || []).find(s => s.id == serviceId);
 
     if (!service) {
       return ctx.reply('❌ Услуга не найдена');
@@ -1023,9 +1038,7 @@ bot.action(/^replace_materials_(.+)$/, async (ctx) => {
     console.log(`📋 Order Number: ${orderNumber}`);
 
     // Получаем материалы заказа
-    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/order-materials/${orderNumber}`, {
-      params: { telegramId: session.telegramId }
-    });
+  const response = await fetchAsAxios('GET', `/api/executers-bot/order-materials/${orderNumber}`, null, { telegramId: session.telegramId });
 
     if (!response.data.success || response.data.data.length === 0) {
       return ctx.reply(
@@ -1153,7 +1166,7 @@ bot.action(/^assign_material_(.+)_(.+)$/, async (ctx) => {
     console.log(`👤 Telegram ID: ${session.telegramId}`);
 
     // Назначаем материал на заказ
-    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/assign-material`, {
+    const response = await fetchAsAxios('POST', '/api/executers-bot/assign-material', {
       orderNumber: orderNumber,
       materialId: materialId,
       telegramId: session.telegramId
@@ -1194,9 +1207,7 @@ bot.action(/^select_material_(.+)_(.+)$/, async (ctx) => {
     console.log(`📦 Material ID: ${materialId}`);
 
     // Получаем информацию о материале
-    const response = await axios.get(`${API_BASE_URL}/api/executers-bot/order-materials/${orderNumber}`, {
-      params: { telegramId: session.telegramId }
-    });
+  const response = await fetchAsAxios('GET', `/api/executers-bot/order-materials/${orderNumber}`, null, { telegramId: session.telegramId });
 
     if (!response.data.success) {
       return ctx.reply('❌ Ошибка получения информации о материале');
@@ -1253,7 +1264,7 @@ bot.action(/^complete_order_(.+)$/, async (ctx) => {
     console.log(`📋 Order Number: ${orderNumber}`);
 
     // Выполняем заказ
-    const response = await axios.post(`${API_BASE_URL}/api/executers-bot/bot-complete-order`, {
+    const response = await fetchAsAxios('POST', '/api/executers-bot/bot-complete-order', {
       orderNumber: orderNumber,
       telegramId: session.telegramId
     });

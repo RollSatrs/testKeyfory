@@ -1,6 +1,8 @@
 import express from 'express'
 import dotenv from 'dotenv'
 import cors from 'cors'
+import { fileURLToPath } from 'url'
+import path from 'path'
 import { adminRoute } from './route/RouteAdmin/adminRoute.js'
 import { sercesRoute } from './route/RouteAdmin/adminServicesRoute.js'
 import { materialRoute } from './route/RouteAdmin/adminMaterialRoute.js'
@@ -22,6 +24,10 @@ import { initializeAdmin } from '../initAdmin.mjs'
 dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 3000
+const BASE_URL = process.env.BACKEND_URL || `http://localhost:${PORT}`
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // доверять заголовкам прокси (если сервер за прокси/nginx), чтобы корректно получать IP клиента
 app.set('trust proxy', true);
@@ -78,21 +84,21 @@ const startServer = async () => {
   // Инициализируем авто-админа из .env
   await initializeAdmin();
 
-    // Запускаем сервер
-    app.listen(PORT, () => {
+  // Запускаем сервер (слушаем на 0.0.0.0 чтобы принимать подключения с любых интерфейсов)
+  app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Сервер запущен на порту ${PORT}`);
       console.log(`📋 Публичные роуты:`);
-      console.log(`   - Admin: http://localhost:${PORT}/api/admin/* (login/check/register)`);
-      console.log(`   - Executer: http://localhost:${PORT}/api/executer/* (login/check/register/profile)`);
+      console.log(`   - Admin: ${BASE_URL}/api/admin/* (login/check/register)`);
+      console.log(`   - Executer: ${BASE_URL}/api/executer/* (login/check/register/profile)`);
       console.log(`🔒 Защищённые роуты для админов:`);
-      console.log(`   - Services: http://localhost:${PORT}/api/admin/services/*`);
-      console.log(`   - Materials: http://localhost:${PORT}/api/admin/materials/*`);
-      console.log(`   - Orders: http://localhost:${PORT}/api/admin/orders/*`);
-      console.log(`   - Executers: http://localhost:${PORT}/api/admin/executers/*`);
+      console.log(`   - Services: ${BASE_URL}/api/admin/services/*`);
+      console.log(`   - Materials: ${BASE_URL}/api/admin/materials/*`);
+      console.log(`   - Orders: ${BASE_URL}/api/admin/orders/*`);
+      console.log(`   - Executers: ${BASE_URL}/api/admin/executers/*`);
       console.log(`🔒 Защищённые роуты для исполнителей:`);
-      console.log(`   - Orders: http://localhost:${PORT}/api/executer/orders/*`);
-      console.log(`   - Materials: http://localhost:${PORT}/api/executer/materials/*`);
-      console.log(`   - Services: http://localhost:${PORT}/api/executer/services/*`);
+      console.log(`   - Orders: ${BASE_URL}/api/executer/orders/*`);
+      console.log(`   - Materials: ${BASE_URL}/api/executer/materials/*`);
+      console.log(`   - Services: ${BASE_URL}/api/executer/services/*`);
 
       // Запускаем фоновый процесс проверки неактивных исполнителей каждые 5 минут
       setInterval(async () => {
