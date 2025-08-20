@@ -1,6 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import dotenv from 'dotenv'
+import path from 'path'
+
+// Загружаем .env из корневой папки проекта
+dotenv.config({ path: path.resolve(__dirname, '../.env') })
+
+const BACKEND_URL = process.env.BACKEND_URL
+console.log('BACKEND_URL:', BACKEND_URL)
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -13,9 +21,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        // Use Vite env var VITE_BACKEND_URL when provided (set in Docker or .env),
-        // otherwise default to localhost for local dev.
-        target: process.env.VITE_BACKEND_URL || process.env.BACKEND_URL || 'http://localhost:3000',
+        target: BACKEND_URL || 'http://localhost:3000',
         changeOrigin: true,
         secure: false
       }
