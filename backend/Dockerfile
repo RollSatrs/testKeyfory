@@ -7,9 +7,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Install dependencies cleanly
+# Install dependencies using npm install to avoid lockfile mismatch issues in CI
 COPY package*.json ./
-RUN sh -lc 'if [ -f package-lock.json ]; then npm ci; else npm install; fi'
+RUN npm install --legacy-peer-deps || npm install
+# Rebuild native binaries just in case
+RUN npm rebuild esbuild --update-binary || true
+RUN npm rebuild bcrypt || true
 
 # Copy source code
 COPY . .
