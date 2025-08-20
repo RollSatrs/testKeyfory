@@ -13,8 +13,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-  target: 'http://backend:3000',
-        changeOrigin: true
+        // Use Vite env var VITE_BACKEND_URL when provided (set in Docker or .env),
+        // otherwise default to localhost for local dev.
+        target: process.env.VITE_BACKEND_URL || 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false
       }
     }
   }

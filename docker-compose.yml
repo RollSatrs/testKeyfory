@@ -21,8 +21,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     depends_on:
-      db:
-        condition: service_healthy
+      - db
     working_dir: /app
     volumes:
       - ./backend:/app
@@ -38,7 +37,7 @@ services:
       ADMIN_TELEGRAM_ID: ${ADMIN_TELEGRAM_ID}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_NAME: ${ADMIN_NAME}
-    command: ["sh", "-lc", "[ -f package-lock.json ] && npm ci || npm install; npm run dev"]
+    command: ["sh", "-c", "[ -f package-lock.json ] && npm ci || npm install; npm run dev"]
     ports:
       - "3000:3000"
     restart: unless-stopped
@@ -47,15 +46,18 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    depends_on:
+      - backend
     working_dir: /app
     volumes:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      VITE_HOST: 0.0.0.0
+      VITE_HOST: "0.0.0.0"
       VITE_PORT: "5173"
       TAILWIND_DISABLE_OXIDE: "1"
-    command: ["sh", "-lc", "[ -f package-lock.json ] && npm ci || npm install; npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"]
+      VITE_BACKEND_URL: "http://backend:3000"
+    command: ["sh", "-c", "[ -f package-lock.json ] && npm ci || npm install; npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"]
     ports:
       - "5173:5173"
     restart: unless-stopped
@@ -64,6 +66,8 @@ services:
     build:
       context: ./bot
       dockerfile: Dockerfile
+    depends_on:
+      - backend
     working_dir: /app
     volumes:
       - ./bot:/app
@@ -71,10 +75,8 @@ services:
     environment:
       EXECUTER_BOT_TOKEN: ${EXECUTER_BOT_TOKEN}
       API_BASE_URL: "http://backend:3000"
-    command: ["sh", "-lc", "[ -f package-lock.json ] && npm ci || npm install; npm start"]
-    depends_on:
-      - backend
+    command: ["sh", "-c", "[ -f package-lock.json ] && npm ci || npm install; npm start"]
     restart: unless-stopped
 
 volumes:
-  db_data:
+  db_data: {}

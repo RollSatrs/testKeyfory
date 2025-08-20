@@ -1,69 +1,85 @@
-import { FaEdit, FaTrash, FaBan } from 'react-icons/fa'
-import { useEffect, useState } from 'react'
-import { Table, Tag, Button, Modal, Input, Select, Space, Popconfirm, Rate, message, Tooltip } from 'antd'
+import { FaEdit, FaTrash, FaBan } from "react-icons/fa";
+import { useEffect, useState } from "react";
+import {
+  Table,
+  Tag,
+  Button,
+  Modal,
+  Input,
+  Select,
+  Space,
+  Popconfirm,
+  Rate,
+  message,
+  Tooltip,
+} from "antd";
+import { apiFetch } from "../../../lib/api";
+import { useNavigate } from "react-router-dom";
 
-const token = localStorage.getItem("admin_token");
-
-export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) {
+export function ExecutorsTable({
+  onChanged,
+  setExecutors,
+  executors,
+  refresh,
+}) {
   const [loading, setLoading] = useState(false);
   const [editForm, setEditForm] = useState(false);
   const [form, setForm] = useState({
     id: null,
-    name: '',
-    telegram_id: '',
-    rating: 1
+    name: "",
+    telegram_id: "",
+    rating: 1,
   });
 
   // Получение данных из API
   async function fetchExecutors() {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3000/api/admin/executers/get', {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const data = await res.json();
+      const data = await apiFetch("/api/admin/executers/get");
 
       // Получаем только информацию об активных заказах для логики удаления
       const executorsWithOrderInfo = await Promise.all(
         (Array.isArray(data) ? data : []).map(async (executor) => {
           try {
             // Получаем только количество активных заказов для проверки возможности удаления
-            const ordersRes = await fetch(`http://localhost:3000/api/admin/executers/orders/${executor.id}`, {
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              }
-            });
+            const ordersData = await apiFetch(
+              `/api/admin/executers/orders/${executor.id}`
+            );
+            const activeOrders = (
+              Array.isArray(ordersData) ? ordersData : []
+            ).filter(
+              (order) =>
+                order.status === "pending" || order.status === "in_progress"
+            ).length;
 
-            if (ordersRes.ok) {
-              const ordersData = await ordersRes.json();
-              const activeOrders = ordersData.filter(order =>
-                order.status === 'pending' || order.status === 'in_progress'
-              ).length;
-
-              return {
-                ...executor,
-                activeOrders: activeOrders || 0
-              };
-            }
+            return {
+              ...executor,
+              activeOrders: activeOrders || 0,
+            };
           } catch (error) {
-            console.warn(`Не удалось получить заказы для исполнителя ${executor.id}:`, error);
+            // Если 401 — перенаправим на логин
+            if (error && error.status === 401) {
+              try {
+                localStorage.removeItem("admin_token");
+              } catch {}
+            }
+            console.warn(
+              `Не удалось получить заказы для исполнителя ${executor.id}:`,
+              error
+            );
           }
 
           return {
             ...executor,
-            activeOrders: 0
+            activeOrders: 0,
           };
         })
       );
 
       setExecutors(executorsWithOrderInfo);
     } catch (e) {
-      message.error('Ошибка при загрузке исполнителей');
-      console.error('Fetch error:', e);
+      message.error("Ошибка при загрузке исполнителей");
+      console.error("Fetch error:", e);
     }
     setLoading(false);
   }
@@ -84,7 +100,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
       id: executor.id,
       name: executor.name,
       telegram_id: executor.telegram_id,
-      rating: executor.rating
+      rating: executor.rating,
     });
     setEditForm(true);
   }
@@ -95,116 +111,108 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
 
   async function handleEditSubmit() {
     try {
-      const res = await fetch(`http://localhost:3000/api/admin/executers/update/${form.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(form)
+      await apiFetch(`/api/admin/executers/update/${form.id}`, {
+        method: "PUT",
+        body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error();
-      message.success('Исполнитель обновлен');
+      message.success("Исполнитель обновлен");
       setEditForm(false);
       setForm({
         id: null,
-        name: '',
-        telegram_id: '',
-        rating: 1
+        name: "",
+        telegram_id: "",
+        rating: 1,
       });
       notifyChanged();
     } catch {
-      message.error('Ошибка при обновлении исполнителя');
+      message.error("Ошибка при обновлении исполнителя");
     }
   }
 
   async function handleDelete(id) {
     try {
-      const res = await fetch(`http://localhost:3000/api/admin/executers/delete/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        if (errorData.error && errorData.error.includes('active orders')) {
-          message.error('Нельзя удалить исполнителя с активными заказами. Сначала завершите или переназначьте заказы.');
-        } else {
-          message.error('Ошибка при удалении исполнителя');
-        }
-        return;
-      }
-
-      message.success('Исполнитель удален');
+      await apiFetch(`/api/admin/executers/delete/${id}`, { method: "DELETE" });
+      message.success("Исполнитель удален");
       notifyChanged();
     } catch (error) {
-      message.error('Ошибка при удалении исполнителя');
-      console.error('Delete error:', error);
+      // apiFetch может возвращать объект error.data
+      if (
+        error &&
+        error.data &&
+        error.data.error &&
+        error.data.error.includes("active orders")
+      ) {
+        message.error(
+          "Нельзя удалить исполнителя с активными заказами. Сначала завершите или переназначьте заказы."
+        );
+      } else if (error && error.status === 401) {
+        message.error("Нет доступа. Пожалуйста, войдите в систему.");
+        try {
+          localStorage.removeItem("admin_token");
+        } catch {}
+      } else {
+        message.error("Ошибка при удалении исполнителя");
+        console.error("Delete error:", error);
+      }
     }
   }
 
   async function handleBlock(id) {
     try {
-      const res = await fetch(`http://localhost:3000/api/admin/executers/update/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: 'blocked' })
+      await apiFetch(`/api/admin/executers/update/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: "blocked" }),
       });
-      if (!res.ok) throw new Error();
-      message.success('Исполнитель заблокирован');
+      message.success("Исполнитель заблокирован");
       notifyChanged();
     } catch {
-      message.error('Ошибка при блокировке исполнителя');
+      message.error("Ошибка при блокировке исполнителя");
     }
   }
 
   const columns = [
     {
-      title: 'Имя',
-      dataIndex: 'name',
-      key: 'name',
+      title: "Имя",
+      dataIndex: "name",
+      key: "name",
     },
     {
-      title: 'Телеграмм ID',
-      dataIndex: 'telegram_id',
-      key: 'telegram_id',
-      render: tg => <span className="text-blue-600 font-mono">{tg}</span>
+      title: "Телеграмм ID",
+      dataIndex: "telegram_id",
+      key: "telegram_id",
+      render: (tg) => <span className="text-blue-600 font-mono">{tg}</span>,
     },
     {
-      title: 'Рейтинг',
-      dataIndex: 'rating',
-      key: 'rating',
-      render: rating => <Rate disabled allowHalf value={rating} />
+      title: "Рейтинг",
+      dataIndex: "rating",
+      key: "rating",
+      render: (rating) => <Rate disabled allowHalf value={rating} />,
     },
     {
-      title: 'Статус',
-      dataIndex: 'status',
-      key: 'status',
-      render: status => (
-        <Tag color={
-          status === 'active'
-            ? 'green'
-            : status === 'blocked'
-            ? 'red'
-            : 'orange'
-        }>
-          {status === 'active'
-            ? 'АКТИВЕН'
-            : status === 'blocked'
-            ? 'ЗАБЛОКИРОВАН'
-            : 'НЕАКТИВЕН'}
+      title: "Статус",
+      dataIndex: "status",
+      key: "status",
+      render: (status) => (
+        <Tag
+          color={
+            status === "active"
+              ? "green"
+              : status === "blocked"
+              ? "red"
+              : "orange"
+          }
+        >
+          {status === "active"
+            ? "АКТИВЕН"
+            : status === "blocked"
+            ? "ЗАБЛОКИРОВАН"
+            : "НЕАКТИВЕН"}
         </Tag>
-      )
+      ),
     },
     {
-      title: 'Назначенные услуги',
-      key: 'services',
+      title: "Назначенные услуги",
+      key: "services",
       width: 200,
       render: (_, record) => {
         const assignedServices = record.assigned_services || [];
@@ -216,7 +224,9 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
         if (assignedServices.length === 1) {
           const service = assignedServices[0];
           return (
-            <Tag color={service.service_status === 'active' ? 'green' : 'orange'}>
+            <Tag
+              color={service.service_status === "active" ? "green" : "orange"}
+            >
               {service.service_name}
             </Tag>
           );
@@ -235,15 +245,20 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
             }
           >
             <Tag color="blue">
-              {assignedServices.length} услуг{assignedServices.length === 1 ? 'а' : assignedServices.length < 5 ? 'и' : ''}
+              {assignedServices.length} услуг
+              {assignedServices.length === 1
+                ? "а"
+                : assignedServices.length < 5
+                ? "и"
+                : ""}
             </Tag>
           </Tooltip>
         );
-      }
+      },
     },
     {
-      title: 'Действия',
-      key: 'actions',
+      title: "Действия",
+      key: "actions",
       render: (_, record) => (
         <Space>
           <Button
@@ -253,33 +268,48 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
           />
           <Popconfirm
             title={
-              record.status === 'active' && record.activeOrders > 0
+              record.status === "active" && record.activeOrders > 0
                 ? `У активного исполнителя ${record.activeOrders} активных заказов. Деактивируйте исполнителя для удаления!`
-                : record.status !== 'active'
+                : record.status !== "active"
                 ? "Удалить неактивного исполнителя?"
                 : "Удалить исполнителя?"
             }
-            onConfirm={record.status === 'active' && record.activeOrders > 0 ? undefined : () => handleDelete(record.id)}
-            okText={record.status === 'active' && record.activeOrders > 0 ? undefined : "Да"}
-            cancelText={record.status === 'active' && record.activeOrders > 0 ? "Понятно" : "Нет"}
+            onConfirm={
+              record.status === "active" && record.activeOrders > 0
+                ? undefined
+                : () => handleDelete(record.id)
+            }
+            okText={
+              record.status === "active" && record.activeOrders > 0
+                ? undefined
+                : "Да"
+            }
+            cancelText={
+              record.status === "active" && record.activeOrders > 0
+                ? "Понятно"
+                : "Нет"
+            }
             okButtonProps={{
-              disabled: record.status === 'active' && record.activeOrders > 0,
-              style: record.status === 'active' && record.activeOrders > 0 ? { display: 'none' } : {}
+              disabled: record.status === "active" && record.activeOrders > 0,
+              style:
+                record.status === "active" && record.activeOrders > 0
+                  ? { display: "none" }
+                  : {},
             }}
           >
             <Button
               icon={<FaTrash />}
               danger
               size="small"
-              disabled={record.status === 'active' && record.activeOrders > 0}
+              disabled={record.status === "active" && record.activeOrders > 0}
               title={
-                record.status === 'active' && record.activeOrders > 0
+                record.status === "active" && record.activeOrders > 0
                   ? "Нельзя удалить активного исполнителя с активными заказами"
                   : "Удалить исполнителя"
               }
             />
           </Popconfirm>
-          {record.status !== 'blocked' && (
+          {record.status !== "blocked" && (
             <Popconfirm
               title="Заблокировать исполнителя?"
               onConfirm={() => handleBlock(record.id)}
@@ -289,13 +319,13 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
               <Button
                 icon={<FaBan />}
                 size="small"
-                style={{ color: '#e53e3e' }}
+                style={{ color: "#e53e3e" }}
               />
             </Popconfirm>
           )}
         </Space>
-      )
-    }
+      ),
+    },
   ];
 
   return (
@@ -315,9 +345,9 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
           setEditForm(false);
           setForm({
             id: null,
-            name: '',
-            telegram_id: '',
-            rating: 1
+            name: "",
+            telegram_id: "",
+            rating: 1,
           });
         }}
         onOk={handleEditSubmit}
@@ -327,14 +357,14 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
         <Input
           name="name"
           value={form.name}
-          onChange={e => handleChange('name', e.target.value)}
+          onChange={(e) => handleChange("name", e.target.value)}
           placeholder="Имя исполнителя"
           style={{ marginBottom: 16 }}
         />
         <Input
           name="telegram_id"
           value={form.telegram_id}
-          onChange={e => handleChange('telegram_id', e.target.value)}
+          onChange={(e) => handleChange("telegram_id", e.target.value)}
           placeholder="Telegram ID"
           style={{ marginBottom: 16 }}
         />
@@ -343,7 +373,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
           type="number"
           min={0}
           value={form.orders}
-          onChange={e => handleChange('orders', e.target.value)}
+          onChange={(e) => handleChange("orders", e.target.value)}
           placeholder="Количество заказов"
           style={{ marginBottom: 16 }}
         />
@@ -351,7 +381,7 @@ export function ExecutorsTable({ onChanged, setExecutors, executors, refresh }) 
           <span className="block mb-1 text-gray-600">Рейтинг:</span>
           <Rate
             value={form.rating}
-            onChange={value => handleChange('rating', value)}
+            onChange={(value) => handleChange("rating", value)}
             count={5}
             allowHalf
           />
