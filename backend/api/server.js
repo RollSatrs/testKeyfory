@@ -24,8 +24,12 @@ const app = express()
 const PORT = process.env.PORT || 3000
 
 app.use(cors({
-  origin: 'http://localhost:5173'
-}))
+  origin: (origin, cb) => cb(null, true),  // разрешить любой Origin
+  credentials: true,                        // разрешить куки/Authorization
+  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization','X-Requested-With','Accept','Origin'],
+}));
+app.options('*', cors());
 app.use(express.json())
 
 // Публичные роуты (НЕ требуют токен)
