@@ -321,26 +321,42 @@ export function ServicesTable({
       return;
     }
 
+    // Split by new lines - each line is one material
+    const lines = manualInput
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    if (lines.length === 0) {
+      message.error("Нет корректных строк для добавления");
+      return;
+    }
+
     try {
-      try {
-        await apiFetch("/api/admin/materials/add-single", {
-          method: "POST",
-          body: JSON.stringify({
-            service_id: selectedService.id,
-            contents: manualInput.trim(),
-            type_key: "manual",
-          }),
-        });
-        message.success("Расходник добавлен");
-        setManualInput("");
-        setUploadModal(false);
-        fetchServices();
-        if (onChange) onChange();
-      } catch (err) {
-        message.error("Ошибка при добавлении расходника");
+      const added = [];
+      for (const content of lines) {
+        try {
+          const res = await apiFetch("/api/admin/materials/add-single", {
+            method: "POST",
+            body: JSON.stringify({
+              service_id: selectedService.id,
+              contents: content,
+              type_key: "manual",
+            }),
+          });
+          added.push(res.material || res);
+        } catch (err) {
+          console.warn("Failed to add material line", content, err);
+        }
       }
+
+      message.success(`Добавлено ${added.length} расходников`);
+      setManualInput("");
+      setUploadModal(false);
+      fetchServices();
+      if (onChange) onChange();
     } catch (error) {
-      message.error("Ошибка при добавлении расходника");
+      message.error("Ошибка при добавлении расходников");
     }
   };
 
@@ -753,6 +769,17 @@ export function ServicesTable({
             </Select.Option>
           ))}
         </Select>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <Button
+            size="small"
+            onClick={() => setSelectedExecuters(executers.map((e) => e.id))}
+          >
+            Добавить всех
+          </Button>
+          <Button size="small" onClick={() => setSelectedExecuters([])}>
+            Снять всех
+          </Button>
+        </div>
       </Modal>
 
       {/* Модальное окно загрузки расходников */}

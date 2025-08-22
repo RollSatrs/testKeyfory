@@ -68,16 +68,13 @@ export async function getAllMaterials() {
                     });
                 }
 
-                // Добавляем информацию о заказах к материалу
+                // Do not attach active_orders to material response (UI wants single-row materials)
                 if (relatedOrders.length > 0) {
-                    materialData.active_orders = relatedOrders;
-
-                    // Для обратной совместимости оставляем первый заказ в старых полях
+                    // For backward compatibility still populate first-order quick fields
                     materialData.executer_name = relatedOrders[0].executer_name;
                     materialData.executer_id = relatedOrders[0].executer_id;
                     materialData.order_number = relatedOrders[0].order_number;
                 } else if (material.order_number) {
-                    // Если есть номер заказа, но нет активного исполнения
                     materialData.executer_name = 'Неизвестный исполнитель';
                 }
 

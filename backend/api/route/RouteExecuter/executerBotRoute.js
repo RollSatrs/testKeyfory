@@ -1,26 +1,55 @@
 import express from 'express';
 import { Op } from 'sequelize';
 import { Services, Material, ServiceAccess, Executer, ServiceExecution, MaterialReplacement, ExecuterPricing, Order } from '../../../database/dbTables.js';
+import { updateExecuterActivity } from '../../service/ServiceExecuter/executerService.js';
 
 const router = express.Router();
+
+// Middleware: если в запросе есть telegramId (в query или body) — помечаем исполнителя активным
+router.use(async (req, res, next) => {
+  try {
+    const telegramId = req.query.telegramId || (req.body && req.body.telegramId) || (req.body && req.body.telegram_id);
+    if (telegramId) {
+      try {
+        // Находим исполнителя и обновляем активность
+        const executer = await Executer.findOne({ where: { telegram_id: String(telegramId) } });
+        if (executer) {
+          await updateExecuterActivity(executer.id);
+        }
+      } catch (e) {
+        console.warn('Не удалось обновить активность через middleware:', e.message);
+      }
+    }
+  } catch (e) {
+    // middleware не должен ломать основной поток
+    console.warn('Ошибка middleware активности:', e.message);
+  }
+  next();
+});
 
 // GET /api/executers/services/:executerId - Получить услуги исполнителя с индивидуальными ценами
 router.get('/services/:executerId', async (req, res) => {
   try {
     const { executerId } = req.params;
+  const { orderNumber } = req.query; // optional: if provided, mark services that cannot create execution
 
     console.log(`\n🎯 === API: ПОЛУЧЕНИЕ УСЛУГ ИСПОЛНИТЕЛЯ ===`);
     console.log(`👤 Executer ID: ${executerId}`);
 
     // Получаем услуги двумя способами:
     // 1. Через ServiceAccess (доступ к услугам) - только активные услуги
+    // Позволяем старым записям с пустым статусом считаться активными для совместимости
     const serviceAccess = await ServiceAccess.findAll({
       where: { executer_id: executerId },
       include: [{
         model: Services,
         as: 'Service',
         where: {
-          status: 'active' // Только активные услуги
+          [Op.or]: [
+            { status: 'active' },
+            { status: '' },
+            { status: null }
+          ]
         },
         attributes: ['id', 'name', 'price', 'category', 'description', 'status']
       }]
@@ -30,7 +59,11 @@ router.get('/services/:executerId', async (req, res) => {
     const assignedServices = await Services.findAll({
       where: {
         executer_id: executerId,
-        status: 'active' // Только активные услуги
+        [Op.or]: [
+          { status: 'active' },
+          { status: '' },
+          { status: null }
+        ]
       },
       attributes: ['id', 'name', 'price', 'category', 'description', 'status']
     });
@@ -60,16 +93,40 @@ router.get('/services/:executerId', async (req, res) => {
 
           console.log(`💰 Service "${service.name}": ${individualPricing ? `Individual ${finalPrice}₽` : `Standard ${service.price}₽`}`);
 
+          // determine if a new execution for this order/service can be created
+          let can_create_execution = true;
+          try {
+            if (orderNumber) {
+              // if any execution exists with this order number, disallow creating another
+              const existingOrderExec = await ServiceExecution.findOne({ where: { order_number: orderNumber } });
+              if (existingOrderExec) can_create_execution = false;
+            }
+
+            // also disallow if this executer already has an active execution for this service
+            const activeExecForService = await ServiceExecution.findOne({
+              where: {
+                service_id: service.id,
+                executer_id: executerId,
+                status: { [Op.in]: ['pending', 'in_progress', 'active'] }
+              }
+            });
+            if (activeExecForService) can_create_execution = false;
+          } catch (flagErr) {
+            console.warn('Error checking execution flags:', flagErr.message);
+          }
+
           return {
             ...service.toJSON(),
             price: finalPrice,
-            has_individual_price: !!individualPricing
+            has_individual_price: !!individualPricing,
+            can_create_execution
           };
         } catch (error) {
           console.warn(`⚠️ Ошибка получения цены для услуги ${service.id}:`, error.message);
           return {
             ...service.toJSON(),
-            has_individual_price: false
+            has_individual_price: false,
+            can_create_execution: true
           };
         }
       })
@@ -80,7 +137,7 @@ router.get('/services/:executerId', async (req, res) => {
     console.log(`📋 Итого уникальных услуг: ${uniqueServices.length}`);
     console.log(`💰 Услуг с индивидуальными ценами: ${servicesWithIndividualPrices.filter(s => s.has_individual_price).length}`);
 
-    res.json(servicesWithIndividualPrices);
+  res.json(servicesWithIndividualPrices);
   } catch (error) {
     console.error('❌ Ошибка при получении услуг исполнителя:', error);
     res.status(500).json({
@@ -582,6 +639,12 @@ router.post('/create-service-execution', async (req, res) => {
       return res.status(400).json({
         message: 'Услуга не найдена'
       });
+    }
+
+    // Блокировка дубликатов: если такой order_number уже есть в системе — запрещаем
+    const existingGlobal = await ServiceExecution.findOne({ where: { order_number } });
+    if (existingGlobal) {
+      return res.status(400).json({ message: `Заказ с номером ${order_number} уже существует в системе` });
     }
 
     // Создаем выполнение услуги

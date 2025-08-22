@@ -180,3 +180,43 @@ export async function getOrdersByService(serviceId) {
         throw new Error(`Error fetching orders by service: ${error.message}`);
     }
 }
+
+// Server-side aggregation: top performers counts (completed orders) for week/month
+export async function getTopPerformers(take = 4) {
+    try {
+        const { sequelize } = await import('../../../database/databaseOn.js');
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        const sql = `
+            SELECT e.id as executer_id, e.name, e.rating,
+                COUNT(*) FILTER (WHERE o.created_at >= :weekAgo AND o.status = 'completed') AS week_count,
+                COUNT(*) FILTER (WHERE o.created_at >= :monthAgo AND o.status = 'completed') AS month_count,
+                COUNT(*) FILTER (WHERE o.status = 'completed') AS total_completed
+            FROM orders o
+            JOIN executers e ON e.id = o.executer_id
+            GROUP BY e.id, e.name, e.rating
+            ORDER BY week_count DESC, month_count DESC, total_completed DESC
+            LIMIT :take
+        `;
+
+        // QueryTypes is available on Sequelize constructor
+        const { QueryTypes } = (await import('sequelize'));
+        const results = await sequelize.query(sql, {
+            replacements: { weekAgo, monthAgo, take },
+            type: QueryTypes.SELECT
+        });
+
+        // Normalize numeric strings to numbers
+        return results.map(r => ({
+            executer_id: r.executer_id,
+            name: r.name,
+            rating: r.rating,
+            ordersWeek: Number(r.week_count || 0),
+            ordersMonth: Number(r.month_count || 0),
+            totalOrders: Number(r.total_completed || 0)
+        }));
+    } catch (error) {
+        throw new Error(`Error fetching top performers: ${error.message}`);
+    }
+}

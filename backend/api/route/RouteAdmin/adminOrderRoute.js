@@ -6,6 +6,7 @@ import {
     updateOrder,
     deleteOrder,
     getOrderStats,
+    getTopPerformers,
     getOrdersByExecuter,
     getOrdersByService
 } from '../../service/ServiceAdmim/adminOrderService.js';
@@ -41,6 +42,18 @@ orderRoute.get('/stats', async (req, res) => {
         res.json(stats);
     } catch (error) {
         console.error('Error fetching order stats:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /orders/top-performers - aggregated top performers for week/month
+orderRoute.get('/top-performers', async (req, res) => {
+    try {
+        const take = parseInt(req.query.take || '4', 10);
+        const performers = await getTopPerformers(take);
+        res.json(performers);
+    } catch (error) {
+        console.error('Error fetching top performers:', error);
         res.status(500).json({ error: error.message });
     }
 });

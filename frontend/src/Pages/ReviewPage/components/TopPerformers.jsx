@@ -11,53 +11,34 @@ export function TopPerformers() {
       try {
         setLoading(true);
 
-        // Backend routes expect '/get' or '/getAll' for lists — call those explicitly
-        // also ensure we have a token before calling protected admin routes
         const token = localStorage.getItem("admin_token");
         if (!token) {
-          // let ProtectedRoute / app handle redirect — surface a warning here
           console.warn(
             "TopPerformers: no admin_token found, skipping protected requests"
           );
           return;
         }
 
-        const [executers, orders] = await Promise.all([
-          apiFetch("/api/admin/executers/get"),
-          apiFetch("/api/admin/orders/getAll"),
-        ]);
+        // Use server-side aggregated top performers endpoint (real DB counts)
+        const performers = await apiFetch(
+          "/api/admin/orders/top-performers?take=4"
+        );
+        // Normalize response shape if needed
+        const normalized = Array.isArray(performers)
+          ? performers.map((p) => ({
+              id: p.executer_id || p.id,
+              name: p.name,
+              ordersWeek: p.ordersWeek || p.week_count || 0,
+              ordersMonth: p.ordersMonth || p.month_count || 0,
+              totalOrders: p.totalOrders || p.total_completed || 0,
+              rating: p.rating || 0,
+            }))
+          : [];
 
-        // Подсчитываем количество заказов для каждого исполнителя
-        const safeExecuters = Array.isArray(executers) ? executers : [];
-        const safeOrders = Array.isArray(orders) ? orders : [];
-        const executerStats = safeExecuters.map((executer) => {
-          const executerOrders = safeOrders.filter(
-            (order) => order.executer_id === executer.id
-          );
-          const completedOrders = executerOrders.filter(
-            (order) => order.status === "completed"
-          );
-
-          return {
-            id: executer.id,
-            name: executer.name || `Исполнитель #${executer.id}`,
-            orders: completedOrders.length,
-            totalOrders: executerOrders.length,
-            rating: executer.rating || 0,
-          };
-        });
-
-        // Сортируем по количеству выполненных заказов
-        const topPerformers = executerStats
-          .filter((e) => e.orders > 0) // Только с выполненными заказами
-          .sort((a, b) => b.orders - a.orders)
-          .slice(0, 4); // Берем топ-4
-
-        setPerformers(topPerformers);
+        setPerformers(normalized);
       } catch (error) {
-        if (error.status === 401) {
+        if (error && error.status === 401) {
           console.warn("Не авторизовано. Перенаправление на страницу входа.");
-          // Ничего не делаем здесь; ProtectedRoute выполнит редирект при ререндере
         } else {
           console.error("Ошибка загрузки топ исполнителей:", error);
         }
@@ -97,7 +78,9 @@ export function TopPerformers() {
           <thead>
             <tr className="text-gray-400/50 text-left text-sm">
               <th className="pb-2">Исполнитель</th>
-              <th className="pb-2">Заказов выполнено</th>
+              <th className="pb-2">За неделю</th>
+              <th className="pb-2">За месяц</th>
+              <th className="pb-2">Всего</th>
               <th className="pb-2">Рейтинг</th>
             </tr>
           </thead>
@@ -115,11 +98,16 @@ export function TopPerformers() {
                   <td className="py-2 font-medium">{p.name}</td>
                   <td className="py-2">
                     <span className="font-semibold text-green-600">
-                      {p.orders}
+                      {p.ordersWeek}
                     </span>
-                    <span className="text-gray-500 text-sm ml-1">
-                      из {p.totalOrders}
+                  </td>
+                  <td className="py-2">
+                    <span className="font-semibold text-green-600">
+                      {p.ordersMonth}
                     </span>
+                  </td>
+                  <td className="py-2 text-gray-500 text-sm">
+                    всего: {p.totalOrders}
                   </td>
                   <td className="py-2 flex items-center gap-1">
                     <FaStar className="text-yellow-400" size={16} />
@@ -129,7 +117,7 @@ export function TopPerformers() {
               ))
             ) : (
               <tr>
-                <td colSpan="3" className="py-4 text-center text-gray-500">
+                <td colSpan="5" className="py-4 text-center text-gray-500">
                   Нет данных о выполненных заказах
                 </td>
               </tr>

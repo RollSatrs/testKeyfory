@@ -69,12 +69,7 @@ export async function getAllServices() {
                 ...service.dataValues,
                 source: sources.join(', ') || '-',
                 available_keys: availableKeys,
-                active_orders: activeOrders.map(order => ({
-                    order_number: order.order_number,
-                    status: order.status,
-                    executer_id: order.executer_id,
-                    executer_name: order.Executer?.name || `ID: ${order.executer_id}`
-                })),
+                // active_orders intentionally omitted per UI request
                 custom_pricing: customPricing.map(pricing => ({
                     executer_id: pricing.executer_id,
                     executer_name: pricing.Executer?.name || `Исполнитель ${pricing.executer_id}`,
