@@ -72,6 +72,7 @@ export function ServicesHeader({ onAdd, children }) {
     executer_id: "",
     customPricing: [], // [{executer_id, executer_name, custom_price}]
   });
+  const [selectedExecuters, setSelectedExecuters] = useState([]);
 
   useEffect(() => {
     if (showModal) {
@@ -219,6 +220,21 @@ export function ServicesHeader({ onAdd, children }) {
         }
       }
 
+      // Если были выбраны исполнители в модалке — назначаем их на услугу
+      if (selectedExecuters && selectedExecuters.length > 0 && serviceId) {
+        try {
+          await apiFetch(`/api/admin/services/${serviceId}/executers`, {
+            method: "POST",
+            body: JSON.stringify({ executerIds: selectedExecuters }),
+          });
+        } catch (assignErr) {
+          console.warn(
+            "Не удалось назначить исполнителей после создания услуги",
+            assignErr
+          );
+        }
+      }
+
       message.success("Услуга создана успешно");
       setShowModal(false);
       resetForm();
@@ -242,6 +258,7 @@ export function ServicesHeader({ onAdd, children }) {
     setFileList([]);
     setManualInput("");
     setApiConfig({ url: "", headers: "", method: "GET" });
+    setSelectedExecuters([]);
   };
 
   return (
@@ -250,27 +267,29 @@ export function ServicesHeader({ onAdd, children }) {
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex bg-white shadow p-6 rounded-4xl items-center justify-between">
             <h1 className="text-2xl font-bold">Управление услугами</h1>
-            <Button
-              type="primary"
-              style={{
-                background: "linear-gradient(to right, #3b82f6, #06b6d4)",
-                border: "none",
-              }}
-              onClick={() => {
-                resetForm();
-                setShowModal(true);
-              }}
-            >
-              + Добавить услугу
-            </Button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Button
+                type="primary"
+                style={{
+                  background: "linear-gradient(to right, #3b82f6, #06b6d4)",
+                  border: "none",
+                }}
+                onClick={() => {
+                  resetForm();
+                  setShowModal(true);
+                }}
+              >
+                + Добавить услугу
+              </Button>
+            </div>
           </div>
           {children}
         </div>
       </div>
       {showModal && (
-        <div className="h-full fixed inset-0 flex items-center justify-center z-50 bg-opacity-40 backdrop-blur-sm transition-all">
+        <div className="h-full fixed inset-0 flex items-center justify-center z-50 bg-opacity-40 backdrop-blur-sm transition-all overflow-auto py-8">
           <form
-            className="bg-gradient-to-br from-white via-gray-50 to-blue-50 p-8 rounded-2xl shadow-2xl flex flex-col gap-6 min-w-[340px] animate-fade-in"
+            className="bg-gradient-to-br from-white via-gray-50 to-blue-50 p-8 rounded-2xl shadow-2xl flex flex-col gap-6 min-w-[340px] animate-fade-in max-h-[80vh] overflow-y-auto"
             onSubmit={handleSubmit}
             style={{ boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.37)" }}
           >
@@ -339,36 +358,6 @@ export function ServicesHeader({ onAdd, children }) {
               </div>
             )}
             <Select
-              name="executer_id"
-              value={form.executer_id || undefined}
-              onChange={(value) => handleChange("executer_id", value)}
-              placeholder="Выберите исполнителя (опционально)"
-              className="w-full"
-              allowClear
-              showSearch
-              filterOption={(input, option) =>
-                option.children.toLowerCase().includes(input.toLowerCase())
-              }
-            >
-              {executers.map((executer) => {
-                console.log("🔍 Отображаем исполнителя:", executer);
-
-                // Получаем имя исполнителя (проверяем разные варианты)
-                const executerName =
-                  executer.name || executer.executer_name || "Без имени";
-                const telegramId =
-                  executer.telegram_id || executer.telegramId || "ID не указан";
-                const executerId = executer.id || executer.executer_id;
-
-                return (
-                  <Select.Option key={executerId} value={executerId}>
-                    {executerName} (Telegram: {telegramId})
-                  </Select.Option>
-                );
-              })}
-            </Select>
-
-            <Select
               name="status"
               value={form.status || undefined}
               onChange={(value) => handleChange("status", value)}
@@ -379,6 +368,74 @@ export function ServicesHeader({ onAdd, children }) {
               <Select.Option value="active">АКТИВНА</Select.Option>
               <Select.Option value="inactive">НЕАКТИВНА</Select.Option>
             </Select>
+
+            {/* Исполнители: множественный выбор + быстрые кнопки */}
+            <div className="mt-2">
+              <label className="block text-sm font-medium mb-2 text-gray-700">
+                Исполнители (можно выбрать несколько):
+              </label>
+              <Select
+                mode="multiple"
+                name="executers"
+                value={
+                  selectedExecuters.length > 0 ? selectedExecuters : undefined
+                }
+                onChange={(value) => setSelectedExecuters(value)}
+                placeholder="Выберите исполнителей (опционально)"
+                className="w-full"
+                allowClear
+                showSearch
+                optionFilterProp="children"
+                filterOption={(input, option) =>
+                  String(option.children)
+                    .toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+              >
+                {executers.map((executer) => {
+                  const executerName =
+                    executer.name || executer.executer_name || "Без имени";
+                  const telegramId =
+                    executer.telegram_id ||
+                    executer.telegramId ||
+                    "ID не указан";
+                  const executerId = executer.id || executer.executer_id;
+                  return (
+                    <Select.Option key={executerId} value={executerId}>
+                      {executerName} (Telegram: {telegramId})
+                    </Select.Option>
+                  );
+                })}
+              </Select>
+
+              <div className="flex gap-2 mt-2">
+                <Button
+                  size="small"
+                  onClick={() => {
+                    if (executers && executers.length > 0) {
+                      const allIds = executers
+                        .map((e) => e.id || e.executer_id)
+                        .filter(Boolean);
+                      setSelectedExecuters(allIds);
+                      message.info("Выбраны все исполнители");
+                    } else {
+                      message.warning("Нет доступных исполнителей");
+                    }
+                  }}
+                >
+                  Добавить всех
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setSelectedExecuters([]);
+                    message.info("Выбор исполнителей очищен");
+                  }}
+                >
+                  Снять всех
+                </Button>
+              </div>
+            </div>
 
             {/* Секция индивидуального ценообразования */}
             <div className="border-t pt-4">
@@ -572,6 +629,35 @@ export function ServicesHeader({ onAdd, children }) {
                 <Select.Option value="GET">GET</Select.Option>
                 <Select.Option value="POST">POST</Select.Option>
               </Select>
+
+              {/* Быстрые кнопки: добавить всех / снять всех (для удобства) */}
+              <div className="flex gap-2 mt-2">
+                <Button
+                  size="small"
+                  onClick={() => {
+                    // If there are executers, set the primary executer to the first one
+                    if (executers && executers.length > 0) {
+                      const firstId =
+                        executers[0].id || executers[0].executer_id;
+                      handleChange("executer_id", firstId);
+                      message.info("Выбран первый исполнитель как основной");
+                    } else {
+                      message.warning("Нет доступных исполнителей");
+                    }
+                  }}
+                >
+                  Добавить всех
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    handleChange("executer_id", null);
+                    message.info("Снята привязка основного исполнителя");
+                  }}
+                >
+                  Снять всех
+                </Button>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">
