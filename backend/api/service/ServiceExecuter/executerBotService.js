@@ -117,10 +117,12 @@ class ExecuterBotService {
         throw new Error('Нет доступных материалов для данной услуги');
       }
 
-      // Привязываем номер заказа к материалу
+      // Привязываем номер заказа к материалу и помечаем его сразу как использованный
       await material.update({
         order_number: orderNumber,
-        status: 'reserved'
+        status: MATERIAL_STATUS.USED,
+        used_date: new Date(),
+        executer_id: executerId
       });
 
       return material;
@@ -139,14 +141,15 @@ class ExecuterBotService {
         throw new Error('Материал не найден');
       }
 
-      if (material.status !== 'reserved') {
-        throw new Error('Материал недоступен для использования');
+      // Allow using material even if it wasn't explicitly reserved; mark as USED immediately
+      if (material.status === MATERIAL_STATUS.USED) {
+        throw new Error('Материал уже использован');
       }
 
-      // Обновляем статус на использован
       await material.update({
         status: MATERIAL_STATUS.USED,
-        used_date: new Date()
+        used_date: new Date(),
+        executer_id: executerId
       });
 
       return material;
@@ -294,14 +297,17 @@ class ExecuterBotService {
         throw new Error('Материал не найден');
       }
 
-      if (material.status !== MATERIAL_STATUS.AVAILABLE) {
-        throw new Error('Материал недоступен');
+      // When marking material for an order, mark it USED immediately (one material = one row)
+      if (material.status === MATERIAL_STATUS.USED) {
+        throw new Error('Материал уже использован');
       }
 
-      // Обновляем материал
       await material.update({
-        status: MATERIAL_STATUS.IN_USE,
-        order_id: orderId
+        status: MATERIAL_STATUS.USED,
+        order_id: orderId,
+        order_number: order.order_number || null,
+        used_date: new Date(),
+        executer_id: executerId
       });
 
       return material;

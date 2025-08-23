@@ -192,6 +192,12 @@ export function ServicesHeader({ onAdd, children }) {
             }),
           });
         }
+        // notify other parts of the app that materials changed
+        try {
+          window.dispatchEvent(new Event("materials:changed"));
+        } catch (e) {
+          // ignore in non-browser environments
+        }
       }
 
       if (form.loadingMethod === "file" && fileList.length > 0) {

@@ -57,10 +57,83 @@ export function KeysMaterialsTable({
     status: "",
   });
 
+  const [executers, setExecuters] = useState([]);
+  const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [assignForm, setAssignForm] = useState({
+    material_id: null,
+    service_id: null,
+    order_number: "",
+    executer_id: null,
+  });
+
+  async function fetchExecuters() {
+    try {
+      const data = await apiFetch("/api/admin/executers/get");
+      setExecuters(data || []);
+    } catch (err) {
+      console.error("Ошибка загрузки исполнителей:", err);
+    }
+  }
+
+  function openAssignModal(record) {
+    setAssignForm({
+      material_id: record.id,
+      service_id: record.service_id,
+      order_number: record.order_number || "",
+      executer_id: record.executer_id || null,
+    });
+    setAssignModalVisible(true);
+  }
+
+  function handleAssignChange(name, value) {
+    setAssignForm({ ...assignForm, [name]: value });
+  }
+
+  async function handleAssignSubmit() {
+    if (
+      !assignForm.material_id ||
+      !assignForm.service_id ||
+      !assignForm.order_number ||
+      !assignForm.executer_id
+    ) {
+      message.error("Заполните номер заказа и выберите исполнителя");
+      return;
+    }
+    try {
+      await apiFetch("/api/executers/use-material-for-order", {
+        method: "POST",
+        body: JSON.stringify({
+          material_id: assignForm.material_id,
+          service_id: assignForm.service_id,
+          executer_id: assignForm.executer_id,
+          order_number: assignForm.order_number,
+        }),
+      });
+      message.success("Материал назначен и помечен как использованный");
+      setAssignModalVisible(false);
+      fetchMaterials();
+      window.dispatchEvent(new Event("materials:changed"));
+      if (onChange) onChange();
+    } catch (err) {
+      console.error("Ошибка при назначении материала:", err);
+      message.error("Не удалось назначить материал");
+    }
+  }
+
   useEffect(() => {
     fetchMaterials();
     fetchServices();
   }, [refresh]);
+
+  // Refresh materials when other parts of the app (services upload/add) signal changes
+  useEffect(() => {
+    const handler = () => {
+      fetchMaterials();
+      if (onChange) onChange();
+    };
+    window.addEventListener("materials:changed", handler);
+    return () => window.removeEventListener("materials:changed", handler);
+  }, []);
 
   async function fetchMaterials() {
     try {
@@ -84,6 +157,7 @@ export function KeysMaterialsTable({
     try {
       await apiFetch(`/api/admin/materials/delete/${id}`, { method: "DELETE" });
       fetchMaterials();
+      window.dispatchEvent(new Event("materials:changed"));
       if (onChange) onChange();
       message.success("Материал удален");
     } catch (error) {
@@ -98,6 +172,7 @@ export function KeysMaterialsTable({
         body: JSON.stringify({ status: newStatus }),
       });
       fetchMaterials();
+      window.dispatchEvent(new Event("materials:changed"));
       if (onChange) onChange();
       message.success("Статус материала обновлен");
     } catch (error) {
@@ -131,6 +206,7 @@ export function KeysMaterialsTable({
       });
       setEditForm(false);
       fetchMaterials();
+      window.dispatchEvent(new Event("materials:changed"));
       if (onChange) onChange();
       message.success("Материал обновлен");
     } catch (error) {
@@ -148,8 +224,10 @@ export function KeysMaterialsTable({
     try {
       const data = await apiFetch("/api/admin/materials/get");
       // Фильтруем только доступные материалы той же услуги
+      // Consider material available for replacement when it is not used and not bound to an order
       const availableMaterials = data.filter(
-        (m) => m.service_id === serviceId && m.status === "available"
+        (m) =>
+          m.service_id === serviceId && !m.order_number && m.status !== "used"
       );
       setReplacementMaterials(availableMaterials);
     } catch (error) {
@@ -169,6 +247,7 @@ export function KeysMaterialsTable({
       message.success("Материал успешно заменен");
       setReplacementModalVisible(false);
       fetchMaterials();
+      window.dispatchEvent(new Event("materials:changed"));
       if (onChange) onChange();
     } catch (error) {
       console.error("Ошибка при замене материала:", error);
@@ -177,11 +256,19 @@ export function KeysMaterialsTable({
   }
 
   // Фильтрация перед отображением
-  const filteredMaterials = materials.filter(
-    (m) =>
-      m.contents?.toLowerCase().includes(search.toLowerCase()) &&
-      (statusFilter ? m.status === statusFilter : true)
-  );
+  const filteredMaterials = materials.filter((m) => {
+    const matchesSearch = m.contents
+      ?.toLowerCase()
+      .includes(search.toLowerCase());
+    // If statusFilter is provided, support filtering by 'available' meaning not used and not bound to order
+    if (statusFilter) {
+      if (statusFilter === "available") {
+        return matchesSearch && m.status !== "used" && !m.order_number;
+      }
+      return matchesSearch && m.status === statusFilter;
+    }
+    return matchesSearch;
+  });
   console.log(filteredMaterials);
 
   const getServiceName = (serviceId) => {
@@ -228,19 +315,12 @@ export function KeysMaterialsTable({
   ];
 
   // Преобразуем данные для экспорта
+  // Do not show "Доступен" in export; export real fields or empty strings
   const exportData = filteredMaterials.map((m) => ({
     ...m,
     service_name: getServiceName(m.service_id),
-    order_number:
-      m.order_number ||
-      (m.active_orders && m.active_orders.length > 0
-        ? m.active_orders.map((o) => o.order_number).join(", ")
-        : "Доступен"),
-    executer_name:
-      m.executer_name ||
-      (m.active_orders && m.active_orders.length > 0
-        ? m.active_orders.map((o) => o.executer_name).join(", ")
-        : "Не назначен"),
+    order_number: m.order_number || "",
+    executer_name: m.executer_name || "",
   }));
 
   const columns = [
@@ -270,34 +350,33 @@ export function KeysMaterialsTable({
       title: "Статус",
       dataIndex: "status",
       key: "status",
-      render: (status, record) => (
-        <Select
-          value={status}
-          style={{ width: 140 }}
-          size="small"
-          onChange={(newStatus) => handleStatusChange(record.id, newStatus)}
-        >
-          <Select.Option value="available">
-            <Tag color="green">Доступен</Tag>
-          </Select.Option>
-          <Select.Option value="used">
-            <Tag color="red">Использован</Tag>
-          </Select.Option>
-          <Select.Option value="pending_replace">
-            <Tag color="volcano">На замене</Tag>
-          </Select.Option>
-        </Select>
-      ),
+      render: () => {
+        // Always show "Использован" for every material row per request
+        return (
+          <Tag color="red" style={{ fontSize: "12px" }}>
+            Использован
+          </Tag>
+        );
+      },
     },
     {
       title: "Номера заказов",
       dataIndex: "order_number",
       key: "order_number",
       width: 200,
+
       render: (order_number, record) => {
-        // Если нет номера заказа - материал доступен
+        // Если материал помечен как использованный - показываем использован
+        if (record.status === "used") {
+          // If there is explicit order info, prefer showing it below; otherwise indicate no order specified
+          if (!order_number && !record.order_numbers && !record.active_orders) {
+            return <span style={{ color: "#64748b" }}>Не указан</span>;
+          }
+        }
+
+        // If no order_number and no active orders - show "Не указан"
         if (!order_number && !record.order_numbers && !record.active_orders) {
-          return <Tag color="default">Доступен</Tag>;
+          return <span style={{ color: "#64748b" }}>Не указан</span>;
         }
 
         // Обрабатываем разные форматы данных заказов
@@ -324,9 +403,9 @@ export function KeysMaterialsTable({
           ];
         }
 
-        // Если массив заказов пустой
+        // If no orders found, show "Не указан"
         if (orders.length === 0) {
-          return <Tag color="default">Доступен</Tag>;
+          return <span style={{ color: "#64748b" }}>Не указан</span>;
         }
 
         // Если один заказ
@@ -382,18 +461,8 @@ export function KeysMaterialsTable({
                 placement="top"
               >
                 <Tag
-                  color={
-                    record.status === "used"
-                      ? "red"
-                      : record.status === "pending_replace"
-                      ? "volcano"
-                      : "blue"
-                  }
-                  style={{
-                    cursor: "pointer",
-                    margin: "2px",
-                    fontSize: "12px",
-                  }}
+                  color={record.status === "used" ? "red" : "blue"}
+                  style={{ cursor: "pointer", margin: "2px", fontSize: "12px" }}
                 >
                   #{order.order_number}
                 </Tag>
@@ -409,12 +478,7 @@ export function KeysMaterialsTable({
       key: "executer_name",
       width: 150,
       render: (executer_name, record) => {
-        // Если материал доступен - нет исполнителя
-        if (!executer_name && !record.active_orders && !record.order_number) {
-          return <Tag color="default">Не назначен</Tag>;
-        }
-
-        // Если есть исполнитель из записи
+        // Show only explicit executor name (no placeholders)
         if (executer_name) {
           return (
             <Tag color="blue" style={{ fontSize: "12px" }}>
@@ -422,37 +486,34 @@ export function KeysMaterialsTable({
             </Tag>
           );
         }
-
-        // Если есть исполнитель из активных заказов
+        // If executor present in active_orders, show unique names
         if (record.active_orders && record.active_orders.length > 0) {
           const uniqueExecuters = [
             ...new Set(record.active_orders.map((o) => o.executer_name)),
           ];
-
           if (uniqueExecuters.length === 1) {
             return (
               <Tag color="blue" style={{ fontSize: "12px" }}>
                 {uniqueExecuters[0]}
               </Tag>
             );
-          } else {
-            return (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "2px" }}>
-                {uniqueExecuters.map((name, index) => (
-                  <Tag
-                    key={index}
-                    color="blue"
-                    style={{ fontSize: "11px", margin: "1px" }}
-                  >
-                    {name}
-                  </Tag>
-                ))}
-              </div>
-            );
           }
+          return (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "2px" }}>
+              {uniqueExecuters.map((name, index) => (
+                <Tag
+                  key={index}
+                  color="blue"
+                  style={{ fontSize: "11px", margin: "1px" }}
+                >
+                  {name}
+                </Tag>
+              ))}
+            </div>
+          );
         }
 
-        return <Tag color="default">Неизвестный</Tag>;
+        return null;
       },
     },
     {
@@ -473,20 +534,7 @@ export function KeysMaterialsTable({
             size="small"
             title="Редактировать"
           />
-          {record.status === "pending_replace" && (
-            <Button
-              type="primary"
-              size="small"
-              onClick={() => handleReplaceMaterial(record)}
-              title="Заменить материал"
-              style={{
-                background: "linear-gradient(to right, #f59e0b, #d97706)",
-                border: "none",
-              }}
-            >
-              Заменить
-            </Button>
-          )}
+          {/* Only Edit and Delete actions per spec */}
           <Popconfirm
             title="Удалить материал?"
             onConfirm={() => handleDelete(record.id)}
@@ -686,6 +734,35 @@ export function KeysMaterialsTable({
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Модальное окно назначения материала на заказ (и пометка как использован) */}
+      <Modal
+        open={assignModalVisible}
+        title="Назначить материал на заказ"
+        onCancel={() => setAssignModalVisible(false)}
+        onOk={handleAssignSubmit}
+        okText="Назначить и пометить"
+        cancelText="Отмена"
+      >
+        <Input
+          placeholder="Номер заказа"
+          value={assignForm.order_number}
+          onChange={(e) => handleAssignChange("order_number", e.target.value)}
+          style={{ marginBottom: 12 }}
+        />
+        <Select
+          placeholder="Выберите исполнителя"
+          value={assignForm.executer_id || undefined}
+          onChange={(val) => handleAssignChange("executer_id", val)}
+          className="w-full"
+        >
+          {executers.map((ex) => (
+            <Select.Option key={ex.id} value={ex.id}>
+              {ex.name || `Исполнитель ${ex.id}`}
+            </Select.Option>
+          ))}
+        </Select>
       </Modal>
     </div>
   );

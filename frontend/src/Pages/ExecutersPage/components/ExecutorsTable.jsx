@@ -9,7 +9,6 @@ import {
   Select,
   Space,
   Popconfirm,
-  Rate,
   message,
   Tooltip,
 } from "antd";
@@ -28,7 +27,6 @@ export function ExecutorsTable({
     id: null,
     name: "",
     telegram_id: "",
-    rating: 1,
   });
 
   // Получение данных из API
@@ -100,7 +98,6 @@ export function ExecutorsTable({
       id: executor.id,
       name: executor.name,
       telegram_id: executor.telegram_id,
-      rating: executor.rating,
     });
     setEditForm(true);
   }
@@ -121,7 +118,6 @@ export function ExecutorsTable({
         id: null,
         name: "",
         telegram_id: "",
-        rating: 1,
       });
       notifyChanged();
     } catch {
@@ -182,12 +178,7 @@ export function ExecutorsTable({
       key: "telegram_id",
       render: (tg) => <span className="text-blue-600 font-mono">{tg}</span>,
     },
-    {
-      title: "Рейтинг",
-      dataIndex: "rating",
-      key: "rating",
-      render: (rating) => <Rate disabled allowHalf value={rating} />,
-    },
+    // rating removed from table
     {
       title: "Статус",
       dataIndex: "status",
@@ -368,24 +359,8 @@ export function ExecutorsTable({
           placeholder="Telegram ID"
           style={{ marginBottom: 16 }}
         />
-        <Input
-          name="orders"
-          type="number"
-          min={0}
-          value={form.orders}
-          onChange={(e) => handleChange("orders", e.target.value)}
-          placeholder="Количество заказов"
-          style={{ marginBottom: 16 }}
-        />
-        <div style={{ marginBottom: 16 }}>
-          <span className="block mb-1 text-gray-600">Рейтинг:</span>
-          <Rate
-            value={form.rating}
-            onChange={(value) => handleChange("rating", value)}
-            count={5}
-            allowHalf
-          />
-        </div>
+        {/* orders input removed */}
+        {/* rating removed */}
       </Modal>
     </div>
   );

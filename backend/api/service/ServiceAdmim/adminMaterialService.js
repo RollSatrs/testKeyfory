@@ -1,4 +1,4 @@
-import { Material, Services, MaterialReplacement, Order, Executer, ServiceExecution } from "../../../database/dbTables.js";
+import { Material, Services, MaterialReplacement, Order, Executer, ServiceExecution, ServiceAccess } from "../../../database/dbTables.js";
 import fs from 'fs';
 import path from 'path';
 import csv from 'csv-parser';
@@ -76,6 +76,33 @@ export async function getAllMaterials() {
                     materialData.order_number = relatedOrders[0].order_number;
                 } else if (material.order_number) {
                     materialData.executer_name = 'Неизвестный исполнитель';
+                } else {
+                    // Попытка подтянуть исполнителя, если материал доступен, но не привязан к заказу
+                    try {
+                        // 1) Если у услуги назначен исполнитель напрямую (Services.executer_id)
+                        const service = await Services.findByPk(material.service_id, {
+                            include: [{ model: Executer, as: 'assignedExecuter', attributes: ['id', 'name'] }]
+                        });
+
+                        if (service && service.assignedExecuter) {
+                            materialData.executer_name = service.assignedExecuter.name;
+                            materialData.executer_id = service.assignedExecuter.id;
+                        } else {
+                            // 2) Ищем права доступа ServiceAccess и подтягиваем первого доступного исполнителя
+                            const accessList = await ServiceAccess.findAll({
+                                where: { service_id: material.service_id, has_access: true },
+                                include: [{ model: Executer, attributes: ['id', 'name'] }],
+                                limit: 1
+                            });
+                            if (accessList && accessList.length > 0 && accessList[0].Executer) {
+                                materialData.executer_name = accessList[0].Executer.name;
+                                materialData.executer_id = accessList[0].Executer.id;
+                            }
+                        }
+                    } catch (err) {
+                        // Не критично — просто не заполняем поле исполнителя
+                        // console.warn('Ошибка при попытке получить исполнителя для материала', err.message);
+                    }
                 }
 
                 return materialData;

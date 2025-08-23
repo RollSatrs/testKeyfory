@@ -1,4 +1,5 @@
-import { Executer, Order, Services, ServiceAccess, Log } from "../../../database/dbTables.js";
+import { Executer, Order, Services, ServiceAccess, Log, Material } from "../../../database/dbTables.js";
+import { sequelize } from "../../../database/databaseOn.js";
 import { Op } from 'sequelize';
 
 // Обновить статус исполнителя на основе активности
@@ -329,28 +330,44 @@ export async function updateExecuter(id, data) {
 
 export async function deleteExecuter(id) {
     try {
-        const executer = await Executer.findByPk(id);
-        if (!executer) {
-            throw new Error('Executer not found');
-        }
-
-        // Проверяем активность исполнителя и наличие активных заказов
-        if (executer.status === 'active') {
-            const activeOrders = await Order.count({
-                where: {
-                    executer_id: id,
-                    status: ['pending', 'in_progress']
-                }
-            });
-
-            if (activeOrders > 0) {
-                throw new Error('Cannot delete active executer with active orders. Deactivate executer first.');
+        // Use a transaction for cleanup
+        const t = await sequelize.transaction();
+        try {
+            const executer = await Executer.findByPk(id, { transaction: t });
+            if (!executer) {
+                throw new Error('Executer not found');
             }
-        }
 
-        // Если исполнитель неактивен, удаляем независимо от заказов
-        await executer.destroy();
-        return { message: 'Executer deleted successfully' };
+            // Проверяем активность исполнителя и наличие активных заказов
+            if (executer.status === 'active') {
+                const activeOrders = await Order.count({
+                    where: {
+                        executer_id: id,
+                        status: ['pending', 'in_progress']
+                    },
+                    transaction: t
+                });
+
+                if (activeOrders > 0) {
+                    throw new Error('Cannot delete active executer with active orders. Deactivate executer first.');
+                }
+            }
+
+            // Remove materials assigned to this executer (they should be cleaned up)
+            await Material.destroy({ where: { executer_id: id }, transaction: t });
+
+            // Remove service access entries
+            await ServiceAccess.destroy({ where: { executer_id: id }, transaction: t });
+
+            // Finally delete executer
+            await executer.destroy({ transaction: t });
+
+            await t.commit();
+            return { message: 'Executer and related materials deleted successfully' };
+        } catch (err) {
+            await t.rollback();
+            throw err;
+        }
     } catch (error) {
         throw new Error(`Error deleting executer: ${error.message}`);
     }

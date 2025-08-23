@@ -19,8 +19,9 @@ export const getMyMaterials = async (executerId) => {
         }
       ],
       where: {
-        status: { [Op.in]: ['available', 'used'] }
-      },
+          // return materials assigned to executer's orders (those with order_id linked to executer's orders)
+          // include both used (history) and currently assigned ones
+        },
       order: [['added_date', 'DESC']]
     });
 
@@ -47,11 +48,10 @@ export const getMaterialsForOrder = async (orderId, executerId) => {
       throw new Error('Заказ не найден или не принадлежит исполнителю');
     }
 
-    // Получаем доступные материалы для услуги этого заказа
+    // Получаем материалы для услуги этого заказа, которые еще не привязаны к другому заказу
     const materials = await Material.findAll({
       where: {
         service_id: order.service_id,
-        status: 'available',
         order_id: null
       },
       order: [['added_date', 'ASC']]
@@ -80,12 +80,11 @@ export const useMaterial = async (materialId, orderId, executerId) => {
       throw new Error('Заказ не найден, не принадлежит исполнителю или не в работе');
     }
 
-    // Проверяем, что материал доступен
+    // Проверяем, что материал не привязан к другому заказу и не использован
     const material = await Material.findOne({
       where: {
         id: materialId,
         service_id: order.service_id,
-        status: 'available',
         order_id: null
       }
     });
@@ -94,12 +93,13 @@ export const useMaterial = async (materialId, orderId, executerId) => {
       throw new Error('Материал не найден или уже использован');
     }
 
-    // Обновляем материал
+    // Обновляем материал: помечаем как использованный и привязываем к заказу
     await Material.update(
       {
         status: 'used',
         order_id: orderId,
-        used_date: new Date()
+        used_date: new Date(),
+        executer_id: executerId
       },
       { where: { id: materialId } }
     );

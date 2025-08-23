@@ -353,6 +353,10 @@ export function ServicesTable({
       message.success(`Добавлено ${added.length} расходников`);
       setManualInput("");
       setUploadModal(false);
+      // notify other components (materials list) to refresh
+      try {
+        window.dispatchEvent(new Event("materials:changed"));
+      } catch (e) {}
       fetchServices();
       if (onChange) onChange();
     } catch (error) {

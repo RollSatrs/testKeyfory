@@ -1,6 +1,7 @@
 import express from 'express';
 import { Op } from 'sequelize';
 import { Services, Material, ServiceAccess, Executer, ServiceExecution, MaterialReplacement, ExecuterPricing, Order } from '../../../database/dbTables.js';
+import { sequelize } from '../../../database/databaseOn.js';
 import { updateExecuterActivity } from '../../service/ServiceExecuter/executerService.js';
 
 const router = express.Router();
@@ -647,23 +648,58 @@ router.post('/create-service-execution', async (req, res) => {
       return res.status(400).json({ message: `Заказ с номером ${order_number} уже существует в системе` });
     }
 
-    // Создаем выполнение услуги
-    const serviceExecution = await ServiceExecution.create({
-      order_number,
-      executer_id,
-      service_id,
-      created_at: new Date()
-    });
+    // Создаем выполнение услуги и пытаемся атомарно присвоить материал (если есть)
+    const t = await sequelize.transaction();
+    try {
+      const serviceExecution = await ServiceExecution.create({
+        order_number,
+        executer_id,
+        service_id,
+        status: 'in_progress',
+        created_at: new Date()
+      }, { transaction: t });
 
-    console.log(`✅ Выполнение услуги создано с ID: ${serviceExecution.id}`);
+      // Попробуем найти доступный материал для этой услуги и пометить его использованным
+      const availableMaterial = await Material.findOne({
+        where: {
+          service_id: service_id,
+          order_id: null,
+          order_number: null,
+          status: { [Op.ne]: 'used' }
+        },
+        order: [['added_date', 'ASC']],
+        transaction: t,
+        lock: t.LOCK.UPDATE
+      });
 
-    res.json({
-      id: serviceExecution.id,
-      order_number: serviceExecution.order_number,
-      serviceName: service.name,
-      executerName: executer.name,
-      created_at: serviceExecution.created_at
-    });
+      if (availableMaterial) {
+        await availableMaterial.update({
+          status: 'used',
+          order_number: order_number,
+          used_date: new Date(),
+          executer_id: executer_id
+        }, { transaction: t });
+
+        // Сохраняем содержимое материала в выполнении
+        await serviceExecution.update({ material_contents: availableMaterial.contents }, { transaction: t });
+      }
+
+      await t.commit();
+
+      console.log(`✅ Выполнение услуги создано с ID: ${serviceExecution.id}`);
+
+      res.json({
+        id: serviceExecution.id,
+        order_number: serviceExecution.order_number,
+        serviceName: service.name,
+        executerName: executer.name,
+        created_at: serviceExecution.created_at,
+        materialAssigned: !!availableMaterial
+      });
+    } catch (txErr) {
+      await t.rollback();
+      throw txErr;
+    }
 
   } catch (error) {
     console.error('❌ Ошибка при создании выполнения услуги:', error);

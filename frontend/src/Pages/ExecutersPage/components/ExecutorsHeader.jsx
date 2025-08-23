@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Input, Select, Button, Rate, message } from "antd";
+import { Input, Select, Button, message } from "antd";
 import { apiFetch } from "../../../lib/api";
 
 export function ExecutorsHeader({ onAdd, children }) {
@@ -7,7 +7,6 @@ export function ExecutorsHeader({ onAdd, children }) {
   const [form, setForm] = useState({
     name: "",
     telegram_id: "",
-    rating: 0,
   });
 
   const handleChange = (name, value) => {
@@ -18,7 +17,6 @@ export function ExecutorsHeader({ onAdd, children }) {
     setForm({
       name: "",
       telegram_id: "",
-      rating: 0,
     });
   };
 
@@ -84,14 +82,7 @@ export function ExecutorsHeader({ onAdd, children }) {
               placeholder="Telegram ID"
               required
             />
-            <div>
-              <span className="block mb-1 text-gray-600">Рейтинг:</span>
-              <Rate
-                value={form.rating}
-                onChange={(value) => handleChange("rating", value)}
-                count={5}
-              />
-            </div>
+            {/* rating removed */}
             <div className="flex gap-3 justify-end mt-2">
               <Button type="default" onClick={handleClose}>
                 Отмена

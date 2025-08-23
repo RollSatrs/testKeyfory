@@ -1,4 +1,5 @@
 import { Services, Material, ExecuterPricing, Executer, ServiceAccess, ServiceExecution } from "../../../database/dbTables.js";
+import { sequelize } from "../../../database/databaseOn.js";
 
 
 export async function getAllServices() {
@@ -163,13 +164,30 @@ export async function updateService(id, data) {
 
 export async function deleteService(id) {
     try {
-        const service = await Services.findByPk(id);
-        if (!service) {
-            throw new Error('Service not found');
-        }
+        // Use a transaction to ensure related cleanup is atomic
+        const t = await sequelize.transaction();
+        try {
+            const service = await Services.findByPk(id, { transaction: t });
+            if (!service) {
+                throw new Error('Service not found');
+            }
 
-        await service.destroy();
-        return { message: 'Service deleted successfully' };
+            // Delete related materials for this service (one material = one row invariant)
+            await Material.destroy({ where: { service_id: id }, transaction: t });
+
+            // Cleanup small related tables to avoid dangling refs
+            await ServiceAccess.destroy({ where: { service_id: id }, transaction: t });
+            await ExecuterPricing.destroy({ where: { service_id: id }, transaction: t });
+
+            // Finally remove the service itself
+            await service.destroy({ transaction: t });
+
+            await t.commit();
+            return { message: 'Service and related materials deleted successfully' };
+        } catch (err) {
+            await t.rollback();
+            throw err;
+        }
     } catch (error) {
         throw new Error(`Error deleting service: ${error.message}`);
     }
