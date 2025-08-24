@@ -196,30 +196,6 @@ export function ServicesTable({
     }
   }
 
-  // Функция для открытия модального окна загрузки расходников
-  function openUploadModal(service) {
-    setSelectedService(service);
-
-    // Определяем какое окно открыть в зависимости от способа загрузки услуги
-    const loadingMethod = service.loadingMethod || "file"; // по умолчанию файл
-
-    switch (loadingMethod) {
-      case "file":
-        setUploadModal(true);
-        setFileList([]);
-        break;
-      case "api":
-        setApiModal(true);
-        setApiConfig({ url: "", headers: "", method: "GET" });
-        break;
-      case "manual":
-      default:
-        setManualModal(true);
-        setManualInput("");
-        break;
-    }
-  }
-
   // Функция для открытия модального окна с материалами
   async function openMaterialsModal(service) {
     setSelectedService(service);
@@ -594,27 +570,174 @@ export function ServicesTable({
       title: "Статус",
       dataIndex: "status",
       key: "status",
-      render: (status) => (
-        <Tag
-          color={
-            status === "active"
-              ? "green"
-              : status === "inactive"
-              ? "orange"
-              : status === "ОЖИДАЕТ"
-              ? "default"
-              : status === "ЗАВЕРШЕНА"
-              ? "blue"
-              : "default"
+      render: (status, record) => {
+        // Build list for tooltip: assigned executers + active orders
+        const activeOrders = Array.isArray(record.active_orders)
+          ? record.active_orders
+          : [];
+        const assigned = Array.isArray(record.assigned_executers)
+          ? record.assigned_executers
+          : [];
+
+        // Build executor -> service status mapping (per-executor)
+        // Use executor id when available to avoid name collisions
+        const execMap = new Map();
+
+        // Normalize executor identity across different payload shapes to avoid duplicates
+        const normalizeExecutor = (obj, fallbackPrefix = "") => {
+          if (!obj) return { key: null, name: "—" };
+
+          const id =
+            obj.executer_id ||
+            obj.executer?.id ||
+            obj.executer?.user_id ||
+            obj.id ||
+            null;
+          const name =
+            obj.executer_name ||
+            obj.executer?.name ||
+            obj.name ||
+            (id ? `ID: ${id}` : null) ||
+            "—";
+          const key =
+            id != null ? String(id) : `${fallbackPrefix}:${String(name)}`;
+          return { key: String(key), name };
+        };
+
+        // Seed from assigned executers (preserve order)
+        for (const a of assigned) {
+          const { key, name } = normalizeExecutor(a, "assigned");
+          const raw = (a.status || (a.Executer && a.Executer.status) || "")
+            .toString()
+            .toLowerCase();
+          const label = raw === "inactive" ? "Неактивен" : "Активен";
+          if (key) execMap.set(key, { name, label });
+        }
+
+        // Completed orders: these mark service completed for given executor
+        if (Array.isArray(record.completed_orders)) {
+          for (const o of record.completed_orders) {
+            if (!o) continue;
+            const { key, name } = normalizeExecutor(o, "completed");
+            if (!key) continue;
+            execMap.set(key, { name, label: "Выполнен" });
           }
-        >
-          {status === "active"
-            ? "АКТИВНА"
-            : status === "inactive"
-            ? "НЕАКТИВНА"
-            : status}
-        </Tag>
-      ),
+        }
+
+        // Active orders: if executor already marked Выполнен keep it, else mark Активен (or Выполнен per order status)
+        for (const o of activeOrders) {
+          if (!o) continue;
+          const { key, name } = normalizeExecutor(o, "active");
+          if (!key) continue;
+          const prev = execMap.get(key);
+          if (prev && prev.label === "Выполнен") continue;
+          const raw = (o.status || o.state || "").toString().toLowerCase();
+          const isCompleted =
+            raw.includes("completed") ||
+            raw.includes("выполн") ||
+            raw.includes("done") ||
+            raw.includes("заверш");
+          const label = isCompleted ? "Выполнен" : "Активен";
+          execMap.set(key, { name, label });
+        }
+
+        // Merge entries by executor name (prefer 'Выполнен' over 'Активен' over 'Неактивен')
+        const priority = (label) =>
+          label === "Выполнен" ? 3 : label === "Активен" ? 2 : 1;
+        const nameMap = new Map(); // name -> label (merged)
+
+        // Aggregate labels from execMap (may contain multiple keys for same name)
+        for (const [, val] of execMap) {
+          const nm = val.name || "—";
+          const existing = nameMap.get(nm);
+          if (!existing) nameMap.set(nm, val.label);
+          else if (priority(val.label) > priority(existing))
+            nameMap.set(nm, val.label);
+        }
+
+        // Build ordered list: assigned first (preserve order), then remaining names
+        const lines = [];
+        const addedNames = new Set();
+        for (const a of assigned) {
+          const { name: normName } = normalizeExecutor(a, "assigned");
+          const nm = normName || `ID: ${a.executer_id || "?"}`;
+          if (nameMap.has(nm)) {
+            lines.push(`${nm} (${nameMap.get(nm)})`);
+            addedNames.add(nm);
+          } else {
+            const raw = (a.status || (a.Executer && a.Executer.status) || "")
+              .toString()
+              .toLowerCase();
+            const label = raw === "inactive" ? "Неактивен" : "Активен";
+            lines.push(`${nm} (${label})`);
+            addedNames.add(nm);
+          }
+        }
+
+        for (const [nm, label] of nameMap) {
+          if (addedNames.has(nm)) continue;
+          lines.push(`${nm} (${label})`);
+        }
+
+        const dedup = lines;
+
+        const tooltipContent = (
+          <div style={{ maxWidth: 320, whiteSpace: "pre-line" }}>
+            {dedup.length > 0 ? (
+              dedup.map((line, idx) => <div key={idx}>• {line}</div>)
+            ) : (
+              <div>Нет назначенных исполнителей или активных заказов</div>
+            )}
+          </div>
+        );
+
+        // Prefer showing "ВЫПОЛНЕН" when there are completed executions.
+        // Backend may provide `completed_count` and `completed_orders` (added in admin service),
+        // so check those first. Fall back to inspecting merged orders/statuses.
+        const hasCompleted =
+          (typeof record.completed_count === "number" &&
+            record.completed_count > 0) ||
+          (Array.isArray(record.completed_orders) &&
+            record.completed_orders.length > 0) ||
+          [
+            ...activeOrders,
+            ...(Array.isArray(record.order_numbers)
+              ? record.order_numbers
+              : []),
+          ].some((o) => {
+            if (!o) return false;
+            const s = (o.status || o.state || "").toString().toLowerCase();
+            return (
+              s === "completed" ||
+              s === "done" ||
+              s === "выполнен" ||
+              s === "завершен" ||
+              s === "завершена"
+            );
+          });
+
+        // Determine tag color based on completion or service status
+        const color = hasCompleted
+          ? "blue"
+          : status === "active"
+          ? "green"
+          : status === "inactive"
+          ? "orange"
+          : "default";
+        const label = hasCompleted
+          ? "ВЫПОЛНЕН"
+          : status === "active"
+          ? "АКТИВНА"
+          : status === "inactive"
+          ? "НЕАКТИВНА"
+          : status || "—";
+
+        return (
+          <Tooltip title={tooltipContent} placement="topLeft">
+            <Tag color={hasCompleted ? "blue" : color}>{label}</Tag>
+          </Tooltip>
+        );
+      },
     },
     {
       title: "Номера заказов",
@@ -622,33 +745,126 @@ export function ServicesTable({
       key: "active_orders",
       width: 200,
       render: (active_orders, record) => {
-        // Если нет активных заказов
-        if (!active_orders || active_orders.length === 0) {
-          return <Tag color="default">Нет заказов</Tag>;
+        // Collect orders from multiple possible fields and always show them
+        const orders = [];
+
+        if (
+          Array.isArray(record.active_orders) &&
+          record.active_orders.length > 0
+        ) {
+          record.active_orders.forEach((o) => {
+            if (!o) return;
+            if (typeof o === "string" || typeof o === "number") {
+              orders.push({
+                order_number: o,
+                status: null,
+                executer_name: null,
+              });
+            } else {
+              orders.push({
+                order_number: o.order_number || o.order || o.id,
+                status: o.status || o.state || null,
+                executer_name:
+                  o.executer_name || (o.executer && o.executer.name) || null,
+              });
+            }
+          });
+        }
+
+        if (
+          orders.length === 0 &&
+          Array.isArray(record.order_numbers) &&
+          record.order_numbers.length > 0
+        ) {
+          record.order_numbers.forEach((n) => {
+            if (!n) return;
+            if (typeof n === "object") orders.push(n);
+            else
+              orders.push({
+                order_number: n,
+                status: null,
+                executer_name: null,
+              });
+          });
+        }
+
+        // Also include completed orders so numbers remain visible when status changes
+        if (
+          Array.isArray(record.completed_orders) &&
+          record.completed_orders.length > 0
+        ) {
+          record.completed_orders.forEach((o) => {
+            if (!o) return;
+            const num =
+              typeof o === "string" || typeof o === "number"
+                ? o
+                : o.order_number || o.order || o.id;
+            // avoid duplicates
+            if (orders.some((ex) => String(ex.order_number) === String(num)))
+              return;
+
+            if (typeof o === "string" || typeof o === "number") {
+              orders.push({
+                order_number: o,
+                status: "completed",
+                executer_name: null,
+              });
+            } else {
+              orders.push({
+                order_number: num,
+                status: o.status || o.state || "completed",
+                executer_name:
+                  o.executer_name || (o.executer && o.executer.name) || null,
+              });
+            }
+          });
+        }
+
+        if (orders.length === 0 && record.order_number) {
+          orders.push({
+            order_number: record.order_number,
+            status: record.status || null,
+            executer_name: record.executer_name || null,
+          });
+        }
+
+        if (orders.length === 0) {
+          return <span style={{ color: "#64748b" }}>Не указан</span>;
         }
 
         return (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-            {active_orders.map((order, index) => (
-              <Tooltip
-                key={`${order.order_number}-${index}`}
-                title={`Исполнитель: ${
-                  order.executer_name || "Неизвестный"
-                }\nНомер заказа: ${order.order_number}`}
-                placement="top"
-              >
-                <Tag
-                  color="blue"
-                  style={{
-                    cursor: "pointer",
-                    margin: "2px",
-                    fontSize: "12px",
-                  }}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {orders.map((order, idx) => {
+              const isCompleted =
+                (order.status || "")
+                  .toString()
+                  .toLowerCase()
+                  .includes("completed") ||
+                (order.status || "")
+                  .toString()
+                  .toLowerCase()
+                  .includes("выполн");
+              return (
+                <Tooltip
+                  key={`${order.order_number}-${idx}`}
+                  title={
+                    "Номер: " +
+                    order.order_number +
+                    (order.executer_name
+                      ? "\nИсполнитель: " + order.executer_name
+                      : "")
+                  }
+                  placement="top"
                 >
-                  #{order.order_number}
-                </Tag>
-              </Tooltip>
-            ))}
+                  <Tag
+                    color={isCompleted ? "blue" : "geekblue"}
+                    style={{ cursor: "pointer", margin: 2 }}
+                  >
+                    #{order.order_number}
+                  </Tag>
+                </Tooltip>
+              );
+            })}
           </div>
         );
       },

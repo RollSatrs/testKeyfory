@@ -366,108 +366,102 @@ export function KeysMaterialsTable({
       width: 200,
 
       render: (order_number, record) => {
-        // Если материал помечен как использованный - показываем использован
-        if (record.status === "used") {
-          // If there is explicit order info, prefer showing it below; otherwise indicate no order specified
-          if (!order_number && !record.order_numbers && !record.active_orders) {
-            return <span style={{ color: "#64748b" }}>Не указан</span>;
-          }
+        // Always show order numbers if present; collect from multiple fields
+        const orders = [];
+
+        if (
+          Array.isArray(record.active_orders) &&
+          record.active_orders.length > 0
+        ) {
+          record.active_orders.forEach((o) => {
+            if (!o) return;
+            if (typeof o === "string" || typeof o === "number")
+              orders.push({
+                order_number: o,
+                executer_name: null,
+                status: null,
+              });
+            else
+              orders.push({
+                order_number: o.order_number || o.order || o.id,
+                executer_name:
+                  o.executer_name || (o.executer && o.executer.name) || null,
+                status: o.status || o.state || null,
+              });
+          });
         }
 
-        // If no order_number and no active orders - show "Не указан"
-        if (!order_number && !record.order_numbers && !record.active_orders) {
+        if (
+          orders.length === 0 &&
+          Array.isArray(record.order_numbers) &&
+          record.order_numbers.length > 0
+        ) {
+          record.order_numbers.forEach((n) => {
+            if (!n) return;
+            if (typeof n === "object") orders.push(n);
+            else
+              orders.push({
+                order_number: n,
+                executer_name: record.executer_name || null,
+                status: null,
+              });
+          });
+        }
+
+        if (orders.length === 0 && order_number) {
+          orders.push({
+            order_number: order_number,
+            executer_name: record.executer_name || null,
+            status: record.status || null,
+          });
+        }
+
+        if (orders.length === 0)
           return <span style={{ color: "#64748b" }}>Не указан</span>;
-        }
 
-        // Обрабатываем разные форматы данных заказов
-        let orders = [];
-
-        // Если есть массив активных заказов (как в услугах)
-        if (record.active_orders && Array.isArray(record.active_orders)) {
-          orders = record.active_orders;
-        }
-        // Если есть массив номеров заказов
-        else if (record.order_numbers && Array.isArray(record.order_numbers)) {
-          orders = record.order_numbers.map((num) => ({
-            order_number: num,
-            executer_name: record.executer_name || "Неизвестный исполнитель",
-          }));
-        }
-        // Если есть один номер заказа
-        else if (order_number) {
-          orders = [
-            {
-              order_number: order_number,
-              executer_name: record.executer_name || "Неизвестный исполнитель",
-            },
-          ];
-        }
-
-        // If no orders found, show "Не указан"
-        if (orders.length === 0) {
-          return <span style={{ color: "#64748b" }}>Не указан</span>;
-        }
-
-        // Если один заказ
-        if (orders.length === 1) {
-          const order = orders[0];
-          return (
-            <Tooltip
-              title={`Исполнитель: ${order.executer_name}\nНомер заказа: ${
-                order.order_number
-              }\nСтатус: ${
-                record.status === "used"
-                  ? "Использован"
-                  : record.status === "pending_replace"
-                  ? "На замене"
-                  : "В работе"
-              }`}
-              placement="top"
-            >
-              <Tag
-                color={
-                  record.status === "used"
-                    ? "red"
-                    : record.status === "pending_replace"
-                    ? "volcano"
-                    : "blue"
-                }
-                style={{
-                  cursor: "pointer",
-                  fontSize: "12px",
-                }}
-              >
-                #{order.order_number}
-              </Tag>
-            </Tooltip>
-          );
-        }
-
-        // Если несколько заказов
         return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-            {orders.map((order, index) => (
-              <Tooltip
-                key={`${order.order_number}-${index}`}
-                title={`Исполнитель: ${order.executer_name}\nНомер заказа: ${
-                  order.order_number
-                }\nСтатус: ${
-                  record.status === "used"
-                    ? "Использован"
-                    : record.status === "pending_replace"
-                    ? "На замене"
-                    : "В работе"
-                }`}
-                placement="top"
-              >
-                <Tag
-                  color={record.status === "used" ? "red" : "blue"}
-                  style={{ cursor: "pointer", margin: "2px", fontSize: "12px" }}
+            {orders.map((order, index) => {
+              const isCompleted =
+                (order.status || "")
+                  .toString()
+                  .toLowerCase()
+                  .includes("completed") ||
+                (order.status || "")
+                  .toString()
+                  .toLowerCase()
+                  .includes("выполн");
+              return (
+                <Tooltip
+                  key={`${order.order_number}-${index}`}
+                  title={
+                    "Исполнитель: " +
+                    (order.executer_name || "Неизвестный") +
+                    "\nНомер заказа: " +
+                    order.order_number +
+                    (order.status ? "\nСтатус: " + order.status : "")
+                  }
+                  placement="top"
                 >
-                  #{order.order_number}
-                </Tag>
-              </Tooltip>
-            ))}
+                  <Tag
+                    color={
+                      isCompleted
+                        ? "blue"
+                        : record.status === "used"
+                        ? "red"
+                        : "blue"
+                    }
+                    style={{
+                      cursor: "pointer",
+                      margin: "2px",
+                      fontSize: "12px",
+                    }}
+                  >
+                    #{order.order_number}
+                  </Tag>
+                </Tooltip>
+              );
+            })}
           </div>
         );
       },

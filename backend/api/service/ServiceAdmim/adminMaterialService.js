@@ -51,6 +51,15 @@ export async function getAllMaterials() {
                             executer_id: directExecution.executer_id,
                             status: directExecution.status
                         });
+                    } else {
+                        // If material already carries order_number (set during assignment), prefer that value
+                        // and also propagate executer_name if present on the material row.
+                        relatedOrders.push({
+                            order_number: material.order_number,
+                            executer_name: material.executer_name || 'Неизвестный исполнитель',
+                            executer_id: material.executer_id || null,
+                            status: material.status || 'used'
+                        });
                     }
                 }
 
@@ -75,7 +84,10 @@ export async function getAllMaterials() {
                     materialData.executer_id = relatedOrders[0].executer_id;
                     materialData.order_number = relatedOrders[0].order_number;
                 } else if (material.order_number) {
-                    materialData.executer_name = 'Неизвестный исполнитель';
+                    // If material has order_number but no related active ServiceExecution was found,
+                    // still expose the order_number and executor info from the material row.
+                    materialData.order_number = material.order_number;
+                    materialData.executer_name = material.executer_name || 'Неизвестный исполнитель';
                 } else {
                     // Попытка подтянуть исполнителя, если материал доступен, но не привязан к заказу
                     try {

@@ -459,19 +459,47 @@ export const completeServiceExecution = async (executionId, executerId) => {
       throw new Error('Услуга уже выполнена');
     }
 
-    // Обновляем статус
+    // Определяем цену выполнения: сначала индивидуальная цена исполнителя, иначе стандартная цена услуги
+    let individualPrice = 0;
+    try {
+      const serviceAccess = await ServiceAccess.findOne({
+        where: {
+          executer_id: executerId,
+          service_id: execution.service_id,
+          has_access: true
+        }
+      });
+
+      if (serviceAccess && typeof serviceAccess.price !== 'undefined' && serviceAccess.price !== null) {
+        individualPrice = serviceAccess.price;
+        console.log(`💰 Найдена индивидуальная цена для исполнителя ${executerId}: ${individualPrice}₽`);
+      } else {
+        const service = await Services.findByPk(execution.service_id);
+        individualPrice = service?.price || 0;
+        console.log(`💰 Использую стандартную цену услуги для исполнения ${executerId}: ${individualPrice}₽`);
+      }
+    } catch (priceErr) {
+      console.warn('⚠️ Не удалось получить индивидуальную цену, использую 0:', priceErr.message);
+      individualPrice = 0;
+    }
+
+    // Обновляем статус на завершенный и сохраняем цену выполнения
     await execution.update({
       status: 'completed',
-      completed_at: new Date()
+      completed_at: new Date(),
+      price: individualPrice
     });
 
-    // Обновляем баланс исполнителя (если нужно)
-    const service = await Services.findByPk(execution.service_id);
-    if (service && service.price > 0) {
+    // Обновляем баланс исполнителя — добавляем цену выполнения
+    try {
       const executer = await Executer.findByPk(executerId);
-      await executer.update({
-        balance: executer.balance + service.price
-      });
+      if (executer) {
+        await executer.update({
+          balance: (executer.balance || 0) + (individualPrice || 0)
+        });
+      }
+    } catch (balErr) {
+      console.error('❌ Ошибка обновления баланса исполнителя:', balErr.message);
     }
 
     // Записываем лог

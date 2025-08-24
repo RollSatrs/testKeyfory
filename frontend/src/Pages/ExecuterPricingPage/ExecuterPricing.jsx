@@ -54,9 +54,20 @@ export function ExecuterPricing() {
 
   const fetchExecuters = async () => {
     try {
-      const data = await apiFetch("/api/admin/executers/get");
-      console.log("Полученные исполнители:", data);
-      setExecuters(data);
+      let data = await apiFetch("/api/admin/executers/get");
+      console.log("Полученные исполнители (raw):", data);
+      // normalize possible response shapes
+      if (!data) data = [];
+      if (Array.isArray(data)) {
+        setExecuters(data);
+      } else if (data.executers && Array.isArray(data.executers)) {
+        setExecuters(data.executers);
+      } else if (data.data && Array.isArray(data.data)) {
+        setExecuters(data.data);
+      } else {
+        // unknown shape - try to coerce to array
+        setExecuters([].concat(data));
+      }
     } catch (error) {
       console.error("Ошибка загрузки исполнителей:", error);
       message.error("Ошибка загрузки исполнителей");
@@ -112,7 +123,38 @@ export function ExecuterPricing() {
           : "/api/admin/earnings/summary";
 
       const data = await apiFetch(path);
-      setExecuterStats(data.executer_earnings || []);
+      // API may return { executer_earnings: [...] } or an array directly
+      let rows = [];
+      if (!data) {
+        rows = [];
+      } else if (Array.isArray(data)) {
+        rows = data;
+      } else if (Array.isArray(data.executer_earnings)) {
+        rows = data.executer_earnings;
+      } else if (Array.isArray(data.executerStats)) {
+        rows = data.executerStats;
+      } else if (
+        data.executer_earnings &&
+        typeof data.executer_earnings === "object"
+      ) {
+        rows = Object.values(data.executer_earnings);
+      }
+
+      // Normalize and ensure numeric fields
+      rows = (rows || []).map((r) => ({
+        executer_id: r.executer_id || r.id || r.executerId,
+        executer_name:
+          r.executer_name || r.executer_name || r.name || r.executer?.name,
+        total_amount:
+          r.total_amount || r.total_amount === 0
+            ? r.total_amount
+            : r.total || 0,
+        pending_amount: r.pending_amount || 0,
+        paid_amount: r.paid_amount || 0,
+        count: r.count || r.orders || 0,
+      }));
+
+      setExecuterStats(rows);
     } catch (error) {
       console.error("Ошибка загрузки статистики:", error);
       message.error("Ошибка загрузки статистики исполнителей");
@@ -151,10 +193,12 @@ export function ExecuterPricing() {
   };
 
   const getExecuterName = (id) => {
-    const executer = executers.find((e) => e.id === id);
+    if (!id) return "Неизвестно";
+    // match by string to be robust to string/number ids
+    const executer = executers.find((e) => String(e.id) === String(id));
     return executer
       ? executer.name || `Исполнитель ${executer.id}`
-      : "Неизвестно";
+      : `Исполнитель ${id}`;
   };
 
   const getServiceName = (id) => {
@@ -258,7 +302,14 @@ export function ExecuterPricing() {
       title: "Исполнитель",
       dataIndex: "executer_id",
       key: "executer_id",
-      render: (id) => getExecuterName(id),
+      render: (_, record) => {
+        // prefer explicit name if API provides it, otherwise try several id shapes
+        const name = record.executer_name || record.executer?.name;
+        if (name) return name;
+        const id =
+          record.executer_id || record.executer?.id || record.executerId;
+        return getExecuterName(id);
+      },
     },
     {
       title: "Услуга",
@@ -277,20 +328,6 @@ export function ExecuterPricing() {
       dataIndex: "created_at",
       key: "created_at",
       render: (date) => new Date(date).toLocaleDateString("ru-RU"),
-    },
-    {
-      title: "Статус",
-      dataIndex: "status",
-      key: "status",
-      render: (status) => {
-        const colors = { pending: "orange", paid: "green", cancelled: "red" };
-        const texts = {
-          pending: "Ожидает",
-          paid: "Выплачено",
-          cancelled: "Отменено",
-        };
-        return <span style={{ color: colors[status] }}>{texts[status]}</span>;
-      },
     },
   ];
 
@@ -403,18 +440,7 @@ export function ExecuterPricing() {
                       sorter: (a, b) =>
                         (a.total_amount || 0) - (b.total_amount || 0),
                     },
-                    {
-                      title: "К выплате",
-                      dataIndex: "pending_amount",
-                      key: "pending_amount",
-                      render: (amount) => `${amount || 0} ₽`,
-                    },
-                    {
-                      title: "Выплачено",
-                      dataIndex: "paid_amount",
-                      key: "paid_amount",
-                      render: (amount) => `${amount || 0} ₽`,
-                    },
+                    // 'К выплате' и 'Выплачено' удалены из таблицы (данные сохраняются на бэкенде)
                     {
                       title: "Количество заказов",
                       dataIndex: "count",

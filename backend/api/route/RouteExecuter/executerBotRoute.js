@@ -116,11 +116,31 @@ router.get('/services/:executerId', async (req, res) => {
             console.warn('Error checking execution flags:', flagErr.message);
           }
 
+          // Fetch last execution for this service by this executer to expose per-executer status
+          let lastExec = null;
+          try {
+            lastExec = await ServiceExecution.findOne({
+              where: { service_id: service.id, executer_id },
+              order: [['created_at', 'DESC']]
+            });
+          } catch (execErr) {
+            console.warn('Не удалось получить последний execution для сервиса', service.id, execErr.message);
+          }
+
           return {
             ...service.toJSON(),
             price: finalPrice,
             has_individual_price: !!individualPricing,
-            can_create_execution
+            can_create_execution,
+            executionStatus: lastExec ? lastExec.status : null,
+            lastExecution: lastExec ? {
+              id: lastExec.id,
+              order_number: lastExec.order_number,
+              status: lastExec.status,
+              started_at: lastExec.started_at,
+              completed_at: lastExec.completed_at,
+              price: lastExec.price
+            } : null
           };
         } catch (error) {
           console.warn(`⚠️ Ошибка получения цены для услуги ${service.id}:`, error.message);
@@ -397,7 +417,13 @@ router.get('/active-executions/:executerId', async (req, res) => {
         model: Services,
         as: 'Service',
         where: {
-          status: 'active' // Только активные услуги
+          // Поддерживаем совместимость со старыми записями: считаем услуги активными,
+          // если их статус 'active' или пустая строка или NULL
+          [Op.or]: [
+            { status: 'active' },
+            { status: '' },
+            { status: null }
+          ]
         },
         attributes: ['id', 'name', 'price', 'category', 'status'],
         required: true // INNER JOIN - исключает заказы с удаленными услугами
@@ -430,7 +456,11 @@ router.get('/execution/:executionId', async (req, res) => {
         model: Services,
         as: 'Service',
         where: {
-          status: 'active' // Только активные услуги
+          [Op.or]: [
+            { status: 'active' },
+            { status: '' },
+            { status: null }
+          ]
         },
         attributes: ['id', 'name', 'price', 'category', 'status'],
         required: true // INNER JOIN - исключает заказы с удаленными услугами
@@ -457,6 +487,43 @@ router.get('/execution/:executionId', async (req, res) => {
       message: 'Ошибка при получении деталей заказа',
       error: error.message
     });
+  }
+});
+
+// GET /api/executers-bot/execution-by-order/:orderNumber - Получить execution по номеру заказа
+router.get('/execution-by-order/:orderNumber', async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+
+    console.log(`\n🔍 === API BOT: GET execution by order ===`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+
+    const execution = await ServiceExecution.findOne({
+      where: { order_number: orderNumber },
+      include: [
+        {
+          model: Services,
+          as: 'Service',
+          attributes: ['id', 'name', 'price', 'status'],
+          required: false
+        },
+        {
+          model: Executer,
+          as: 'Executer',
+          attributes: ['id', 'name', 'telegram_id'],
+          required: false
+        }
+      ]
+    });
+
+    if (!execution) {
+      return res.status(404).json({ success: false, message: 'Execution not found' });
+    }
+
+    res.json({ success: true, data: execution });
+  } catch (error) {
+    console.error('❌ Ошибка получения execution по номеру заказа:', error);
+    res.status(500).json({ success: false, message: 'Ошибка сервера', error: error.message });
   }
 });
 
@@ -490,10 +557,39 @@ router.put('/complete-execution/:executionId', async (req, res) => {
       return res.status(400).json({ message: 'Заказ уже завершен' });
     }
 
-    // Обновляем статус на завершенный
+    // Don't allow completing if any execution for same order_number is already completed by another executer
+    const completedForOrder = await ServiceExecution.findOne({ where: { order_number: execution.order_number, status: 'completed' } });
+    if (completedForOrder && completedForOrder.id !== execution.id) {
+      return res.status(400).json({ message: `Заказ ${execution.order_number} уже завершён другим исполнителем` });
+    }
+
+    // Вычисляем индивидуальную цену исполнителя и сохраняем её при завершении
+    let individualPrice = 0;
+    try {
+      const serviceAccess = await ServiceAccess.findOne({
+        where: {
+          executer_id: executerId,
+          service_id: execution.service_id,
+          status: 'active'
+        }
+      });
+
+      const service = await Services.findByPk(execution.service_id);
+
+      // Если в serviceAccess явно указана числовая цена — используем её.
+      const accessPrice = serviceAccess && Number.isFinite(Number(serviceAccess.price)) ? Number(serviceAccess.price) : undefined;
+      individualPrice = Number.isFinite(accessPrice) ? accessPrice : (Number.isFinite(service?.price) ? Number(service.price) : 0);
+      console.log(`💰 Выбранная цена для записи: ${individualPrice}₽`);
+    } catch (priceError) {
+      console.warn('⚠️ Ошибка при получении индивидуальной цены, ставлю 0:', priceError.message);
+      individualPrice = 0;
+    }
+
+    // Обновляем статус на завершенный и сохраняем цену
     await execution.update({
       status: 'completed',
-      completed_at: new Date()
+      completed_at: new Date(),
+      price: individualPrice
     });
 
     console.log(`✅ Заказ ${execution.order_number} завершен`);
@@ -609,10 +705,13 @@ router.put('/cancel-execution/:executionId', async (req, res) => {
   }
 });
 
-// Создать новое выполнение услуги
-router.post('/create-service-execution', async (req, res) => {
+// Handler to create service execution (used by two routes: legacy and new)
+const createServiceExecutionHandler = async (req, res) => {
   try {
-    const { order_number, executer_id, service_id } = req.body;
+    // Accept both snake_case and camelCase from different clients (bot uses camelCase)
+    const order_number = req.body.order_number || req.body.orderNumber || req.body.order;
+    const executer_id = req.body.executer_id || req.body.executerId || req.body.executerId;
+    const service_id = req.body.service_id || req.body.serviceId || req.body.serviceId;
 
     console.log(`\n🔄 === СОЗДАНИЕ ВЫПОЛНЕНИЯ УСЛУГИ ===`);
     console.log(`📝 Номер заказа: ${order_number}`);
@@ -622,6 +721,7 @@ router.post('/create-service-execution', async (req, res) => {
     // Проверяем обязательные поля
     if (!order_number || !executer_id || !service_id) {
       return res.status(400).json({
+        success: false,
         message: 'Отсутствуют обязательные поля: order_number, executer_id, service_id'
       });
     }
@@ -629,23 +729,21 @@ router.post('/create-service-execution', async (req, res) => {
     // Проверяем, существует ли исполнитель
     const executer = await Executer.findByPk(executer_id);
     if (!executer) {
-      return res.status(400).json({
-        message: 'Исполнитель не найден'
-      });
+      return res.status(400).json({ message: 'Исполнитель не найден' });
     }
 
     // Проверяем, существует ли услуга
     const service = await Services.findByPk(service_id);
     if (!service) {
-      return res.status(400).json({
-        message: 'Услуга не найдена'
-      });
+      return res.status(400).json({ message: 'Услуга не найдена' });
     }
 
-    // Блокировка дубликатов: если такой order_number уже есть в системе — запрещаем
-    const existingGlobal = await ServiceExecution.findOne({ where: { order_number } });
-    if (existingGlobal) {
-      return res.status(400).json({ message: `Заказ с номером ${order_number} уже существует в системе` });
+    // Блокировка дубликатов: запрещаем дубли для того же исполнителя,
+    // но разрешаем создание попыток другими исполнителями — это позволит
+    // отображать в админке статусы по каждому исполнителю отдельно.
+    const existingForExecuter = await ServiceExecution.findOne({ where: { order_number, executer_id } });
+    if (existingForExecuter) {
+      return res.status(400).json({ success: false, message: `Заказ с номером ${order_number} уже существует для этого исполнителя` });
     }
 
     // Создаем выполнение услуги и пытаемся атомарно присвоить материал (если есть)
@@ -689,6 +787,7 @@ router.post('/create-service-execution', async (req, res) => {
       console.log(`✅ Выполнение услуги создано с ID: ${serviceExecution.id}`);
 
       res.json({
+        success: true,
         id: serviceExecution.id,
         order_number: serviceExecution.order_number,
         serviceName: service.name,
@@ -703,12 +802,13 @@ router.post('/create-service-execution', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Ошибка при создании выполнения услуги:', error);
-    res.status(500).json({
-      message: 'Ошибка при создании выполнения услуги',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Ошибка при создании выполнения услуги', error: error.message });
   }
-});
+};
+
+// Register both the canonical and the legacy route used by the bot
+router.post('/create-service-execution', createServiceExecutionHandler);
+router.post('/service-execution', createServiceExecutionHandler);
 
 // GET /api/executer/stats/:executerId - Получить статистику исполнителя
 router.get('/stats/:executerId', async (req, res) => {
@@ -809,12 +909,24 @@ router.get('/balance/:executerId', async (req, res) => {
       });
     }
 
-    // Получаем баланс исполнителя
-    const balance = executer.balance || 0;
+    // Вычисляем актуальный баланс на основе выполненных заказов (чтобы не полагаться на устаревшее поле в профиле)
+    let computedBalance = 0;
+    try {
+      const sum = await ServiceExecution.sum('price', {
+        where: {
+          executer_id: executerId,
+          status: 'completed'
+        }
+      });
+      computedBalance = sum || 0;
+    } catch (sumErr) {
+      console.warn('Не удалось вычислить баланс по выполненным заказам:', sumErr.message);
+      computedBalance = executer.balance || 0;
+    }
 
-    console.log(`✅ Баланс получен: ${balance}`);
+    console.log(`✅ Баланс (computed) для исполнителя ${executerId}: ${computedBalance}`);
 
-    res.json({ balance });
+    res.json({ balance: computedBalance });
 
   } catch (error) {
     console.error('❌ Ошибка при получении баланса:', error);
@@ -892,14 +1004,15 @@ router.post('/complete-order', async (req, res) => {
     }
 
     // Получаем индивидуальную цену исполнителя
-    let individualPrice = service.price; // По умолчанию базовая цена
+    let individualPrice = Number.isFinite(service.price) ? service.price : 0; // По умолчанию базовая цена
 
     try {
       // Используем внутренний вызов к adminPricingService
       const adminPricingService = await import('../../service/ServiceAdmim/adminPricingService.js');
       const customPrice = await adminPricingService.default.getPriceForExecuter(executer_id, service_id);
-      if (customPrice) {
-        individualPrice = customPrice;
+      // Примем customPrice, только если это числовое значение (включая 0)
+      if (customPrice != null && Number.isFinite(Number(customPrice))) {
+        individualPrice = Number(customPrice);
       }
       console.log(`💰 Individual Price: ${individualPrice}₽ (base: ${service.price}₽)`);
     } catch (priceError) {
@@ -907,6 +1020,12 @@ router.post('/complete-order', async (req, res) => {
     }
 
     // Обновляем статус ServiceExecution с индивидуальной ценой
+    // Не позволяем пометить заказ как завершенный, если другой исполнител уже завершил его
+    const alreadyCompleted = await ServiceExecution.findOne({ where: { order_number: order_number, status: 'completed' } });
+    if (alreadyCompleted) {
+      return res.status(400).json({ message: `Заказ ${order_number} уже завершён другим исполнителем` });
+    }
+
     const [updatedRows] = await ServiceExecution.update({
       status: status || 'pending_approval',
       completed_date: new Date(),
@@ -1109,7 +1228,7 @@ router.post('/bot-complete-order', async (req, res) => {
     }
 
     // Получаем индивидуальную цену исполнителя для данной услуги
-    let individualPrice = null;
+    let individualPrice = 0;
     try {
       const serviceAccess = await ServiceAccess.findOne({
         where: {
@@ -1119,40 +1238,67 @@ router.post('/bot-complete-order', async (req, res) => {
         }
       });
 
-      if (serviceAccess && serviceAccess.price !== null) {
-        individualPrice = serviceAccess.price;
-        console.log(`💰 Найдена индивидуальная цена для исполнителя: ${individualPrice}₽`);
-      } else {
-        // Если нет индивидуальной цены, получаем стандартную цену услуги
-        const service = await Services.findByPk(execution.service_id);
-        individualPrice = service?.price || 0;
-        console.log(`💰 Использую стандартную цену услуги: ${individualPrice}₽`);
-      }
+      const service = await Services.findByPk(execution.service_id);
+
+  const accessPrice = serviceAccess && Number.isFinite(Number(serviceAccess.price)) ? Number(serviceAccess.price) : undefined;
+  individualPrice = Number.isFinite(accessPrice) ? accessPrice : (Number.isFinite(service?.price) ? Number(service.price) : 0);
+  console.log(`💰 Выбранная цена для записи: ${individualPrice}₽`);
     } catch (priceError) {
       console.error('⚠️ Ошибка получения цены, использую 0:', priceError.message);
       individualPrice = 0;
     }
 
-    // Помечаем материалы как использованные
-    await Material.update({
-      status: 'used'
-    }, {
-      where: { order_number: orderNumber }
-    });
+    // Don't allow completing if another executer already completed this order
+    const completedOther = await ServiceExecution.findOne({ where: { order_number: orderNumber, status: 'completed' } });
+    if (completedOther && completedOther.id !== execution.id) {
+      return res.status(400).json({ success: false, message: `Заказ ${orderNumber} уже завершён другим исполнителем` });
+    }
 
-    // Завершаем заказ и сохраняем индивидуальную цену
-    await execution.update({
-      status: 'completed',
-      completed_at: new Date(),
-      price: individualPrice // Сохраняем индивидуальную цену при завершении
-    });
+    // Выполним обновления в транзакции: пометка материалов, обновление execution и корректное изменение баланса
+    const t = await sequelize.transaction();
+    try {
+      // Обновляем материалы в заказе
+      await Material.update({
+        status: 'used'
+      }, {
+        where: { order_number: orderNumber },
+        transaction: t
+      });
 
-    console.log(`✅ Заказ ${orderNumber} завершен через бота с ценой ${individualPrice}₽`);
+      // Сохраняем предыдущую цену, чтобы корректно обновить баланс только на дельту
+      const previousPrice = Number.isFinite(Number(execution.price)) ? Number(execution.price) : 0;
+      const finalPrice = Number.isFinite(Number(individualPrice)) ? Number(individualPrice) : 0;
 
-    res.json({
-      success: true,
-      message: 'Заказ успешно завершен'
-    });
+      await execution.update({
+        status: 'completed',
+        completed_at: new Date(),
+        price: finalPrice // Сохраняем индивидуальную цену при завершении
+      }, { transaction: t });
+
+      // Обновляем баланс исполнителя только на разницу (чтобы быть идемпотентным)
+      const delta = finalPrice - previousPrice;
+      if (delta !== 0) {
+        const currentBalance = Number.isFinite(Number(executer.balance)) ? Number(executer.balance) : 0;
+        const newBalance = currentBalance + delta;
+        await executer.update({ balance: newBalance }, { transaction: t });
+        console.log(`💰 Баланс исполнителя ${executer.id} обновлён на ${delta}₽ -> ${newBalance}₽`);
+      } else {
+        console.log('ℹ️ Баланс исполнителя не изменился (delta=0)');
+      }
+
+      await t.commit();
+
+      console.log(`✅ Заказ ${orderNumber} завершен через бота с ценой ${finalPrice}₽`);
+
+      res.json({
+        success: true,
+        message: 'Заказ успешно завершен'
+      });
+    } catch (txErr) {
+      await t.rollback();
+      console.error('❌ Ошибка транзакции при завершении заказа через бота:', txErr.message);
+      return res.status(500).json({ success: false, message: 'Ошибка при завершении заказа' });
+    }
 
   } catch (error) {
     console.error('❌ Ошибка завершения заказа через бота:', error);

@@ -62,15 +62,66 @@ export async function getAllServices() {
                     as: 'Executer',
                     attributes: ['id', 'name', 'telegram_id']
                 }],
-                attributes: ['order_number', 'status', 'executer_id'],
+                attributes: ['order_number', 'status', 'executer_id', 'created_at'],
                 order: [['created_at', 'DESC']]
             });
+
+            // Получаем завершённые заказы для индикации "ВЫПОЛНЕН" в админке
+            const completedOrders = await ServiceExecution.findAll({
+                where: { service_id: service.id, status: 'completed' },
+                include: [{
+                    model: Executer,
+                    as: 'Executer',
+                    attributes: ['id', 'name']
+                }],
+                attributes: ['order_number', 'status', 'executer_id', 'completed_at'],
+                order: [['completed_at', 'DESC']],
+                limit: 20
+            });
+
+            // Build a deduplicated list of order entries combining ServiceExecution and Material.order_number
+            const ordersMap = new Map();
+
+            // From ServiceExecution rows first (preserve order)
+            for (const o of activeOrders) {
+                const num = o.order_number || null;
+                if (num) {
+                    ordersMap.set(num, {
+                        order_number: num,
+                        executer_id: o.executer_id,
+                        executer_name: o.Executer?.name || null,
+                        status: o.status || null,
+                        source: 'execution'
+                    });
+                }
+            }
+
+            // Then add any order_numbers present directly on materials (fallback)
+            for (const m of materials) {
+                if (m.order_number) {
+                    const num = m.order_number;
+                    if (!ordersMap.has(num)) {
+                        ordersMap.set(num, {
+                            order_number: num,
+                            executer_id: m.executer_id || null,
+                            executer_name: m.executer_name || null,
+                            status: m.status || null,
+                            source: 'material'
+                        });
+                    }
+                }
+            }
+
+            const active_orders_array = Array.from(ordersMap.values());
 
             result.push({
                 ...service.dataValues,
                 source: sources.join(', ') || '-',
                 available_keys: availableKeys,
-                // active_orders intentionally omitted per UI request
+                active_orders: active_orders_array,
+                // Количество и пример завершённых заказов для отображения статуса
+                completed_count: completedOrders.length,
+                completed_orders: completedOrders.map(co => ({ order_number: co.order_number, executer_name: co.Executer?.name || null, completed_at: co.completed_at })),
                 custom_pricing: customPricing.map(pricing => ({
                     executer_id: pricing.executer_id,
                     executer_name: pricing.Executer?.name || `Исполнитель ${pricing.executer_id}`,
@@ -105,7 +156,7 @@ export async function getServiceById(id) {
 
 export async function addServiices(data) {
     try {
-        const { name, category, price, status, loading_method, executer_id } = data;
+    const { name, category, price, status, loading_method, executer_id } = data;
 
         if (!name || !category) {
             throw new Error('Name and category are required');
@@ -120,11 +171,14 @@ export async function addServiices(data) {
             }
         }
 
+        // Ensure newly created services are active by default so executers see them in the bot
+        const svcStatus = (typeof status === 'string' && status.trim() !== '') ? status : 'active';
+
         const newService = await Services.create({
             name,
             category,
             price: validPrice,
-            status,
+            status: svcStatus,
             loading_method: loading_method || 'manual',
             executer_id: executer_id || null,
             admin_id: 1
@@ -216,24 +270,66 @@ export async function assignExecutersToService(serviceId, executerIds) {
         if (!service) {
             throw new Error('Услуга не найдена');
         }
+        if (!Array.isArray(executerIds)) {
+            throw new Error('executerIds должен быть массивом id исполнителей');
+        }
 
-        // Удаляем старые связи
-        await ServiceAccess.destroy({ where: { service_id: serviceId } });
+        // Выполняем в транзакции
+        const t = await sequelize.transaction();
+        try {
+            // Удаляем старые связи
+            await ServiceAccess.destroy({ where: { service_id: serviceId }, transaction: t });
 
-        // Создаем новые связи
-        const accessPromises = executerIds.map(executerId =>
-            ServiceAccess.create({
-                service_id: serviceId,
-                executer_id: executerId,
-                has_access: true,
-                can_replace_materials: false,
-                requires_approval: true
-            })
-        );
+            // Создаем новые связи (если список пуст — просто очистим существующие записи)
+            let createdAccesses = [];
+            if (executerIds.length > 0) {
+                const accessData = executerIds.map(executerId => ({
+                    service_id: serviceId,
+                    executer_id: executerId,
+                    has_access: true,
+                    can_replace_materials: false,
+                    requires_approval: true,
+                    created_at: new Date()
+                }));
 
-        await Promise.all(accessPromises);
+                createdAccesses = await ServiceAccess.bulkCreate(accessData, { transaction: t });
+            }
 
-        return { message: 'Исполнители успешно назначены на услугу' };
+            // Если назначен ровно один исполнитель — проставим executer_id в таблице services
+            if (executerIds.length === 1) {
+                await Services.update({ executer_id: executerIds[0] }, { where: { id: serviceId }, transaction: t });
+            } else if (executerIds.length === 0) {
+                // если список пуст — снимем прямую привязку
+                await Services.update({ executer_id: null }, { where: { id: serviceId }, transaction: t });
+            }
+
+            await t.commit();
+
+            // Подгружаем созданные записи с данными исполнителей для ответа
+            const accessesWithExecuters = await ServiceAccess.findAll({
+                where: { service_id: serviceId },
+                include: [
+                    {
+                        model: Executer,
+                        attributes: ['id', 'name', 'telegram_id', 'status']
+                    }
+                ]
+            });
+
+            return {
+                message: 'Исполнители успешно назначены на услугу',
+                assigned_executers: accessesWithExecuters.map(a => ({
+                    access_id: a.id,
+                    executer_id: a.executer_id,
+                    executer_name: a.Executer?.name || null,
+                    telegram_id: a.Executer?.telegram_id || null,
+                    has_access: a.has_access
+                }))
+            };
+        } catch (txErr) {
+            await t.rollback();
+            throw txErr;
+        }
     } catch (error) {
         throw new Error(`Error assigning executers to service: ${error.message}`);
     }
