@@ -542,10 +542,7 @@ export function ServicesTable({
               title={
                 <div>
                   {assignedExecuters.map((executer, index) => (
-                    <div key={index}>
-                      • {executer.executer_name} (
-                      {executer.status === "active" ? "Активен" : "Неактивен"})
-                    </div>
+                    <div key={index}>• {executer.executer_name}</div>
                   ))}
                 </div>
               }

@@ -382,16 +382,9 @@ export function KeysMaterialsTable({
       dataIndex: "status",
       key: "status",
       render: (status, record) => {
-        // Build list of executor-related statuses using available fields
-        // Priority: Выполнен > Активен > Неактивен
-        const priority = (label) =>
-          label === "Выполнен" ? 3 : label === "Активен" ? 2 : 1;
+        // Map keyed by executor unique key (prefer id, fallback name)
+        const execMap = new Map(); // key -> { name, label }
 
-        const execMap = new Map(); // name -> label
-
-        // Treat consumable materials as already used
-        // Assumptions: backend marks consumables with `type === 'consumable'` or `is_consumable === true`
-        // also handle possible Russian value 'расходный' or type strings containing 'consum'
         const isConsumable =
           record.is_consumable === true ||
           record.type === "consumable" ||
@@ -407,7 +400,6 @@ export function KeysMaterialsTable({
           );
         }
 
-        // If material-level status already indicates used, show single tag
         const isUsedMaterial =
           status === "used" ||
           (status || "").toString().toLowerCase().includes("used") ||
@@ -420,111 +412,140 @@ export function KeysMaterialsTable({
           );
         }
 
-        const normalizeName = (obj) => {
+        const getName = (obj) => {
           if (!obj) return null;
           if (typeof obj === "string") return obj;
+          if (obj.name) return obj.name;
           if (obj.executer_name) return obj.executer_name;
           if (obj.executer && obj.executer.name) return obj.executer.name;
           return null;
         };
 
-        // Seed from explicit executer_name on material
-        if (record.executer_name) {
-          const label =
-            record.status === "used" ||
-            (record.status || "").toLowerCase().includes("used") ||
-            (record.status || "").toLowerCase().includes("использ")
+        const getId = (obj) => {
+          if (!obj) return null;
+          return (
+            obj.executer_id ||
+            (obj.executer && obj.executer.id) ||
+            obj.id ||
+            null
+          );
+        };
+
+        const setExec = (idOrName, name, label) => {
+          if (!idOrName && !name) return;
+          const key = idOrName ? String(idOrName) : String(name).trim();
+          const cur = execMap.get(key);
+          const priority = (lab) =>
+            lab === "Использован" ? 2 : lab === "Активен" ? 1 : 0;
+          if (!cur)
+            execMap.set(key, {
+              name: name || key,
+              label: label || "Неактивен",
+            });
+          else if (priority(label) > priority(cur.label))
+            execMap.set(key, { name: cur.name || name, label });
+        };
+
+        // material-level explicit executer
+        if (record.executer_id || record.executer_name) {
+          const id = record.executer_id || null;
+          const nm =
+            record.executer_name ||
+            (record.executer && record.executer.name) ||
+            null;
+          const lab =
+            (record.status || "")
+              .toString()
+              .toLowerCase()
+              .includes("использ") ||
+            (record.status || "").toString().toLowerCase().includes("used")
               ? "Использован"
               : "Неактивен";
-          execMap.set(record.executer_name, label);
+          setExec(id || nm, nm || id, lab);
         }
 
-        // From active_orders
+        // from active_orders
         if (Array.isArray(record.active_orders)) {
           for (const o of record.active_orders) {
-            const name =
-              normalizeName(o) ||
-              o.executer_name ||
-              null ||
-              (o.executer && o.executer.name) ||
-              null;
-            if (!name) continue;
-
-            let label = "Активен";
+            const id = getId(o);
+            const name = getName(o) || o.executer_name || null;
             const s = (o.status || "").toString().toLowerCase();
-            if (s.includes("used") || s.includes("использ"))
-              label = "Использован";
-            else if (s.includes("completed") || s.includes("выполн"))
-              label = "Выполнен";
-            // prefer stronger label
-            const prev = execMap.get(name);
-            if (!prev || priority(label) > priority(prev))
-              execMap.set(name, label);
-          }
-        }
-
-        // From order_numbers (may contain objects or strings)
-        if (Array.isArray(record.order_numbers)) {
-          for (const n of record.order_numbers) {
-            const name = normalizeName(n) || record.executer_name || null;
-            if (!name) continue;
-            const s = (n.status || "").toString().toLowerCase();
-            const label =
+            const lab =
               s.includes("used") || s.includes("использ")
                 ? "Использован"
-                : s.includes("completed") || s.includes("выполн")
-                ? "Выполнен"
-                : s
-                ? "Активен"
                 : "Неактивен";
-            const prev = execMap.get(name);
-            if (!prev || priority(label) > priority(prev))
-              execMap.set(name, label);
+            setExec(id || name, name || id, lab);
           }
         }
 
-        // Fallback: if no executors collected, use material-level status
+        // from order_numbers
+        if (Array.isArray(record.order_numbers)) {
+          for (const n of record.order_numbers) {
+            const id = getId(n);
+            const name = getName(n) || record.executer_name || null;
+            const s = (n.status || "").toString().toLowerCase();
+            const lab =
+              s.includes("used") || s.includes("использ")
+                ? "Использован"
+                : "Неактивен";
+            setExec(id || name, name || id, lab);
+          }
+        }
+
+        // service-level assigned executers
+        const svc = services.find((s) => s.id === record.service_id);
+        if (svc && Array.isArray(svc.assigned_executers)) {
+          for (const a of svc.assigned_executers) {
+            const id = a.executer_id || (a.executer && a.executer.id) || null;
+            const name =
+              a.name ||
+              a.executer_name ||
+              (Array.isArray(executers) &&
+                executers.find((e) => e.id === id)?.name) ||
+              null;
+            // default label for service-level is Неактивен unless we already found used status elsewhere
+            setExec(id || name, name || id, "Неактивен");
+          }
+        }
+
         if (execMap.size === 0) {
-          const matLabel =
-            status === "used" ||
-            (status || "").toLowerCase().includes("used") ||
-            (status || "").toLowerCase().includes("использ")
-              ? "Использован"
-              : status === "pending_replace"
-              ? "Неактивен"
-              : "Неактивен";
           return (
-            <Tag
-              color={matLabel === "Использован" ? "red" : "default"}
-              style={{ fontSize: "12px" }}
-            >
-              {matLabel}
+            <Tag color="default" style={{ fontSize: "12px" }}>
+              Нет
             </Tag>
           );
         }
 
-        // Render tags with colors by label
-        const entries = Array.from(execMap.entries());
-        return (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-            {entries.map(([name, label], i) => {
-              const color =
-                label === "Использован"
-                  ? "red"
-                  : label === "Выполнен"
-                  ? "blue"
-                  : label === "Активен"
-                  ? "green"
-                  : "default";
-              return (
-                <Tooltip key={`${name}-${i}`} title={name} placement="top">
-                  <Tag color={color} style={{ fontSize: "12px" }}>
-                    {name} — {label}
-                  </Tag>
-                </Tooltip>
-              );
-            })}
+        const entries = Array.from(execMap.values());
+        const usedCount = entries.reduce(
+          (acc, e) => acc + (e.label === "Использован" ? 1 : 0),
+          0
+        );
+        const summary =
+          usedCount > 0
+            ? `Использован ${usedCount}`
+            : `${entries.length} исполн.`;
+        const mainColor = usedCount > 0 ? "red" : "default";
+
+        const tooltipTitle = (
+          <div style={{ textAlign: "left" }}>
+            {entries.map((e, i) => (
+              <div key={i} style={{ marginBottom: 4 }}>
+                <strong>{e.name}</strong> — {e.label}
+              </div>
+            ))}
           </div>
+        );
+
+        return (
+          <Tooltip placement="top" title={tooltipTitle}>
+            <Tag
+              color={mainColor}
+              style={{ fontSize: "12px", cursor: "pointer" }}
+            >
+              {summary}
+            </Tag>
+          </Tooltip>
         );
       },
     },
@@ -533,11 +554,8 @@ export function KeysMaterialsTable({
       dataIndex: "order_number",
       key: "order_number",
       width: 200,
-
       render: (order_number, record) => {
-        // Always show order numbers if present; collect from multiple fields
         const orders = [];
-
         if (
           Array.isArray(record.active_orders) &&
           record.active_orders.length > 0
@@ -559,7 +577,6 @@ export function KeysMaterialsTable({
               });
           });
         }
-
         if (
           orders.length === 0 &&
           Array.isArray(record.order_numbers) &&
@@ -576,18 +593,14 @@ export function KeysMaterialsTable({
               });
           });
         }
-
-        if (orders.length === 0 && order_number) {
+        if (orders.length === 0 && order_number)
           orders.push({
             order_number: order_number,
             executer_name: record.executer_name || null,
             status: record.status || null,
           });
-        }
-
         if (orders.length === 0)
           return <span style={{ color: "#64748b" }}>Не указан</span>;
-
         return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
             {orders.map((order, index) => {
@@ -641,8 +654,8 @@ export function KeysMaterialsTable({
       key: "executer_name",
       width: 180,
       render: (executer_name, record) => {
-        // Collect executors from service-level assignment + material/order-level
-        const normalize = (obj) => {
+        // Prefer dedupe by executor id when available, fallback to normalized name.
+        const getName = (obj) => {
           if (!obj) return null;
           if (typeof obj === "string") return obj;
           if (obj.executer_name) return obj.executer_name;
@@ -651,72 +664,117 @@ export function KeysMaterialsTable({
           return null;
         };
 
-        const seen = new Set();
-        const names = [];
-        const add = (n) => {
-          if (!n) return;
-          const s = ("" + n).trim();
-          if (!s) return;
-          if (!seen.has(s)) {
-            seen.add(s);
-            names.push(s);
-          }
+        const getId = (obj) => {
+          if (!obj) return null;
+          return (
+            obj.executer_id ||
+            (obj.executer && obj.executer.id) ||
+            obj.id ||
+            null
+          );
         };
 
-        // Service-level assignments (prefer these like in ServicesTable)
+        const seenIds = new Set();
+        const seenNames = new Set();
+        const names = [];
+
+        const isPlaceholder = (str) => {
+          if (!str) return true;
+          const s = String(str).trim();
+          if (!s) return true;
+          if (/^id:/i.test(s)) return true; // skip ID placeholders here
+          if (/неизвестн/i.test(s.toLowerCase())) return true; // skip "Неизвестный..."
+          return false;
+        };
+
+        const pushEntry = (id, name) => {
+          if (id) {
+            const key = String(id);
+            if (seenIds.has(key)) return;
+            seenIds.add(key);
+            // if name missing, try to resolve from executers list
+            let display = name;
+            if (!display && Array.isArray(executers)) {
+              const f = executers.find((e) => String(e.id) === key);
+              if (f) display = f.name || f.executer_name || null;
+            }
+            if (!display || isPlaceholder(display)) display = `ID:${key}`;
+            if (!display) return;
+            names.push(display);
+            return;
+          }
+          if (!name) return;
+          const display = String(name).trim();
+          if (!display) return;
+          const low = display.toLowerCase();
+          if (seenNames.has(low)) return;
+          if (isPlaceholder(display)) return;
+          seenNames.add(low);
+          names.push(display);
+        };
+
+        // collect from service assignments
         const svc = services.find((s) => s.id === record.service_id);
         if (svc) {
-          // direct assignedExecuter
           if (svc.assignedExecuter) {
-            const n = normalize(svc.assignedExecuter) || svc.assignedExecuter;
-            add(n);
+            const nm =
+              getName(svc.assignedExecuter) || svc.assignedExecuter || null;
+            const id = getId(svc.assignedExecuter);
+            pushEntry(id, nm);
           }
-          // assigned_executers (ServiceAccess)
           if (
             Array.isArray(svc.assigned_executers) &&
             svc.assigned_executers.length > 0
           ) {
             for (const a of svc.assigned_executers) {
-              // try named field or lookup by id from executers state
-              const byName = normalize(a) || a.executer_name || a.name;
-              if (byName) {
-                add(byName);
-                continue;
-              }
-              if (a.executer_id && Array.isArray(executers)) {
-                const found = executers.find((e) => e.id === a.executer_id);
-                if (found)
-                  add(found.name || found.executer_name || `ID:${found.id}`);
-                else add(`ID:${a.executer_id}`);
-              }
+              const id = getId(a);
+              const nm = getName(a) || a.executer_name || a.name || null;
+              pushEntry(id, nm);
             }
           }
         }
 
-        // material-level explicit executer
-        add(
-          executer_name ||
+        // material-level explicit executor
+        if (
+          record.executer_id ||
+          record.executer_name ||
+          (record.executer && record.executer.name)
+        ) {
+          pushEntry(
+            record.executer_id || null,
             record.executer_name ||
-            (record.executer && record.executer.name)
-        );
-
-        // active_orders
-        if (Array.isArray(record.active_orders)) {
-          for (const o of record.active_orders) add(normalize(o));
+              (record.executer && record.executer.name) ||
+              null
+          );
         }
 
-        // order_numbers entries with possible executor info
-        if (Array.isArray(record.order_numbers)) {
-          for (const n of record.order_numbers) {
-            if (!n) continue;
-            if (typeof n === "object") add(normalize(n));
+        // from active_orders
+        if (Array.isArray(record.active_orders)) {
+          for (const o of record.active_orders) {
+            pushEntry(getId(o), getName(o) || o.executer_name || null);
           }
         }
 
+        // from order_numbers
+        if (Array.isArray(record.order_numbers)) {
+          for (const n of record.order_numbers) {
+            if (!n) continue;
+            if (typeof n === "object")
+              pushEntry(getId(n), getName(n) || n.executer_name || null);
+          }
+        }
+
+        // fallback simple executer_name passed from dataSource
+        pushEntry(
+          null,
+          executer_name ||
+            record.executer_name ||
+            (record.executer && record.executer.name) ||
+            null
+        );
+
         if (names.length === 0) return <Tag color="default">Не назначены</Tag>;
         if (names.length === 1) return <Tag color="blue">{names[0]}</Tag>;
-
-        // Compact single tag: "N исполнителя" with tooltip listing all names
         const count = names.length;
         const title = (
           <div style={{ textAlign: "left" }}>
@@ -725,7 +783,6 @@ export function KeysMaterialsTable({
             ))}
           </div>
         );
-
         return (
           <Tooltip placement="top" title={title}>
             <Tag style={{ cursor: "pointer" }}>{count} исполнителя</Tag>
@@ -751,7 +808,6 @@ export function KeysMaterialsTable({
             size="small"
             title="Редактировать"
           />
-          {/* Only Edit and Delete actions per spec */}
           <Popconfirm
             title="Удалить материал?"
             onConfirm={() => handleDelete(record.id)}
