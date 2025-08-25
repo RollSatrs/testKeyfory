@@ -88,7 +88,6 @@ export function KeysMaterialsTable({
   function handleAssignChange(name, value) {
     setAssignForm({ ...assignForm, [name]: value });
   }
-
   async function handleAssignSubmit() {
     if (
       !assignForm.material_id ||
@@ -99,6 +98,7 @@ export function KeysMaterialsTable({
       message.error("Заполните номер заказа и выберите исполнителя");
       return;
     }
+
     try {
       await apiFetch("/api/executers/use-material-for-order", {
         method: "POST",
@@ -109,6 +109,37 @@ export function KeysMaterialsTable({
           order_number: assignForm.order_number,
         }),
       });
+
+      // Оптимистично обновим локальный стейт: пометим материал как использованный
+      const assignedExec = Array.isArray(executers)
+        ? executers.find((e) => e.id === assignForm.executer_id)
+        : null;
+      setMaterials((prev) =>
+        prev.map((m) =>
+          m.id === assignForm.material_id
+            ? {
+                ...m,
+                status: "used",
+                executer_id: assignForm.executer_id || m.executer_id,
+                executer_name:
+                  (assignedExec &&
+                    (assignedExec.name || assignedExec.executer_name)) ||
+                  m.executer_name,
+              }
+            : m
+        )
+      );
+
+      // Попробуем обновить статус и на сервере (не критично в случае ошибки)
+      try {
+        await handleStatusChange(assignForm.material_id, "used");
+      } catch (e) {
+        console.warn(
+          "Не удалось обновить статус материала после назначения:",
+          e
+        );
+      }
+
       message.success("Материал назначен и помечен как использованный");
       setAssignModalVisible(false);
       fetchMaterials();
@@ -350,12 +381,150 @@ export function KeysMaterialsTable({
       title: "Статус",
       dataIndex: "status",
       key: "status",
-      render: () => {
-        // Always show "Использован" for every material row per request
+      render: (status, record) => {
+        // Build list of executor-related statuses using available fields
+        // Priority: Выполнен > Активен > Неактивен
+        const priority = (label) =>
+          label === "Выполнен" ? 3 : label === "Активен" ? 2 : 1;
+
+        const execMap = new Map(); // name -> label
+
+        // Treat consumable materials as already used
+        // Assumptions: backend marks consumables with `type === 'consumable'` or `is_consumable === true`
+        // also handle possible Russian value 'расходный' or type strings containing 'consum'
+        const isConsumable =
+          record.is_consumable === true ||
+          record.type === "consumable" ||
+          record.type === "расходный" ||
+          (typeof record.type === "string" &&
+            record.type.toLowerCase().includes("consum"));
+
+        if (isConsumable) {
+          return (
+            <Tag color="red" style={{ fontSize: "12px" }}>
+              Использован
+            </Tag>
+          );
+        }
+
+        // If material-level status already indicates used, show single tag
+        const isUsedMaterial =
+          status === "used" ||
+          (status || "").toString().toLowerCase().includes("used") ||
+          (status || "").toString().toLowerCase().includes("использ");
+        if (isUsedMaterial) {
+          return (
+            <Tag color="red" style={{ fontSize: "12px" }}>
+              Использован
+            </Tag>
+          );
+        }
+
+        const normalizeName = (obj) => {
+          if (!obj) return null;
+          if (typeof obj === "string") return obj;
+          if (obj.executer_name) return obj.executer_name;
+          if (obj.executer && obj.executer.name) return obj.executer.name;
+          return null;
+        };
+
+        // Seed from explicit executer_name on material
+        if (record.executer_name) {
+          const label =
+            record.status === "used" ||
+            (record.status || "").toLowerCase().includes("used") ||
+            (record.status || "").toLowerCase().includes("использ")
+              ? "Использован"
+              : "Неактивен";
+          execMap.set(record.executer_name, label);
+        }
+
+        // From active_orders
+        if (Array.isArray(record.active_orders)) {
+          for (const o of record.active_orders) {
+            const name =
+              normalizeName(o) ||
+              o.executer_name ||
+              null ||
+              (o.executer && o.executer.name) ||
+              null;
+            if (!name) continue;
+
+            let label = "Активен";
+            const s = (o.status || "").toString().toLowerCase();
+            if (s.includes("used") || s.includes("использ"))
+              label = "Использован";
+            else if (s.includes("completed") || s.includes("выполн"))
+              label = "Выполнен";
+            // prefer stronger label
+            const prev = execMap.get(name);
+            if (!prev || priority(label) > priority(prev))
+              execMap.set(name, label);
+          }
+        }
+
+        // From order_numbers (may contain objects or strings)
+        if (Array.isArray(record.order_numbers)) {
+          for (const n of record.order_numbers) {
+            const name = normalizeName(n) || record.executer_name || null;
+            if (!name) continue;
+            const s = (n.status || "").toString().toLowerCase();
+            const label =
+              s.includes("used") || s.includes("использ")
+                ? "Использован"
+                : s.includes("completed") || s.includes("выполн")
+                ? "Выполнен"
+                : s
+                ? "Активен"
+                : "Неактивен";
+            const prev = execMap.get(name);
+            if (!prev || priority(label) > priority(prev))
+              execMap.set(name, label);
+          }
+        }
+
+        // Fallback: if no executors collected, use material-level status
+        if (execMap.size === 0) {
+          const matLabel =
+            status === "used" ||
+            (status || "").toLowerCase().includes("used") ||
+            (status || "").toLowerCase().includes("использ")
+              ? "Использован"
+              : status === "pending_replace"
+              ? "Неактивен"
+              : "Неактивен";
+          return (
+            <Tag
+              color={matLabel === "Использован" ? "red" : "default"}
+              style={{ fontSize: "12px" }}
+            >
+              {matLabel}
+            </Tag>
+          );
+        }
+
+        // Render tags with colors by label
+        const entries = Array.from(execMap.entries());
         return (
-          <Tag color="red" style={{ fontSize: "12px" }}>
-            Использован
-          </Tag>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+            {entries.map(([name, label], i) => {
+              const color =
+                label === "Использован"
+                  ? "red"
+                  : label === "Выполнен"
+                  ? "blue"
+                  : label === "Активен"
+                  ? "green"
+                  : "default";
+              return (
+                <Tooltip key={`${name}-${i}`} title={name} placement="top">
+                  <Tag color={color} style={{ fontSize: "12px" }}>
+                    {name} — {label}
+                  </Tag>
+                </Tooltip>
+              );
+            })}
+          </div>
         );
       },
     },
@@ -470,44 +639,98 @@ export function KeysMaterialsTable({
       title: "Исполнитель",
       dataIndex: "executer_name",
       key: "executer_name",
-      width: 150,
+      width: 180,
       render: (executer_name, record) => {
-        // Show only explicit executor name (no placeholders)
-        if (executer_name) {
-          return (
-            <Tag color="blue" style={{ fontSize: "12px" }}>
-              {executer_name}
-            </Tag>
-          );
-        }
-        // If executor present in active_orders, show unique names
-        if (record.active_orders && record.active_orders.length > 0) {
-          const uniqueExecuters = [
-            ...new Set(record.active_orders.map((o) => o.executer_name)),
-          ];
-          if (uniqueExecuters.length === 1) {
-            return (
-              <Tag color="blue" style={{ fontSize: "12px" }}>
-                {uniqueExecuters[0]}
-              </Tag>
-            );
+        // Collect executors from service-level assignment + material/order-level
+        const normalize = (obj) => {
+          if (!obj) return null;
+          if (typeof obj === "string") return obj;
+          if (obj.executer_name) return obj.executer_name;
+          if (obj.name) return obj.name;
+          if (obj.executer && obj.executer.name) return obj.executer.name;
+          return null;
+        };
+
+        const seen = new Set();
+        const names = [];
+        const add = (n) => {
+          if (!n) return;
+          const s = ("" + n).trim();
+          if (!s) return;
+          if (!seen.has(s)) {
+            seen.add(s);
+            names.push(s);
           }
-          return (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "2px" }}>
-              {uniqueExecuters.map((name, index) => (
-                <Tag
-                  key={index}
-                  color="blue"
-                  style={{ fontSize: "11px", margin: "1px" }}
-                >
-                  {name}
-                </Tag>
-              ))}
-            </div>
-          );
+        };
+
+        // Service-level assignments (prefer these like in ServicesTable)
+        const svc = services.find((s) => s.id === record.service_id);
+        if (svc) {
+          // direct assignedExecuter
+          if (svc.assignedExecuter) {
+            const n = normalize(svc.assignedExecuter) || svc.assignedExecuter;
+            add(n);
+          }
+          // assigned_executers (ServiceAccess)
+          if (
+            Array.isArray(svc.assigned_executers) &&
+            svc.assigned_executers.length > 0
+          ) {
+            for (const a of svc.assigned_executers) {
+              // try named field or lookup by id from executers state
+              const byName = normalize(a) || a.executer_name || a.name;
+              if (byName) {
+                add(byName);
+                continue;
+              }
+              if (a.executer_id && Array.isArray(executers)) {
+                const found = executers.find((e) => e.id === a.executer_id);
+                if (found)
+                  add(found.name || found.executer_name || `ID:${found.id}`);
+                else add(`ID:${a.executer_id}`);
+              }
+            }
+          }
         }
 
-        return null;
+        // material-level explicit executer
+        add(
+          executer_name ||
+            record.executer_name ||
+            (record.executer && record.executer.name)
+        );
+
+        // active_orders
+        if (Array.isArray(record.active_orders)) {
+          for (const o of record.active_orders) add(normalize(o));
+        }
+
+        // order_numbers entries with possible executor info
+        if (Array.isArray(record.order_numbers)) {
+          for (const n of record.order_numbers) {
+            if (!n) continue;
+            if (typeof n === "object") add(normalize(n));
+          }
+        }
+
+        if (names.length === 0) return <Tag color="default">Не назначены</Tag>;
+        if (names.length === 1) return <Tag color="blue">{names[0]}</Tag>;
+
+        // Compact single tag: "N исполнителя" with tooltip listing all names
+        const count = names.length;
+        const title = (
+          <div style={{ textAlign: "left" }}>
+            {names.map((n, i) => (
+              <div key={i}>{n}</div>
+            ))}
+          </div>
+        );
+
+        return (
+          <Tooltip placement="top" title={title}>
+            <Tag style={{ cursor: "pointer" }}>{count} исполнителя</Tag>
+          </Tooltip>
+        );
       },
     },
     {
