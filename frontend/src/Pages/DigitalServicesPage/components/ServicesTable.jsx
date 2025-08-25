@@ -585,7 +585,9 @@ export function ServicesTable({
 
         // Normalize executor identity across different payload shapes to avoid duplicates
         const normalizeExecutor = (obj, fallbackPrefix = "") => {
-          if (!obj) return { key: null, name: "—" };
+          // Return nulls when no meaningful identity is present to avoid
+          // introducing placeholder names like '—' which pollute exec maps.
+          if (!obj) return { key: null, name: null };
 
           const id =
             obj.executer_id ||
@@ -598,10 +600,15 @@ export function ServicesTable({
             obj.executer?.name ||
             obj.name ||
             (id ? `ID: ${id}` : null) ||
-            "—";
+            null;
+
           const key =
-            id != null ? String(id) : `${fallbackPrefix}:${String(name)}`;
-          return { key: String(key), name };
+            id != null
+              ? String(id)
+              : name != null
+              ? `${fallbackPrefix}:${String(name)}`
+              : null;
+          return { key: key ? String(key) : null, name: name || null };
         };
 
         // Seed from assigned executers (preserve order)

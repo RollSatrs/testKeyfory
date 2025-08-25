@@ -605,7 +605,7 @@ export function KeysMaterialsTable({
                   key={`${order.order_number}-${index}`}
                   title={
                     "Исполнитель: " +
-                    (order.executer_name || "Неизвестный") +
+                    (order.executer_name || "") +
                     "\nНомер заказа: " +
                     order.order_number +
                     (order.status ? "\nСтатус: " + order.status : "")
