@@ -114,6 +114,128 @@ const formatPrice = (value) => {
   return `${n}₽`;
 };
 
+// Helper: определяем — отмечена ли услуга как "Выполнен" именно для этого исполнителя.
+// Мы повторяем логику из `ServicesTable.jsx` чтобы бот фильтровал услуги так же, как админская таблица.
+const isServiceCompletedForExecuter = (s, executerId = null, executerName = null) => {
+  try {
+    // Нормализатор исполнителя — аналогичный фронтенду
+    const normalizeExecutor = (obj, fallbackPrefix = '') => {
+      if (!obj) return { key: null, name: '—' };
+      const id = obj.executer_id ?? obj.executer?.id ?? obj.executer?.user_id ?? obj.id ?? null;
+      const name = obj.executer_name ?? obj.executer?.name ?? obj.name ?? (id ? `ID: ${id}` : null) ?? '—';
+      const key = id != null ? String(id) : `${fallbackPrefix}:${String(name)}`;
+      return { key: String(key), name };
+    };
+
+    // Собираем execMap как в таблице: key -> { name, label }
+    const execMap = new Map();
+
+    // 1) seed from assigned_executers (preserve order semantics)
+    const assigned = Array.isArray(s.assigned_executers) ? s.assigned_executers : [];
+    for (const a of assigned) {
+      const { key, name } = normalizeExecutor(a, 'assigned');
+      const raw = (a.status || (a.Executer && a.Executer.status) || '').toString().toLowerCase();
+      const label = raw === 'inactive' ? 'Неактивен' : 'Активен';
+      if (key) execMap.set(key, { name, label });
+    }
+
+    // 2) completed_orders mark as Выполнен for executor present there
+    if (Array.isArray(s.completed_orders)) {
+      for (const o of s.completed_orders) {
+        if (!o) continue;
+        // completed_orders entries may be plain numbers/strings or objects
+        if (typeof o === 'object') {
+          const { key, name } = normalizeExecutor(o, 'completed');
+          if (!key) continue;
+          execMap.set(key, { name, label: 'Выполнен' });
+        } else {
+          // plain order number — no executor info
+          continue;
+        }
+      }
+    }
+
+    // 3) active_orders: if not already Выполнен mark Активен or Выполнен per order status
+    const activeOrders = Array.isArray(s.active_orders) ? s.active_orders : [];
+    for (const o of activeOrders) {
+      if (!o) continue;
+      if (typeof o === 'object') {
+        const { key, name } = normalizeExecutor(o, 'active');
+        if (!key) continue;
+        const prev = execMap.get(key);
+        if (prev && prev.label === 'Выполнен') continue; // keep Выполнен
+        const raw = (o.status || o.state || '').toString().toLowerCase();
+        const isCompleted = raw.includes('completed') || raw.includes('выполн') || raw.includes('done') || raw.includes('заверш');
+        const label = isCompleted ? 'Выполнен' : 'Активен';
+        execMap.set(key, { name, label });
+      }
+    }
+
+    // 4) also support a field completed_executers that may list ids/names
+    if (Array.isArray(s.completed_executers)) {
+      for (const x of s.completed_executers) {
+        if (!x) continue;
+        if (typeof x === 'object') {
+          const id = x.id ?? x.executer_id ?? x.user_id ?? null;
+          const name = x.name ?? x.executer_name ?? null;
+          const key = id != null ? String(id) : `completed:${String(name || '—')}`;
+          execMap.set(String(key), { name: name || '—', label: 'Выполнен' });
+        } else {
+          // x may be an id or name
+          const key = String(x);
+          execMap.set(key, { name: String(x), label: 'Выполнен' });
+        }
+      }
+    }
+
+    // Merge by name with priority (Выполнен > Активен > Неактивен)
+    const priority = (label) => (label === 'Выполнен' ? 3 : label === 'Активен' ? 2 : 1);
+    const nameMap = new Map(); // name -> label
+    for (const [, val] of execMap) {
+      const nm = val.name || '—';
+      const existing = nameMap.get(nm);
+      if (!existing) nameMap.set(nm, val.label);
+      else if (priority(val.label) > priority(existing)) nameMap.set(nm, val.label);
+    }
+
+    // Now check whether current executor is present and has label 'Выполнен'
+    // Try matching by id first, then by name
+    if (executerId != null) {
+      // direct key by id
+      const idKey = String(executerId);
+      const byId = execMap.get(idKey);
+      if (byId && byId.label === 'Выполнен') return true;
+    }
+
+    if (executerName) {
+      const byName = nameMap.get(String(executerName));
+      if (byName === 'Выполнен') return true;
+    }
+
+    // Also check keys that might encode name fallback keys like 'assigned:Name' or 'completed:Name'
+    // Search execMap for entries whose name matches executor name and label is Выполнен
+    if (executerName) {
+      for (const [, val] of execMap) {
+        if (!val || !val.name) continue;
+        if (String(val.name) === String(executerName) && val.label === 'Выполнен') return true;
+      }
+    }
+
+    return false;
+  } catch (err) {
+    if (DEBUG_BOT_SERVICES) console.log('isServiceCompletedForExecuter error:', err && err.message);
+    return false;
+  }
+};
+
+const filterVisibleServices = (services, executerId = null, executerName = null) => {
+  return (Array.isArray(services) ? services : []).filter(s => !isServiceCompletedForExecuter(s, executerId, executerName));
+};
+
+// Debug flag — включаем всегда, чтобы бот печатал детали запроса/фильтрации услуг
+// (ранее использовался процесс.env, теперь включён постоянно по требованию пользователя)
+const DEBUG_BOT_SERVICES = true;
+
 // Команда /start
 // Команда /start
 bot.start(async (ctx) => {
@@ -229,40 +351,59 @@ const showMyServices = async (ctx) => {
     const response = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
     const services = response.data || [];
 
-    // Filter out services already completed by this executer. Backend may return
-    // per-executer execution info in several shapes; treat any completed/done/завершен state as completed.
-    const visibleServices = (Array.isArray(services) ? services : []).filter((s) => {
-      try {
-        const completedCount = Number(s.completed_count || s.completedCount || 0) || 0;
-        if (completedCount > 0) return false;
-
-        const execStatusRaw = (
-          s.executionStatus || s.execution_status || s.execution?.status || s.lastExecution?.status || s.last_execution?.status || ''
-        ).toString().toLowerCase();
-        if (/completed|done|выполн|заверш/.test(execStatusRaw)) return false;
-
-        // Some endpoints include a `lastExecution` object with detailed info
-        const last = s.lastExecution || s.last_execution || s.execution || null;
-        const lastStatus = (last && (last.status || last.state || last.state_name || ''))
-          .toString()
-          .toLowerCase();
-        if (/completed|done|выполн|заверш/.test(lastStatus)) return false;
-
-        return true;
-      } catch (err) {
-        return true;
+    // Доп. проверка: получаем все выполненные этим исполнителем заказы
+    // и собираем service_id, чтобы однозначно определить, какие услуги он уже завершал.
+    let completedServiceIds = new Set();
+    try {
+      const compResp = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
+      const completedOrders = compResp.data || [];
+      for (const o of (Array.isArray(completedOrders) ? completedOrders : [])) {
+        const sid = o.service_id ?? o.Service?.id ?? o.serviceId ?? null;
+        if (sid != null) completedServiceIds.add(String(sid));
       }
-    });
+      if (DEBUG_BOT_SERVICES) console.log(`DEBUG_BOT_SERVICES: completedServiceIds for executer ${session.executerId}:`, Array.from(completedServiceIds));
+    } catch (e) {
+      if (DEBUG_BOT_SERVICES) console.log('DEBUG_BOT_SERVICES: failed to load completed-orders for executer:', e.message);
+    }
+
+    if (DEBUG_BOT_SERVICES) {
+      console.log('DEBUG_BOT_SERVICES: /services response raw:', JSON.stringify(response.data, null, 2));
+    }
+
+    // Используем общую функцию фильтрации, но логируем per-service детали
+    const visibleServices = [];
+    for (const s of (Array.isArray(services) ? services : [])) {
+      try {
+        const completedOrdersField = s.completed_orders;
+        const completedCountField = s.completed_count ?? s.completedCount;
+        const lastExec = s.lastExecution ?? s.last_execution ?? s.execution ?? null;
+        const execStatus = (s.executionStatus || s.execution_status || (lastExec && (lastExec.status || lastExec.state)) || '').toString();
+
+  // Если есть явные completed service_id из completed-orders — помечаем как выполненную
+  const completedForExec = completedServiceIds.has(String(s.id)) || isServiceCompletedForExecuter(s, session.executerId, session.name);
+
+        if (DEBUG_BOT_SERVICES) {
+          console.log(
+            `DEBUG_SERVICES: id=${s.id} name="${s.name}" completed_count=${completedCountField} ` +
+            `execStatus="${execStatus}" completed_orders=${Array.isArray(completedOrdersField) ? completedOrdersField.length : String(completedOrdersField)} ` +
+            `lastExec=${lastExec ? JSON.stringify(lastExec) : 'null'} -> completedForThisExec=${completedForExec}`
+          );
+        }
+
+        if (!completedForExec) visibleServices.push(s);
+      } catch (err) {
+        console.log('DEBUG_SERVICES: error evaluating service', s && s.id, err.message);
+        visibleServices.push(s);
+      }
+    }
 
     if (!Array.isArray(visibleServices) || visibleServices.length === 0) {
       return ctx.reply('🛠️ У вас пока нет доступных услуг', getMainMenu());
     }
 
-  let msg = `🛠️ *Мои услуги:*
+    let msg = `🛠️ *Мои услуги:*\n\nВыберите услугу, чтобы создать заказ:`;
 
-Выберите услугу, чтобы создать заказ:`;
-
-  const keyboard = services.map(s => [{ text: `${s.name} — ${formatPrice(s.price)}`, callback_data: `select_service_${s.id}` }]);
+    const keyboard = (Array.isArray(visibleServices) ? visibleServices : []).map(s => [{ text: `${s.name} — ${formatPrice(s.price)}`, callback_data: `select_service_${s.id}` }]);
 
     await ctx.reply(msg, {
       parse_mode: 'Markdown',
@@ -338,14 +479,44 @@ const showActiveServices = async (ctx) => {
       // чтобы после назначения услуги админом исполнитель мог её увидеть и создать заказ.
       try {
         const servicesResp = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
+        if (DEBUG_BOT_SERVICES) console.log('DEBUG_BOT_SERVICES: /services fallback raw:', JSON.stringify(servicesResp.data, null, 2));
         const services = servicesResp.data || [];
 
-        if (Array.isArray(services) && services.length > 0) {
+        // Получим выполненные заказы для фолбэка тоже
+        let completedServiceIdsFallback = new Set();
+        try {
+          const compResp = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
+          const completedOrders = compResp.data || [];
+          for (const o of (Array.isArray(completedOrders) ? completedOrders : [])) {
+            const sid = o.service_id ?? o.Service?.id ?? o.serviceId ?? null;
+            if (sid != null) completedServiceIdsFallback.add(String(sid));
+          }
+          if (DEBUG_BOT_SERVICES) console.log(`DEBUG_BOT_SERVICES: completedServiceIdsFallback for executer ${session.executerId}:`, Array.from(completedServiceIdsFallback));
+        } catch (e) {
+          if (DEBUG_BOT_SERVICES) console.log('DEBUG_BOT_SERVICES: failed to load completed-orders for executer (fallback):', e.message);
+        }
+
+        // Log per-service and filter using helper
+        const availableServices = [];
+        for (const s of (Array.isArray(services) ? services : [])) {
+          try {
+            const completedForExec = completedServiceIdsFallback.has(String(s.id)) || isServiceCompletedForExecuter(s, session.executerId, session.name);
+            if (DEBUG_BOT_SERVICES) {
+              console.log(`DEBUG_SERVICES(fallback): id=${s.id} name="${s.name}" completedForThisExec=${completedForExec}`);
+            }
+            if (!completedForExec) availableServices.push(s);
+          } catch (err) {
+            if (DEBUG_BOT_SERVICES) console.log('DEBUG_SERVICES(fallback): error', err.message);
+            availableServices.push(s);
+          }
+        }
+
+        if (Array.isArray(availableServices) && availableServices.length > 0) {
           let msg = `📋 *Активные услуги:*\n\n`;
           msg += `💰 Общий заработок: ${balanceToShow}₽\n\n`;
           msg += `🔎 Ниже перечислены услуги, к которым у вас есть доступ. Выберите услугу, чтобы создать заказ:`;
 
-          const keyboard = services.map(s => [{ text: `${s.name} — ${formatPrice(s.price)}`, callback_data: `select_service_${s.id}` }]);
+          const keyboard = availableServices.map(s => [{ text: `${s.name} — ${formatPrice(s.price)}`, callback_data: `select_service_${s.id}` }]);
 
           await ctx.reply(msg, {
             parse_mode: 'Markdown',
@@ -356,7 +527,7 @@ const showActiveServices = async (ctx) => {
           return;
         }
       } catch (svcErr) {
-        console.warn('Не удалось получить список услуг для исполнителя:', svcErr.message);
+        console.warn('Не удалось получить список услуг для исполнителя (fallback):', svcErr.message);
       }
 
       return ctx.reply(
@@ -787,7 +958,6 @@ bot.on('text', async (ctx) => {
   const normalized = String(text || '').replace(/\uFFFD/g, '').replace(/\s+/g, ' ').trim();
 
   // Толерантная обработка: если текст содержит ключевые слова меню — направляем к нужным обработчикам.
-  // Это покрывает случаи, когда ранее отправленная клавиатура содержит поврежденный символ (�).
   try {
     const lower = normalized.toLowerCase();
     if (/активн/i.test(lower) && /услуг/i.test(lower)) {
@@ -827,7 +997,7 @@ bot.on('text', async (ctx) => {
     return handleReplacementReasonInput(ctx, text);
   }
 
-    // Обработка кнопок главного меню
+  // Обработка кнопок главного меню
   switch (text) {
     case '🛠️ Мои услуги':
       await showMyServices(ctx);
@@ -1040,7 +1210,27 @@ bot.action(/^select_service_(\d+)$/, async (ctx) => {
 
     // Получаем информацию об услуге
   const response = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
-  const service = (response.data || []).find(s => s.id == serviceId);
+  const servicesList = response.data || [];
+  const service = servicesList.find(s => s.id == serviceId);
+
+    // Re-check that this service is visible (not already completed by this executer)
+    // Доп. проверка по completed-orders
+    let serviceCompletedByExecuter = false;
+    try {
+      const compResp = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
+      const completedOrders = compResp.data || [];
+      if (Array.isArray(completedOrders)) {
+        serviceCompletedByExecuter = completedOrders.some(o => String(o.service_id ?? o.Service?.id ?? o.serviceId ?? '') === String(serviceId));
+      }
+    } catch (e) {
+      if (DEBUG_BOT_SERVICES) console.log('DEBUG_BOT_SERVICES: failed to load completed-orders for select_service recheck:', e.message);
+    }
+
+    if (service && (serviceCompletedByExecuter || isServiceCompletedForExecuter(service, session.executerId, session.name))) {
+      if (DEBUG_BOT_SERVICES) console.log(`DEBUG_SERVICES: select blocked serviceId=${serviceId} for executer=${session.executerId}`);
+      await ctx.reply('❌ Эта услуга уже выполнена вами и недоступна для повторного назначения.', getMainMenu());
+      return;
+    }
 
     if (!service) {
       return ctx.reply('❌ Услуга не найдена');

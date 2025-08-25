@@ -691,50 +691,37 @@ export function ServicesTable({
           </div>
         );
 
-        // Prefer showing "ВЫПОЛНЕН" when there are completed executions.
-        // Backend may provide `completed_count` and `completed_orders` (added in admin service),
-        // so check those first. Fall back to inspecting merged orders/statuses.
-        const hasCompleted =
-          (typeof record.completed_count === "number" &&
-            record.completed_count > 0) ||
-          (Array.isArray(record.completed_orders) &&
-            record.completed_orders.length > 0) ||
-          [
-            ...activeOrders,
-            ...(Array.isArray(record.order_numbers)
-              ? record.order_numbers
-              : []),
-          ].some((o) => {
-            if (!o) return false;
-            const s = (o.status || o.state || "").toString().toLowerCase();
-            return (
-              s === "completed" ||
-              s === "done" ||
-              s === "выполнен" ||
-              s === "завершен" ||
-              s === "завершена"
-            );
-          });
+        // Build a concise count label (like in the 'Исполнители' column).
+        // Keep the tooltip content unchanged (lists executor -> status lines).
+        const totalExecutors = dedup.length;
 
-        // Determine tag color based on completion or service status
-        const color = hasCompleted
-          ? "blue"
-          : status === "active"
-          ? "green"
-          : status === "inactive"
-          ? "orange"
-          : "default";
-        const label = hasCompleted
-          ? "ВЫПОЛНЕН"
-          : status === "active"
-          ? "АКТИВНА"
-          : status === "inactive"
-          ? "НЕАКТИВНА"
-          : status || "—";
+        // Also compute simple breakdown counts for optional use in label/title
+        let completedCount = 0;
+        let activeCount = 0;
+        let inactiveCount = 0;
+        for (const l of nameMap.values()) {
+          if (l === "Выполнен") completedCount += 1;
+          else if (l === "Активен") activeCount += 1;
+          else if (l === "Неактивен") inactiveCount += 1;
+        }
+
+        // Main visible label: number of executors (keeps UI compact).
+        const mainLabel =
+          totalExecutors > 0 ? `${totalExecutors} исполн.` : status || "—";
+
+        // Choose a neutral color; highlight if there are completed executions so admin notices.
+        const tagColor =
+          completedCount > 0
+            ? "blue"
+            : status === "active"
+            ? "green"
+            : status === "inactive"
+            ? "orange"
+            : "default";
 
         return (
           <Tooltip title={tooltipContent} placement="topLeft">
-            <Tag color={hasCompleted ? "blue" : color}>{label}</Tag>
+            <Tag color={tagColor}>{mainLabel}</Tag>
           </Tooltip>
         );
       },

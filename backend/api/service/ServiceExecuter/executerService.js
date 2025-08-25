@@ -1,4 +1,4 @@
-import { Executer, Order, Services, Material, Log, ServiceAccess, MaterialReplacement, ServiceExecution } from '../../../database/dbTables.js';
+import { Executer, Services, Material, Log, ServiceAccess, MaterialReplacement, ServiceExecution } from '../../../database/dbTables.js';
 import { Op } from 'sequelize';
 
 // Функция для автоматического обновления активности исполнителя
@@ -18,175 +18,17 @@ export const updateExecuterActivity = async (executerId) => {
 };
 
 // Функция для создания лога
-export const createExecuterLog = async (executerId, action, description, orderId = null, serviceId = null) => {
+export const createExecuterLog = async (executerId, action, description, serviceId = null) => {
   try {
     await Log.create({
       user_id: executerId,
       user_type: 'executer',
       action: action,
       description: description,
-      order_id: orderId,
       service_id: serviceId
     });
   } catch (err) {
     console.error('Ошибка при создании лога:', err);
-  }
-};
-
-// Функция для завершения заказа
-export const completeOrder = async (orderId, executerId) => {
-  try {
-    const order = await Order.findOne({
-      where: { id: orderId, executer_id: executerId }
-    });
-
-    if (!order) {
-      throw new Error('Заказ не найден');
-    }
-
-    if (order.status === 'completed') {
-      throw new Error('Заказ уже завершен');
-    }
-
-    // Автоматически обновляем статус заказа и оплаты
-    await order.update({
-      status: 'completed',
-      payment_status: 'paid'
-    });
-
-    // Обновляем статус всех материалов заказа на "использован"
-    await Material.update(
-      {
-        status: 'used',
-        used_date: new Date()
-      },
-      {
-        where: { order_id: orderId }
-      }
-    );
-
-    // Обновляем статус материалов в details заказа
-    if (order.details && order.details.materials) {
-      const updatedDetails = {
-        ...order.details,
-        materials: order.details.materials.map(material => ({
-          ...material,
-          status: 'used',
-          used_date: new Date()
-        }))
-      };
-
-      await order.update({
-        details: updatedDetails
-      });
-    }
-
-    // Обновляем баланс исполнителя
-    const executer = await Executer.findByPk(executerId);
-    if (executer) {
-      await executer.update({
-        balance: executer.balance + (order.total_sum || 0)
-      });
-    }
-
-    // Создаем лог
-    await createExecuterLog(
-      executerId,
-      'order_completed',
-      `Заказ #${orderId} завершен, материалы помечены как использованные`,
-      orderId,
-      order.service_id
-    );
-
-    // Обновляем активность
-    await updateExecuterActivity(executerId);
-
-    return order;
-  } catch (err) {
-    console.error('Ошибка при завершении заказа:', err);
-    throw new Error(err.message || 'Ошибка сервера');
-  }
-};
-
-// Функция для начала работы над заказом
-export const startOrderWork = async (orderId, executerId) => {
-  try {
-    const order = await Order.findOne({
-      where: { id: orderId, executer_id: executerId }
-    });
-
-    if (!order) {
-      throw new Error('Заказ не найден');
-    }
-
-    if (order.status === 'completed') {
-      throw new Error('Заказ уже завершен');
-    }
-
-    if (order.status === 'in_progress') {
-      throw new Error('Заказ уже находится в работе');
-    }
-
-    // Обновляем статус заказа на "в работе"
-    await order.update({
-      status: 'in_progress'
-    });
-
-    // Создаем лог
-    await createExecuterLog(
-      executerId,
-      'order_started',
-      `Заказ #${orderId} взят в работу`,
-      orderId,
-      order.service_id
-    );
-
-    // Обновляем активность
-    await updateExecuterActivity(executerId);
-
-    return order;
-  } catch (err) {
-    console.error('Ошибка при начале работы над заказом:', err);
-    throw new Error(err.message || 'Ошибка сервера');
-  }
-};
-
-// Функция для принятия заказа в работу
-export const acceptOrder = async (orderId, executerId) => {
-  try {
-    const order = await Order.findOne({
-      where: { id: orderId, executer_id: executerId }
-    });
-
-    if (!order) {
-      throw new Error('Заказ не найден');
-    }
-
-    if (order.status !== 'pending') {
-      throw new Error('Заказ нельзя принять в работу');
-    }
-
-    // Автоматически обновляем статус заказа
-    await order.update({
-      status: 'in_progress'
-    });
-
-    // Создаем лог
-    await createExecuterLog(
-      executerId,
-      'order_accepted',
-      `Заказ #${orderId} принят в работу`,
-      orderId,
-      order.service_id
-    );
-
-    // Обновляем активность
-    await updateExecuterActivity(executerId);
-
-    return order;
-  } catch (err) {
-    console.error('Ошибка при принятии заказа:', err);
-    throw new Error(err.message || 'Ошибка сервера');
   }
 };
 
@@ -199,7 +41,7 @@ export const addExecuter = async (telegramId, name = null) => {
 
     // Проверяем, есть ли уже такой исполнитель
     const existingExecuter = await Executer.findOne({
-      where: { telegram_id: telegramId }
+  where: { telegram_id: String(telegramId) }
     });
 
     if (existingExecuter) {
@@ -228,11 +70,10 @@ export const checkExecuter = async (telegramId) => {
       throw new Error('Telegram ID не указан');
     }
 
-    // Приводим telegram_id к строке для совместимости с базой данных
-    const telegramIdStr = String(telegramId);
-
+    // Ensure we compare strings because telegram_id column is VARCHAR
+    const normalizedTelegramId = String(telegramId);
     const executer = await Executer.findOne({
-      where: { telegram_id: telegramIdStr }
+      where: { telegram_id: normalizedTelegramId }
     });
 
     return executer;
@@ -242,148 +83,23 @@ export const checkExecuter = async (telegramId) => {
   }
 };
 
-// Получить заказы исполнителя
-export const getExecuterOrders = async (executerId, status = null) => {
-  try {
-    console.log('\n🔥 === SERVICE: ПОЛУЧЕНИЕ ЗАКАЗОВ ===');
-    console.log(`👤 Executer ID: ${executerId}`);
-    console.log(`📊 Status filter: ${status}`);
-
-    const whereCondition = { executer_id: executerId };
-
-    // Если указан статус, добавляем его в условие
-    if (status) {
-      whereCondition.status = status;
-    }
-
-    // Используем ServiceExecution вместо Order
-    const orders = await ServiceExecution.findAll({
-      where: whereCondition,
-      include: [
-        {
-          model: Services,
-          as: 'Service',
-          attributes: ['name', 'description', 'price']
-        }
-      ],
-      order: [['created_at', 'DESC']]
-    });
-
-    console.log(`📋 Найдено заказов: ${orders ? orders.length : 0}`);
-    console.log(`📊 Данные заказов:`, JSON.stringify(orders, null, 2));
-
-    // Логируем активность просмотра заказов
-    const logAction = status === 'completed' ? 'view_completed_orders' : 'view_orders';
-    const logDescription = status === 'completed' ? 'Просмотр выполненных заказов' : 'Просмотр списка заказов';
-
-    await createExecuterLog(
-      executerId,
-      logAction,
-      logDescription
-    );
-
-    // Обновляем активность
-    await updateExecuterActivity(executerId);
-
-    return orders;
-  } catch (err) {
-    console.error('❌ SERVICE: Ошибка при получении заказов:', err);
-    console.error('❌ SERVICE: Stack trace:', err.stack);
-    throw new Error('Ошибка сервера');
-  }
-};
-
-// Получить активные заказы исполнителя
-export const getExecuterActiveOrders = async (executerId) => {
-  try {
-    console.log('\n🔥 === SERVICE: ПОЛУЧЕНИЕ АКТИВНЫХ ЗАКАЗОВ ===');
-    console.log(`👤 Executer ID: ${executerId}`);
-
-    const logAction = 'get_orders';
-    const logDescription = `Получение активных заказов исполнителем ID: ${executerId}`;
-
-    // Ищем в ServiceExecution вместо Order
-    const orders = await ServiceExecution.findAll({
-      where: {
-        executer_id: executerId,
-        status: ['pending', 'in_progress', 'active'] // активные статусы
-      },
-      include: [
-        {
-          model: Services,
-          as: 'Service',
-          attributes: ['name', 'description', 'price']
-        }
-      ],
-      order: [['created_at', 'DESC']]
-    });
-
-    console.log(`📋 Найдено ServiceExecution записей: ${orders ? orders.length : 0}`);
-    console.log(`📊 Данные активных заказов:`, JSON.stringify(orders, null, 2));
-
-    await createExecuterLog(
-      executerId,
-      logAction,
-      logDescription
-    );
-
-    await updateExecuterActivity(executerId);
-
-    return orders;
-  } catch (error) {
-    console.error('❌ SERVICE: Ошибка получения активных заказов:', error);
-    console.error('❌ SERVICE: Stack trace:', error.stack);
-    throw error;
-  }
-};
-
-// Получить завершенные заказы исполнителя
-export const getExecuterCompletedOrders = async (executerId) => {
-  try {
-    console.log('\n✅ === SERVICE: ПОЛУЧЕНИЕ ЗАВЕРШЕННЫХ ЗАКАЗОВ ===');
-    console.log(`👤 Executer ID: ${executerId}`);
-
-    const logAction = 'get_completed_orders';
-    const logDescription = `Получение завершенных заказов исполнителем ID: ${executerId}`;
-
-    // Ищем в ServiceExecution вместо Order
-    const orders = await ServiceExecution.findAll({
-      where: {
-        executer_id: executerId,
-        status: 'completed' // только завершенные
-      },
-      include: [
-        {
-          model: Services,
-          as: 'Service',
-          attributes: ['name', 'description', 'price']
-        }
-      ],
-      order: [['updated_at', 'DESC']] // сортируем по дате завершения
-    });
-
-    console.log(`✅ Найдено завершенных ServiceExecution записей: ${orders ? orders.length : 0}`);
-    console.log(`📊 Данные завершенных заказов:`, JSON.stringify(orders, null, 2));
-
-    await createExecuterLog(
-      executerId,
-      logAction,
-      logDescription
-    );
-
-    await updateExecuterActivity(executerId);
-
-    return orders;
-  } catch (error) {
-    console.error('❌ SERVICE: Ошибка получения завершенных заказов:', error);
-    console.error('❌ SERVICE: Stack trace:', error.stack);
-    throw error;
-  }
-};
-
 // Получить доступные услуги для исполнителя
 export const getExecuterServices = async (executerId) => {
   try {
+    console.log(`🔍 Поиск услуг для исполнителя ID: ${executerId}`);
+
+    // Новая система: ищем услуги, где исполнитель назначен напрямую
+    const directlyAssignedServices = await Services.findAll({
+      where: {
+        executer_id: executerId,
+        status: 'active'
+      },
+      attributes: ['id', 'name', 'description', 'price', 'category']
+    });
+
+    console.log(`📋 Найдено напрямую назначенных услуг: ${directlyAssignedServices.length}`);
+
+    // Старая система: ищем услуги через таблицу доступа (для совместимости)
     const serviceAccess = await ServiceAccess.findAll({
       where: {
         executer_id: executerId,
@@ -392,77 +108,37 @@ export const getExecuterServices = async (executerId) => {
       include: [
         {
           model: Services,
-          attributes: ['id', 'name', 'description', 'price']
+          where: { status: 'active' },
+          attributes: ['id', 'name', 'description', 'price', 'category']
         }
       ]
     });
 
-    return serviceAccess.map(access => access.Service);
+    console.log(`📋 Найдено услуг через ServiceAccess: ${serviceAccess.length}`);
+
+    // Объединяем результаты и убираем дубликаты
+    const allServices = [];
+
+    // Добавляем напрямую назначенные услуги
+    directlyAssignedServices.forEach(service => {
+      allServices.push(service.toJSON());
+    });
+
+    // Добавляем услуги из таблицы доступа
+    serviceAccess.forEach(access => {
+      const service = access.Service.toJSON();
+      // Проверяем, нет ли уже такой услуги
+      if (!allServices.find(s => s.id === service.id)) {
+        allServices.push(service);
+      }
+    });
+
+    console.log(`📋 Итого уникальных услуг: ${allServices.length}`);
+    console.log(`📋 Список услуг:`, allServices.map(s => `ID: ${s.id}, Название: ${s.name}`));
+
+    return allServices;
   } catch (err) {
     console.error('Ошибка при получении услуг:', err);
-    throw new Error('Ошибка сервера');
-  }
-};
-
-// Получить статистику исполнителя
-export const getExecuterStats = async (executerId) => {
-  try {
-    const completedExecutions = await ServiceExecution.count({
-      where: {
-        executer_id: executerId,
-        status: 'completed'
-      }
-    });
-
-    const activeExecutions = await ServiceExecution.count({
-      where: {
-        executer_id: executerId,
-        status: 'in_progress'
-      }
-    });
-
-    // Подсчитываем общий заработок через индивидуальные цены из ServiceExecution
-    const completedServices = await ServiceExecution.findAll({
-      where: {
-        executer_id: executerId,
-        status: 'completed'
-      },
-      include: [{
-        model: Services,
-        attributes: ['name', 'price']
-      }]
-    });
-
-    console.log(`💰 Расчет заработка: найдено ${completedServices.length} выполненных заказов`);
-
-    const totalEarnings = completedServices.reduce((sum, execution) => {
-      // Используем индивидуальную цену из ServiceExecution, если она есть
-      const individualPrice = execution.price || execution.Service?.price || 0;
-      console.log(`💰 Заказ #${execution.order_number}: цена ${individualPrice}₽ (индивидуальная: ${execution.price}₽, стандартная: ${execution.Service?.price}₽)`);
-      return sum + individualPrice;
-    }, 0);
-
-    console.log(`💰 Расчет заработка: найдено ${completedServices.length} выполненных заказов, общая сумма: ${totalEarnings}₽`);
-
-    const executer = await Executer.findByPk(executerId);
-
-    const replacementRequests = await Log.count({
-      where: {
-        user_id: executerId,
-        user_type: 'executer',
-        action: 'request_replacement'
-      }
-    });
-
-    return {
-      completedOrders: completedExecutions || 0,
-      activeOrders: activeExecutions || 0,
-      totalEarnings: totalEarnings || 0,
-      rating: executer?.rating || 0,
-      replacementRequests: replacementRequests || 0
-    };
-  } catch (err) {
-    console.error('Ошибка при получении статистики:', err);
     throw new Error('Ошибка сервера');
   }
 };
@@ -478,160 +154,14 @@ export const getExecuterBalance = async (executerId) => {
   }
 };
 
-// Получить заказ по ID
-export const getOrderById = async (orderId, executerId) => {
-  try {
-    const order = await Order.findOne({
-      where: {
-        id: orderId,
-        executer_id: executerId
-      },
-      include: [
-        {
-          model: Services,
-          attributes: ['name', 'description']
-        }
-      ]
-    });
-
-    if (!order) {
-      return null;
-    }
-
-    // Если в details есть материалы, загружаем их полные данные
-    if (order.details && order.details.materials && Array.isArray(order.details.materials)) {
-      console.log(`🔍 Загружаем полные данные для материалов из details:`, order.details.materials);
-
-      // Если materials содержит ID материалов, загружаем их
-      if (order.details.materials.length > 0 && typeof order.details.materials[0] === 'number') {
-        const materialIds = order.details.materials;
-        const fullMaterials = await Material.findAll({
-          where: {
-            id: materialIds
-          }
-        });
-
-        console.log(`📦 Найдено полных материалов: ${fullMaterials.length}`);
-
-        // Обновляем details с полными данными материалов
-        order.details = {
-          ...order.details,
-          materials: fullMaterials.map(material => ({
-            id: material.id,
-            type_key: material.type_key,
-            contents: material.contents,
-            status: material.status,
-            source: material.source,
-            added_date: material.added_date
-          }))
-        };
-      }
-    }
-
-    return order;
-  } catch (err) {
-    console.error('Ошибка при получении заказа:', err);
-    throw new Error('Ошибка сервера');
-  }
-};
-
-// Получить материалы по заказу
-export const getMaterialsByOrder = async (orderId) => {
-  try {
-    console.log(`🔍 Поиск материалов для заказа номер: ${orderId}`);
-
-    const materials = await Material.findAll({
-      where: { order_number: orderId }
-    });
-
-    console.log(`📦 Найдено материалов: ${materials.length}`);
-    console.log(`📦 Детали материалов:`, materials.map(m => ({
-      id: m.id,
-      type_key: m.type_key,
-      contents: m.contents,
-      order_number: m.order_number
-    })));
-
-    return materials;
-  } catch (err) {
-    console.error('Ошибка при получении материалов:', err);
-    throw new Error('Ошибка сервера');
-  }
-};
-
-// Запросить замену материала
-export const requestMaterialReplacement = async (orderNumber, materialId, executerId, reason) => {
-  try {
-    // Находим ServiceExecution по номеру заказа
-    const serviceExecution = await ServiceExecution.findOne({
-      where: {
-        order_number: orderNumber,
-        executer_id: executerId
-      },
-      include: [
-        {
-          model: Services,
-          as: 'Service',
-          attributes: ['id', 'name']
-        }
-      ]
-    });
-
-    if (!serviceExecution) {
-      throw new Error('Заказ не найден');
-    }
-
-    // Проверяем материал
-    const material = await Material.findByPk(materialId);
-    if (!material) {
-      throw new Error('Материал не найден');
-    }
-
-    // Создаем запрос на замену материала
-    const replacementRequest = await MaterialReplacement.create({
-      order_id: serviceExecution.id, // Используем ID ServiceExecution как order_id
-      executer_id: executerId,
-      material_id: materialId,
-      reason: reason,
-      status: 'pending'
-    });
-
-    // Меняем статус материала на "ожидает замену"
-    await Material.update(
-      { status: 'pending_replace' },
-      { where: { id: materialId } }
-    );
-
-    // Записываем лог запроса
-    await createExecuterLog(
-      executerId,
-      'request_replacement',
-      `Запрос замены материала для заказа #${orderNumber}: ${reason}`,
-      serviceExecution.id,
-      serviceExecution.service_id
-    );
-
-    // Обновляем активность
-    await updateExecuterActivity(executerId);
-
-    console.log(`✅ Запрос замены создан для заказа #${orderNumber}, материал ${materialId}`);
-
-    return replacementRequest;
-  } catch (err) {
-    console.error('Ошибка при запросе замены:', err);
-    throw new Error(err.message || 'Ошибка сервера');
-  }
-};
-
 // Записать лог
-export const writeExecuterLog = async (userId, userType, action, description, orderId = null, serviceId = null) => {
+export const writeExecuterLog = async (userId, userType, action, description, serviceId = null) => {
   try {
     const log = await Log.create({
       user_id: userId,
       user_type: userType,
       action: action,
       description: description,
-      order_id: orderId,
       service_id: serviceId
     });
 
@@ -670,7 +200,7 @@ export const loginExecuter = async (telegramId) => {
 export const getExecuterProfile = async (telegramId) => {
   try {
     const executer = await Executer.findOne({
-      where: { telegram_id: telegramId },
+  where: { telegram_id: String(telegramId) },
       attributes: ['id', 'name', 'telegram_id', 'rating', 'status', 'create_date_executer']
     });
 
@@ -689,7 +219,7 @@ export const getExecuterProfile = async (telegramId) => {
 export const updateExecuterProfile = async (telegramId, updateData) => {
   try {
     const executer = await Executer.findOne({
-      where: { telegram_id: telegramId }
+  where: { telegram_id: String(telegramId) }
     });
 
     if (!executer) {
@@ -711,7 +241,7 @@ export const updateExecuterProfile = async (telegramId, updateData) => {
     }
 
     await Executer.update(updateFields, {
-      where: { telegram_id: telegramId }
+  where: { telegram_id: String(telegramId) }
     });
 
     const updatedExecuter = await getExecuterProfile(telegramId);
@@ -732,7 +262,7 @@ export const updateExecuterStatus = async (telegramId, status) => {
     }
 
     const executer = await Executer.findOne({
-      where: { telegram_id: telegramId }
+  where: { telegram_id: String(telegramId) }
     });
 
     if (!executer) {
@@ -741,7 +271,7 @@ export const updateExecuterStatus = async (telegramId, status) => {
 
     await Executer.update(
       { status: status },
-      { where: { telegram_id: telegramId } }
+  { where: { telegram_id: String(telegramId) } }
     );
 
     const updatedExecuter = await getExecuterProfile(telegramId);
@@ -749,34 +279,6 @@ export const updateExecuterStatus = async (telegramId, status) => {
   } catch (err) {
     console.error('Ошибка при обновлении статуса исполнителя:', err);
     throw new Error(err.message || 'Ошибка сервера');
-  }
-};
-
-// Получить доступные материалы для замены
-export const getAvailableMaterialsForReplacement = async (orderId, executerId) => {
-  try {
-    // Проверяем доступ к заказу
-    const order = await Order.findOne({
-      where: { id: orderId, executer_id: executerId }
-    });
-
-    if (!order) {
-      throw new Error('Заказ не найден');
-    }
-
-    // Получаем доступные материалы того же типа услуги
-    const availableMaterials = await Material.findAll({
-      where: {
-        service_id: order.service_id,
-        status: 'available'
-      },
-      order: [['added_date', 'DESC']]
-    });
-
-    return availableMaterials;
-  } catch (err) {
-    console.error('Ошибка при получении доступных материалов:', err);
-    throw new Error('Ошибка сервера');
   }
 };
 
@@ -809,137 +311,376 @@ export const getAllExecuters = async (filters = {}) => {
   }
 };
 
-// Создать новый заказ
-export const createExecuterOrder = async (orderNumber, executerId) => {
+// ========== ФУНКЦИИ ДЛЯ РАБОТЫ С ВЫПОЛНЕНИЯМИ УСЛУГ ==========
+
+// Создать выполнение услуги (заменяет создание заказа)
+export const createServiceExecution = async (serviceId, executerId, orderNumber) => {
   try {
-    // Проверяем, что исполнитель существует
-    const executer = await Executer.findByPk(executerId);
-    if (!executer) {
-      throw new Error('Исполнитель не найден');
-    }
-
-    // Проверяем, не существует ли уже заказ с таким номером для этого исполнителя
-    const existingOrder = await Order.findOne({
+    // Проверяем, есть ли уже такой номер заказа у этого исполнителя
+    const existingExecution = await ServiceExecution.findOne({
       where: {
-        id: orderNumber,
-        executer_id: executerId
-      }
-    });
-
-    if (existingOrder) {
-      return existingOrder;
-    }
-
-    // Создаём новый заказ
-    const newOrder = await Order.create({
-      id: orderNumber, // Используем номер заказа как ID
-      executer_id: executerId,
-      status: 'pending',
-      payment_status: 'pending',
-      total_sum: 0, // Сумма будет устанавливаться позже
-      details: {
-        created_by_executer: true,
+        executer_id: executerId,
         order_number: orderNumber
       }
     });
 
-    // Обновляем активность исполнителя
-    await updateExecuterActivity(executerId);
-
-    // Записываем лог
-    await createExecuterLog(
-      executerId,
-      'create_order',
-      `Создан заказ #${orderNumber}`,
-      orderNumber
-    );
-
-    return newOrder;
-  } catch (err) {
-    console.error('Ошибка при создании заказа:', err);
-    throw new Error('Ошибка сервера');
-  }
-};
-
-// Функция для создания выполнения услуги
-export const createServiceExecution = async (serviceId, executerId, orderNumber) => {
-  try {
-    console.log('\n🎯 === СОЗДАНИЕ ВЫПОЛНЕНИЯ УСЛУГИ ===');
-    console.log('📊 Параметры:', { serviceId, executerId, orderNumber });
-
-    // Импортируем ServiceExecution
-    const { ServiceExecution } = await import('../../../database/dbTables.js');
-
-    // Проверяем существование услуги
-    const service = await Services.findByPk(serviceId);
-    if (!service) {
-      throw new Error('Услуга не найдена');
+    if (existingExecution) {
+      throw new Error('У вас уже есть заказ с таким номером');
     }
 
-    // Проверяем существование исполнителя
-    const executer = await Executer.findByPk(executerId);
-    if (!executer) {
-      throw new Error('Исполнитель не найден');
-    }
+    // Проверяем доступ к услуге (новая система - прямое назначение)
+    const directService = await Services.findOne({
+      where: {
+        id: serviceId,
+        executer_id: executerId,
+        status: 'active'
+      }
+    });
 
-    // Получаем индивидуальную цену исполнителя для данной услуги
-    let individualPrice = service.price; // По умолчанию стандартная цена
-
-    try {
-      const serviceAccess = await ServiceAccess.findOne({
+    // Если нет прямого доступа, проверяем старую систему
+    if (!directService) {
+      const hasAccess = await ServiceAccess.findOne({
         where: {
-          executer_id: executerId,
           service_id: serviceId,
-          status: 'active'
+          executer_id: executerId,
+          has_access: true
         }
       });
 
-      if (serviceAccess && serviceAccess.price !== null) {
-        individualPrice = serviceAccess.price;
-        console.log(`💰 Использую индивидуальную цену для исполнителя ${executerId}: ${individualPrice}₽ (стандартная: ${service.price}₽)`);
-      } else {
-        console.log(`💰 Использую стандартную цену для услуги: ${individualPrice}₽`);
+      if (!hasAccess) {
+        throw new Error('У вас нет доступа к этой услуге');
       }
-    } catch (priceError) {
-      console.error('⚠️ Ошибка получения индивидуальной цены, использую стандартную:', priceError.message);
     }
 
-    // Проверяем, есть ли уже выполнение с таким номером заказа
-    const existingExecution = await ServiceExecution.findOne({
-      where: { order_number: orderNumber }
-    });
-
-    if (existingExecution) {
-      throw new Error(`Заказ с номером ${orderNumber} уже существует`);
-    }
-
-    // Создаём выполнение услуги с индивидуальной ценой
+    // Создаем выполнение услуги
     const execution = await ServiceExecution.create({
       service_id: serviceId,
       executer_id: executerId,
       order_number: orderNumber,
-      price: individualPrice, // Сохраняем индивидуальную цену
-      status: 'in_progress',
-      created_at: new Date()
+      status: 'in_progress'
     });
 
-    console.log(`✅ Выполнение услуги создано: ${execution.id} с ценой ${individualPrice}₽`);
+    // Обновляем номер заказа в самой услуге
+    const service = await Services.findByPk(serviceId);
+    if (service) {
+      await service.update({
+        order_number: orderNumber
+      });
+    }
 
-    // Обновляем активность исполнителя
-    await updateExecuterActivity(executerId);
+    // Обновляем номер заказа в материалах этой услуги
+    await Material.update(
+      { order_number: orderNumber },
+      {
+        where: {
+          service_id: serviceId,
+          status: 'available'
+        }
+      }
+    );
 
     // Записываем лог
     await createExecuterLog(
       executerId,
-      'create_service_execution',
-      `Создано выполнение услуги "${service.name}" для заказа #${orderNumber} с ценой ${individualPrice}₽`,
-      null,
+      'start_service_execution',
+      `Начато выполнение услуги с номером заказа ${orderNumber}`,
       serviceId
     );
 
     return execution;
   } catch (err) {
-    console.error('❌ Ошибка при создании выполнения услуги:', err);
+    console.error('Ошибка при создании выполнения услуги:', err);
     throw new Error(err.message || 'Ошибка сервера');
   }
+};
+
+// Получить выполнение услуги по номеру заказа и исполнителю
+export const getServiceExecution = async (orderNumber, executerId) => {
+  try {
+    const execution = await ServiceExecution.findOne({
+      where: {
+        order_number: orderNumber,
+        executer_id: executerId
+      },
+      include: [
+        {
+          model: Services,
+          attributes: ['id', 'name', 'description', 'category', 'price']
+        }
+      ]
+    });
+
+    return execution;
+  } catch (err) {
+    console.error('Ошибка при получении выполнения услуги:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
+// Получить все выполнения услуг исполнителя
+export const getExecuterServiceExecutions = async (executerId, status = null) => {
+  try {
+    const whereCondition = { executer_id: executerId };
+    if (status) {
+      whereCondition.status = status;
+    }
+
+    const executions = await ServiceExecution.findAll({
+      where: whereCondition,
+      include: [
+        {
+          model: Services,
+          attributes: ['id', 'name', 'description', 'category', 'price']
+        }
+      ],
+      order: [['created_at', 'DESC']]
+    });
+
+    return executions;
+  } catch (err) {
+    console.error('Ошибка при получении выполнений услуг:', err);
+    throw new Error('Ошибка сервера');
+  }
+};
+
+// Совместимость: старый API ожидал getExecuterCompletedOrders
+export const getExecuterCompletedOrders = async (executerId) => {
+  // Переадресуем на новую функцию
+  return getExecuterServiceExecutions(executerId, 'completed');
+};
+
+
+// Завершить выполнение услуги
+export const completeServiceExecution = async (executionId, executerId) => {
+  try {
+    const execution = await ServiceExecution.findOne({
+      where: {
+        id: executionId,
+        executer_id: executerId
+      }
+    });
+
+    if (!execution) {
+      throw new Error('Выполнение услуги не найдено');
+    }
+
+    if (execution.status === 'completed') {
+      throw new Error('Услуга уже выполнена');
+    }
+
+    // Определяем цену выполнения: сначала индивидуальная цена исполнителя, иначе стандартная цена услуги
+    let individualPrice = 0;
+    try {
+      const serviceAccess = await ServiceAccess.findOne({
+        where: {
+          executer_id: executerId,
+          service_id: execution.service_id,
+          has_access: true
+        }
+      });
+
+      if (serviceAccess && typeof serviceAccess.price !== 'undefined' && serviceAccess.price !== null) {
+        individualPrice = serviceAccess.price;
+        console.log(`💰 Найдена индивидуальная цена для исполнителя ${executerId}: ${individualPrice}₽`);
+      } else {
+        const service = await Services.findByPk(execution.service_id);
+        individualPrice = service?.price || 0;
+        console.log(`💰 Использую стандартную цену услуги для исполнения ${executerId}: ${individualPrice}₽`);
+      }
+    } catch (priceErr) {
+      console.warn('⚠️ Не удалось получить индивидуальную цену, использую 0:', priceErr.message);
+      individualPrice = 0;
+    }
+
+    // Обновляем статус на завершенный и сохраняем цену выполнения
+    await execution.update({
+      status: 'completed',
+      completed_at: new Date(),
+      price: individualPrice
+    });
+
+    // Обновляем баланс исполнителя — добавляем цену выполнения
+    try {
+      const executer = await Executer.findByPk(executerId);
+      if (executer) {
+        await executer.update({
+          balance: (executer.balance || 0) + (individualPrice || 0)
+        });
+      }
+    } catch (balErr) {
+      console.error('❌ Ошибка обновления баланса исполнителя:', balErr.message);
+    }
+
+    // Записываем лог
+    await createExecuterLog(
+      executerId,
+      'complete_service_execution',
+      `Завершено выполнение услуги с номером заказа ${execution.order_number}`,
+      execution.service_id
+    );
+
+    return execution;
+  } catch (err) {
+    console.error('Ошибка при завершении выполнения услуги:', err);
+    throw new Error(err.message || 'Ошибка сервера');
+  }
+};
+
+// Совместимость: старый API ожидал completeOrder(orderId, executerId)
+export const completeOrder = async (orderId, executerId) => {
+  try {
+    // Поддерживаем передачу как serviceExecution.id или order_number
+    let execution = null;
+
+    // Попробуем найти по id
+    execution = await ServiceExecution.findOne({ where: { id: orderId, executer_id: executerId } });
+
+    // Если не найдено, попробуем по order_number
+    if (!execution) {
+      execution = await ServiceExecution.findOne({ where: { order_number: orderId, executer_id: executerId } });
+    }
+
+    if (!execution) {
+      throw new Error('Выполнение услуги не найдено');
+    }
+
+    // Используем новую функцию завершения, передавая internal id
+    return await completeServiceExecution(execution.id, executerId);
+  } catch (err) {
+    console.error('Ошибка совместимости completeOrder:', err);
+    throw err;
+  }
+};
+
+// Отменить выполнение услуги (НЕ ВЫПОЛНИЛ ЗАКАЗ)
+export const cancelServiceExecution = async (executionId, executerId, reason = null) => {
+  try {
+    const execution = await ServiceExecution.findOne({
+      where: {
+        id: executionId,
+        executer_id: executerId
+      }
+    });
+
+    if (!execution) {
+      throw new Error('Выполнение услуги не найдено');
+    }
+
+    if (execution.status === 'completed') {
+      throw new Error('Нельзя отменить уже выполненную услугу');
+    }
+
+    // Обновляем статус
+    await execution.update({
+      status: 'not_done',
+      notes: reason || 'Отменено исполнителем',
+      completed_at: new Date()
+    });
+
+    // Записываем лог
+    await createExecuterLog(
+      executerId,
+      'cancel_service_execution',
+      `Отменено выполнение услуги с номером заказа ${execution.order_number}. Причина: ${reason || 'Не указана'}`,
+      execution.service_id
+    );
+
+    return execution;
+  } catch (err) {
+    console.error('Ошибка при отмене выполнения услуги:', err);
+    throw new Error(err.message || 'Ошибка сервера');
+  }
+};
+
+// Получить материалы для выполнения услуги
+export const getServiceExecutionMaterials = async (executionId, executerId) => {
+  try {
+    const execution = await ServiceExecution.findOne({
+      where: {
+        id: executionId,
+        executer_id: executerId
+      },
+      include: [
+        {
+          model: Services,
+          attributes: ['id', 'name']
+        }
+      ]
+    });
+
+    if (!execution) {
+      throw new Error('Выполнение услуги не найдено');
+    }
+
+    // Получаем материалы для услуги
+    const materials = await Material.findAll({
+      where: {
+        service_id: execution.service_id,
+        status: 'available'
+      }
+    });
+
+    // Обновляем номер заказа в материалах
+    if (materials.length > 0) {
+      await Material.update(
+        { order_number: execution.order_number },
+        {
+          where: {
+            service_id: execution.service_id,
+            status: 'available'
+          }
+        }
+      );
+    }
+
+    return {
+      execution,
+      materials
+    };
+  } catch (err) {
+    console.error('Ошибка при получении материалов:', err);
+    throw new Error(err.message || 'Ошибка сервера');
+  }
+};
+
+// ========== DEPRECATED ФУНКЦИИ (для совместимости) ==========
+
+export const getExecuterOrders = async (executerId, status = null) => {
+  throw new Error('Функция getExecuterOrders устарела. Используйте getExecuterServiceExecutions');
+};
+
+export const getExecuterActiveOrders = async (executerId) => {
+  throw new Error('Функция getExecuterActiveOrders устарела. Используйте getExecuterServiceExecutions');
+};
+
+export const getExecuterStats = async (executerId) => {
+  throw new Error('Функция getExecuterStats устарела. Будет реализована для ServiceExecution');
+};
+
+export const getOrderById = async (orderId, executerId) => {
+  throw new Error('Функция getOrderById устарела. Используйте getServiceExecution');
+};
+
+export const getMaterialsByOrder = async (orderId) => {
+  throw new Error('Функция getMaterialsByOrder устарела. Используйте getServiceExecutionMaterials');
+};
+
+export const requestMaterialReplacement = async (orderId, executerId, reason, materialId = null) => {
+  throw new Error('Функция requestMaterialReplacement будет обновлена для работы с ServiceExecution');
+};
+
+export const getAvailableMaterialsForReplacement = async (orderId, executerId) => {
+  throw new Error('Функция getAvailableMaterialsForReplacement будет обновлена для работы с ServiceExecution');
+};
+
+export const createExecuterOrder = async (orderNumber, executerId) => {
+  throw new Error('Функция createExecuterOrder устарела. Используйте createServiceExecution');
+};
+
+export const startOrderWork = async (orderId, executerId) => {
+  throw new Error('Функция startOrderWork устарела. Используйте ServiceExecution');
+};
+
+export const acceptOrder = async (orderId, executerId) => {
+  throw new Error('Функция acceptOrder устарела. Используйте ServiceExecution');
 };
