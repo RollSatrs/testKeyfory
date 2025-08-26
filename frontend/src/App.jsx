@@ -1,19 +1,23 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom'
-import { Review } from './Pages/ReviewPage/Review'
-import { DigitalServices } from './Pages/DigitalServicesPage/DigitalServices'
-import { Executors } from './Pages/ExecutersPage/Executors'
-import { Orders } from './Pages/OrdersPage/Orders'
-import { KeysMaterials } from './Pages/KeyMaterialsPage/KeysMaterials'
-import { Analytics } from './Pages/AnalyticsPage/Analytics'
-import { Pricing } from './Pages/PricingPage/Pricing'
-import { ExecuterPricing } from './Pages/ExecuterPricingPage/ExecuterPricing'
-import { SystemLogs } from './Pages/SystemLogsPage/SystemLogs'
-import { Setting } from './Pages/SettingPage/Setting'
-import { ProtectedRoute } from './components/ProtectedRoute'
-import { Auth } from './Pages/AuthPage/Auth'
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+} from "react-router-dom";
+import { DigitalServices } from "./Pages/DigitalServicesPage/DigitalServices";
+import { Executors } from "./Pages/ExecutersPage/Executors";
+import { Orders } from "./Pages/OrdersPage/Orders";
+import { KeysMaterials } from "./Pages/KeyMaterialsPage/KeysMaterials";
+import { Analytics } from "./Pages/AnalyticsPage/Analytics";
+import { Pricing } from "./Pages/PricingPage/Pricing";
+import { ExecuterPricing } from "./Pages/ExecuterPricingPage/ExecuterPricing";
+import { SystemLogs } from "./Pages/SystemLogsPage/SystemLogs";
+import { Setting } from "./Pages/SettingPage/Setting";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { Auth } from "./Pages/AuthPage/Auth";
 
-import {Aside} from './components/Aside'
-
+import { Aside } from "./components/Aside";
 
 export function App() {
   return (
@@ -33,8 +37,7 @@ export function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to="/overview" />} />
-          <Route path="overview" element={<Review />} />
+          <Route index element={<Navigate to="/services" />} />
           <Route path="services" element={<DigitalServices />} />
           <Route path="users" element={<Executors />} />
           <Route path="orders" element={<Orders />} />
