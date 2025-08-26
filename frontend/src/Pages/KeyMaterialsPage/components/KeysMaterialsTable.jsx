@@ -759,145 +759,64 @@ export function KeysMaterialsTable({
       },
     },
     {
-      title: "Исполнитель",
-      dataIndex: "executer_name",
-      key: "executer_name",
-      width: 180,
-      render: (executer_name, record) => {
-        // Prefer dedupe by executor id when available, fallback to normalized name.
-        const getName = (obj) => {
-          if (!obj) return null;
-          if (typeof obj === "string") return obj;
-          if (obj.executer_name) return obj.executer_name;
-          if (obj.name) return obj.name;
-          if (obj.executer && obj.executer.name) return obj.executer.name;
-          return null;
-        };
+      title: "Исполнители",
+      key: "executers",
+      width: 200,
+      render: (_, record) => {
+        // Проверяем прямое назначение через executer_id
+        const directExecuter = record.assignedExecuter;
 
-        const getId = (obj) => {
-          if (!obj) return null;
-          return (
-            obj.executer_id ||
-            (obj.executer && obj.executer.id) ||
-            obj.id ||
-            null
-          );
-        };
-
-        const seenIds = new Set();
-        const seenNames = new Set();
-        const names = [];
-
-        const isPlaceholder = (str) => {
-          if (!str) return true;
-          const s = String(str).trim();
-          if (!s) return true;
-          if (/^id:/i.test(s)) return true; // skip ID placeholders here
-          if (/неизвестн/i.test(s.toLowerCase())) return true; // skip "Неизвестный..."
-          return false;
-        };
-
-        const pushEntry = (id, name) => {
-          if (id) {
-            const key = String(id);
-            if (seenIds.has(key)) return;
-            seenIds.add(key);
-            // if name missing, try to resolve from executers list
-            let display = name;
-            if (!display && Array.isArray(executers)) {
-              const f = executers.find((e) => String(e.id) === key);
-              if (f) display = f.name || f.executer_name || null;
-            }
-            if (!display || isPlaceholder(display)) display = `ID:${key}`;
-            if (!display) return;
-            names.push(display);
-            return;
-          }
-          if (!name) return;
-          const display = String(name).trim();
-          if (!display) return;
-          const low = display.toLowerCase();
-          if (seenNames.has(low)) return;
-          if (isPlaceholder(display)) return;
-          seenNames.add(low);
-          names.push(display);
-        };
-
-        // collect from service assignments
+        // Проверяем назначение через ServiceAccess (старая система)
         const svc = services.find((s) => s.id === record.service_id);
-        if (svc) {
-          if (svc.assignedExecuter) {
-            const nm =
-              getName(svc.assignedExecuter) || svc.assignedExecuter || null;
-            const id = getId(svc.assignedExecuter);
-            pushEntry(id, nm);
-          }
-          if (
-            Array.isArray(svc.assigned_executers) &&
-            svc.assigned_executers.length > 0
-          ) {
-            for (const a of svc.assigned_executers) {
-              const id = getId(a);
-              const nm = getName(a) || a.executer_name || a.name || null;
-              pushEntry(id, nm);
-            }
-          }
-        }
+        const assignedExecuters = svc?.assigned_executers || [];
 
-        // material-level explicit executor
-        if (
-          record.executer_id ||
-          record.executer_name ||
-          (record.executer && record.executer.name)
-        ) {
-          pushEntry(
-            record.executer_id || null,
-            record.executer_name ||
-              (record.executer && record.executer.name) ||
-              null
+        // Если есть прямое назначение
+        if (directExecuter) {
+          return (
+            <Tag
+              color={directExecuter.status === "active" ? "green" : "orange"}
+            >
+              {directExecuter.name || `ID: ${directExecuter.id}`}
+              {directExecuter.telegram_id && ` (${directExecuter.telegram_id})`}
+            </Tag>
           );
         }
 
-        // from active_orders
-        if (Array.isArray(record.active_orders)) {
-          for (const o of record.active_orders) {
-            pushEntry(getId(o), getName(o) || o.executer_name || null);
+        // Если есть назначения через ServiceAccess
+        if (assignedExecuters.length > 0) {
+          if (assignedExecuters.length === 1) {
+            const executer = assignedExecuters[0];
+            return (
+              <Tag color={executer.status === "active" ? "green" : "orange"}>
+                {executer.executer_name}
+              </Tag>
+            );
           }
+
+          return (
+            <Tooltip
+              title={
+                <div>
+                  {assignedExecuters.map((executer, index) => (
+                    <div key={index}>• {executer.executer_name}</div>
+                  ))}
+                </div>
+              }
+            >
+              <Tag color="blue">
+                {assignedExecuters.length} исполнител
+                {assignedExecuters.length === 1
+                  ? "ь"
+                  : assignedExecuters.length < 5
+                  ? "я"
+                  : "ей"}
+              </Tag>
+            </Tooltip>
+          );
         }
 
-        // from order_numbers
-        if (Array.isArray(record.order_numbers)) {
-          for (const n of record.order_numbers) {
-            if (!n) continue;
-            if (typeof n === "object")
-              pushEntry(getId(n), getName(n) || n.executer_name || null);
-          }
-        }
-
-        // fallback simple executer_name passed from dataSource
-        pushEntry(
-          null,
-          executer_name ||
-            record.executer_name ||
-            (record.executer && record.executer.name) ||
-            null
-        );
-
-        if (names.length === 0) return <Tag color="default">Не назначены</Tag>;
-        if (names.length === 1) return <Tag color="blue">{names[0]}</Tag>;
-        const count = names.length;
-        const title = (
-          <div style={{ textAlign: "left" }}>
-            {names.map((n, i) => (
-              <div key={i}>{n}</div>
-            ))}
-          </div>
-        );
-        return (
-          <Tooltip placement="top" title={title}>
-            <Tag style={{ cursor: "pointer" }}>{count} исполнителя</Tag>
-          </Tooltip>
-        );
+        // Если никого не назначено
+        return <Tag color="default">Не назначены</Tag>;
       },
     },
     {
