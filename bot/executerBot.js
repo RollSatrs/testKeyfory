@@ -114,6 +114,39 @@ const formatPrice = (value) => {
   return `${n}₽`;
 };
 
+// Универсальная функция расчета общего заработка исполнителя
+const calculateTotalEarnings = async (executerId) => {
+  try {
+    // Получаем выполненные заказы
+    const completedResponse = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${executerId}`);
+    const completedOrdersData = completedResponse.data || [];
+
+    // Получаем индивидуальные цены исполнителя
+    const servicesResponse = await fetchAsAxios('GET', `/api/executers-bot/services/${executerId}`);
+    const executerServices = servicesResponse.data || [];
+
+    // Рассчитываем общий заработок
+    const totalEarnings = completedOrdersData.reduce((sum, order) => {
+      const executerService = executerServices.find(es => es.id === order.service_id);
+
+      let orderPrice = 0;
+      if (executerService && executerService.price) {
+        orderPrice = executerService.price;
+      } else if (order.Service?.price) {
+        orderPrice = order.Service.price;
+      }
+
+      return sum + orderPrice;
+    }, 0);
+
+    console.log(`💰 Calculated total earnings: ${totalEarnings}₽ from ${completedOrdersData.length} orders (executerId: ${executerId})`);
+    return totalEarnings;
+  } catch (error) {
+    console.error('❌ Ошибка расчета общего заработка:', error.message);
+    return 0;
+  }
+};
+
 // Helper: определяем — отмечена ли услуга как "Выполнен" именно для этого исполнителя.
 // Мы повторяем логику из `ServicesTable.jsx` чтобы бот фильтровал услуги так же, как админская таблица.
 const isServiceCompletedForExecuter = (s, executerId = null, executerName = null) => {
@@ -265,17 +298,13 @@ bot.start(async (ctx) => {
 
       ctx.session = userSessions[ctx.chat.id];
 
-      // Получаем актуальный баланс через отдельный endpoint (на случай, если в ответе auth баланс не актуален)
-      let balanceToShow = executerData.balance || 0;
+      // Получаем актуальный общий заработок через нашу универсальную функцию
+      let balanceToShow = 0;
       try {
-        // Use stats endpoint to get totalEarnings (this matches what /stats shows)
-        const statsResp = await fetchAsAxios('GET', `/api/executers-bot/stats/${executerData.id}`);
-        console.debug('DEBUG: /stats response for /start:', statsResp);
-        if (statsResp && statsResp.data && typeof statsResp.data.totalEarnings !== 'undefined') {
-          balanceToShow = statsResp.data.totalEarnings;
-        }
+        balanceToShow = await calculateTotalEarnings(executerData.id);
       } catch (balanceErr) {
-        console.warn('Не удалось получить статистику через API, использую баланс из auth:', balanceErr.message);
+        console.warn('Не удалось рассчитать общий заработок, использую баланс из auth:', balanceErr.message);
+        balanceToShow = executerData.balance || 0;
       }
 
       await ctx.reply(
@@ -398,10 +427,28 @@ const showMyServices = async (ctx) => {
     }
 
     if (!Array.isArray(visibleServices) || visibleServices.length === 0) {
-      return ctx.reply('🛠️ У вас пока нет доступных услуг', getMainMenu());
+      // Получаем общий заработок даже когда нет доступных услуг
+      let balanceToShow = 0;
+      try {
+        balanceToShow = await calculateTotalEarnings(session.executerId);
+      } catch (statsErr) {
+        console.warn('Не удалось рассчитать заработок для моих услуг:', statsErr.message);
+        balanceToShow = session.balance || 0;
+      }
+
+      return ctx.reply(`🛠️ *Мои услуги:*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n❌ У вас пока нет доступных услуг`, { parse_mode: 'Markdown', ...getMainMenu() });
     }
 
-    let msg = `🛠️ *Мои услуги:*\n\nВыберите услугу, чтобы создать заказ:`;
+    // Получаем общий заработок для показа
+    let balanceToShow = 0;
+    try {
+      balanceToShow = await calculateTotalEarnings(session.executerId);
+    } catch (statsErr) {
+      console.warn('Не удалось рассчитать заработок для моих услуг:', statsErr.message);
+      balanceToShow = session.balance || 0;
+    }
+
+    let msg = `🛠️ *Мои услуги:*\n\n💰 Общий заработок: ${balanceToShow}₽\n\nВыберите услугу, чтобы создать заказ:`;
 
     const keyboard = (Array.isArray(visibleServices) ? visibleServices : []).map(s => [{ text: `${s.name} — ${formatPrice(s.price)}`, callback_data: `select_service_${s.id}` }]);
 
@@ -437,16 +484,12 @@ const showActiveServices = async (ctx) => {
 
   const response = await fetchAsAxios('GET', `/api/executers-bot/active-executions/${session.executerId}`);
 
-    // Получаем общий заработок через stats, чтобы показать ту же сумму что и в статистике
+    // Получаем общий заработок через универсальную функцию
     let balanceToShow = 0;
     try {
-      const statsResp = await fetchAsAxios('GET', `/api/executers-bot/stats/${session.executerId}`);
-      console.debug('DEBUG: /stats response for showActiveServices:', statsResp);
-      if (statsResp && statsResp.data && typeof statsResp.data.totalEarnings !== 'undefined') {
-        balanceToShow = statsResp.data.totalEarnings;
-      }
+      balanceToShow = await calculateTotalEarnings(session.executerId);
     } catch (statsErr) {
-      console.warn('Не удалось получить статистику для активных услуг:', statsErr.message);
+      console.warn('Не удалось рассчитать заработок для активных услуг:', statsErr.message);
       balanceToShow = session.balance || 0;
     }
 
@@ -582,46 +625,16 @@ const showStatistics = async (ctx) => {
   const response = await fetchAsAxios('GET', `/api/executers-bot/stats/${session.executerId}`);
   const stats = response.data || {};
 
-    // Получаем выполненные заказы для расчета общей суммы
+    // Получаем выполненные заказы и рассчитываем заработок через универсальную функцию
     let completedOrdersData = [];
     let totalEarningsCalculated = 0;
 
     try {
-  const completedResponse = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
+      const completedResponse = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
       completedOrdersData = completedResponse.data || [];
 
-      // Получаем индивидуальные цены исполнителя для услуг
-      let executerServices = [];
-      try {
-  const servicesResponse = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
-  executerServices = servicesResponse.data || [];
-        console.log(`📊 Loaded ${executerServices.length} services with individual prices for executer ${session.executerId}`);
-      } catch (servicesError) {
-        console.error('❌ Ошибка получения индивидуальных цен:', servicesError.message);
-      }
-
-      // Суммируем заработок по выполненным заказам с учетом индивидуальных цен
-      totalEarningsCalculated = completedOrdersData.reduce((sum, order) => {
-        // Ищем индивидуальную цену для данной услуги у этого исполнителя
-        const executerService = executerServices.find(es => es.id === order.service_id);
-
-        let orderPrice = 0;
-        if (executerService && executerService.price) {
-          // Используем индивидуальную цену исполнителя
-          orderPrice = executerService.price;
-          console.log(`💰 Order #${order.order_number}: using individual price ${orderPrice}₽ for service "${executerService.name}"`);
-        } else if (order.Service?.price) {
-          // Используем стандартную цену услуги как fallback
-          orderPrice = order.Service.price;
-          console.log(`💰 Order #${order.order_number}: using standard price ${orderPrice}₽ for service "${order.Service.name}"`);
-        } else {
-          console.log(`⚠️ Order #${order.order_number}: no price found`);
-        }
-
-        return sum + orderPrice;
-      }, 0);
-
-      console.log(`💰 Calculated earnings: ${totalEarningsCalculated}₽ from ${completedOrdersData.length} orders (with individual prices)`);
+      // Используем нашу универсальную функцию для расчета заработка
+      totalEarningsCalculated = await calculateTotalEarnings(session.executerId);
     } catch (earningsError) {
       console.error('❌ Ошибка расчета заработка:', earningsError.message);
     }
@@ -688,13 +701,22 @@ const showCompletedServices = async (ctx) => {
     const response = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
     const completed = response.data || [];
 
+    // Получаем общий заработок
+    let balanceToShow = 0;
+    try {
+      balanceToShow = await calculateTotalEarnings(session.executerId);
+    } catch (statsErr) {
+      console.warn('Не удалось рассчитать заработок для выполненных услуг:', statsErr.message);
+      balanceToShow = session.balance || 0;
+    }
+
     if (!Array.isArray(completed) || completed.length === 0) {
-      return ctx.reply('✅ У вас пока нет выполненных услуг', getMainMenu());
+      return ctx.reply(`✅ *Выполненные услуги:*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n❌ У вас пока нет выполненных услуг`, { parse_mode: 'Markdown', ...getMainMenu() });
     }
 
     // Build a clean multi-line block per completed order (no buttons)
     const parts = [];
-    parts.push('✅ *Выполненные услуги*');
+    parts.push(`✅ *Выполненные услуги*\n\n💰 Общий заработок: ${balanceToShow}₽`);
 
     completed.forEach((order) => {
       const serviceName = order.Service?.name || order.service_name || order.name || 'Услуга';
@@ -834,7 +856,16 @@ const manageOrder = async (ctx, orderNumber) => {
 
     const hasMaterials = orderMaterials.length > 0;
 
-    let message = `🎯 *Управление заказом #${orderNumber}*\n\n`;
+    // Получаем общий заработок
+    let balanceToShow = 0;
+    try {
+      balanceToShow = await calculateTotalEarnings(session.executerId);
+    } catch (statsErr) {
+      console.warn('Не удалось рассчитать заработок для управления заказом:', statsErr.message);
+      balanceToShow = session.balance || 0;
+    }
+
+    let message = `🎯 *Управление заказом #${orderNumber}*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n`;
     message += `🛠️ Услуга: ${orderData.Service?.name || 'Не указана'}\n`;
     message += `📊 Статус: ${translateStatus(orderData.status || 'active')}\n`;
 
@@ -901,12 +932,30 @@ const showMaterialsText = async (ctx, orderNumber) => {
   const response = await fetchAsAxios('GET', `/api/executers/materials/${orderNumber}`, null, { executerId: session.executerId });
 
     if (!response.data.success || response.data.data.length === 0) {
-      return ctx.reply('📦 Материалы для этого заказа не назначены');
+      // Получаем общий заработок даже когда нет материалов
+      let balanceToShow = 0;
+      try {
+        balanceToShow = await calculateTotalEarnings(session.executerId);
+      } catch (statsErr) {
+        console.warn('Не удалось рассчитать заработок для пустых материалов:', statsErr.message);
+        balanceToShow = session.balance || 0;
+      }
+
+      return ctx.reply(`📝 *Материалы для заказа #${orderNumber}*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n📦 Материалы для этого заказа не назначены`, { parse_mode: 'Markdown' });
     }
 
     const materials = response.data.data;
 
-    let message = `📝 *Материалы для заказа #${orderNumber}*\n\n`;
+    // Получаем общий заработок
+    let balanceToShow = 0;
+    try {
+      balanceToShow = await calculateTotalEarnings(session.executerId);
+    } catch (statsErr) {
+      console.warn('Не удалось рассчитать заработок для материалов:', statsErr.message);
+      balanceToShow = session.balance || 0;
+    }
+
+    let message = `📝 *Материалы для заказа #${orderNumber}*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n`;
     message += `_Вы можете скопировать текст ниже:_\n\n`;
 
     materials.forEach((material, index) => {

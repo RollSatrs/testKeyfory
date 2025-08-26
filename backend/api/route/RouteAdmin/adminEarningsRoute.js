@@ -284,4 +284,26 @@ router.get('/dashboard-summary', async (req, res) => {
     }
 });
 
+// Получить статистику заработка по исполнителям (для PricingTable)
+router.get('/executers', async (req, res) => {
+    try {
+        const executerEarnings = await adminEarningsService.getExecuterEarningsForPricing();
+        res.json(executerEarnings);
+    } catch (error) {
+        console.error('Ошибка получения статистики исполнителей:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// Получить статистику заработка по услугам (для PricingTable)
+router.get('/services', async (req, res) => {
+    try {
+        const serviceStats = await adminEarningsService.getServiceEarningsForPricing();
+        res.json(serviceStats);
+    } catch (error) {
+        console.error('Ошибка получения статистики услуг:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 export default router;

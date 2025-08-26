@@ -4,6 +4,7 @@ import { EarningsChart } from "./components/EarningsChart";
 import { ExecuterStatsChart } from "./components/ExecuterStatsChart";
 import { ServicesAnalytics } from "./components/ServicesAnalytics";
 import { ComparativeAnalytics } from "./components/ComparativeAnalytics";
+import { PricingTable } from "./components/PricingTable";
 import { Tabs } from "antd";
 import {
   FaChartLine,
@@ -11,6 +12,7 @@ import {
   FaCog,
   FaBalanceScale,
   FaChartPie,
+  FaRubleSign,
 } from "react-icons/fa";
 
 const { TabPane } = Tabs;
@@ -40,6 +42,18 @@ export function Pricing() {
               <EarningsChart />
               <ExecuterStatsChart />
             </div>
+          </TabPane>
+
+          <TabPane
+            tab={
+              <span className="flex items-center">
+                <FaRubleSign className="mr-2" />
+                Индивидуальные цены
+              </span>
+            }
+            key="pricing"
+          >
+            <PricingTable />
           </TabPane>
 
           <TabPane

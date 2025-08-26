@@ -1,32 +1,41 @@
-import { FiBarChart2, FiTrendingUp } from 'react-icons/fi'
-import { FaChartLine } from 'react-icons/fa'
+import { FaRubleSign, FaChartLine, FaUsers } from "react-icons/fa";
 
 export function PricingHeader() {
   return (
-    <div className="flex bg-gradient-to-r from-green-50 to-emerald-100 shadow-lg p-6 rounded-2xl items-center justify-between mb-6 border border-green-200">
-      <div className="flex items-center space-x-4">
-        <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-3 rounded-xl">
-          <FaChartLine className="text-white text-2xl" />
-        </div>
+    <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-            Статистика заработка
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">
+            Управление ценами и аналитика
           </h1>
-          <p className="text-gray-600 mt-1">
-            Аналитика доходов и производительности исполнителей
+          <p className="text-gray-600 text-lg">
+            Настройка индивидуальных цен для исполнителей и анализ доходности
           </p>
         </div>
-      </div>
-      <div className="flex space-x-3">
-        <button className="bg-white text-gray-700 px-4 py-2 rounded-lg font-medium flex items-center gap-2 hover:bg-gray-50 transition border border-gray-200 shadow-sm">
-          <FiBarChart2 size={16} />
-          Экспорт данных
-        </button>
-        <button className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-5 py-2 rounded-lg font-medium flex items-center gap-2 hover:from-green-600 hover:to-emerald-700 transition shadow-lg">
-          <FiTrendingUp size={16} />
-          Аналитический отчет
-        </button>
+
+        <div className="flex flex-col md:flex-row gap-4 mt-4 md:mt-0">
+          <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg">
+            <FaRubleSign className="text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">
+              Ценообразование
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 bg-green-50 px-4 py-2 rounded-lg">
+            <FaChartLine className="text-green-600" />
+            <span className="text-sm font-medium text-green-800">
+              Аналитика доходов
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 bg-purple-50 px-4 py-2 rounded-lg">
+            <FaUsers className="text-purple-600" />
+            <span className="text-sm font-medium text-purple-800">
+              Статистика исполнителей
+            </span>
+          </div>
+        </div>
       </div>
     </div>
-  )
+  );
 }

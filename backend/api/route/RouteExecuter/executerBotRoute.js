@@ -1199,7 +1199,7 @@ router.post('/bot-complete-order', async (req, res) => {
     console.log(`👤 Telegram ID: ${telegramId}`);
 
     // Находим исполнителя по telegram_id
-    const { Executer } = await import('../../../database/dbTables.js');
+    const { Executer, ExecuterEarnings } = await import('../../../database/dbTables.js');
     const executer = await Executer.findOne({
       where: { telegram_id: telegramId.toString() }
     });
@@ -1229,6 +1229,7 @@ router.post('/bot-complete-order', async (req, res) => {
 
     // Получаем индивидуальную цену исполнителя для данной услуги
     let individualPrice = 0;
+    let basePrice = 0;
     try {
       const serviceAccess = await ServiceAccess.findOne({
         where: {
@@ -1239,10 +1240,11 @@ router.post('/bot-complete-order', async (req, res) => {
       });
 
       const service = await Services.findByPk(execution.service_id);
+      basePrice = Number.isFinite(service?.price) ? Number(service.price) : 0;
 
   const accessPrice = serviceAccess && Number.isFinite(Number(serviceAccess.price)) ? Number(serviceAccess.price) : undefined;
-  individualPrice = Number.isFinite(accessPrice) ? accessPrice : (Number.isFinite(service?.price) ? Number(service.price) : 0);
-  console.log(`💰 Выбранная цена для записи: ${individualPrice}₽`);
+  individualPrice = Number.isFinite(accessPrice) ? accessPrice : basePrice;
+  console.log(`💰 Выбранная цена для записи: ${individualPrice}₽ (базовая: ${basePrice}₽)`);
     } catch (priceError) {
       console.error('⚠️ Ошибка получения цены, использую 0:', priceError.message);
       individualPrice = 0;
@@ -1285,6 +1287,54 @@ router.post('/bot-complete-order', async (req, res) => {
       } else {
         console.log('ℹ️ Баланс исполнителя не изменился (delta=0)');
       }
+
+      // НОВОЕ: Создаем запись о заработке в таблице ExecuterEarnings
+      // Сначала попытаемся найти или создать Order для связи
+      let orderId = null;
+      try {
+        // Ищем существующий Order по номеру заказа
+        const existingOrder = await Order.findOne({
+          where: {
+            service_id: execution.service_id,
+            executer_id: executer.id
+          },
+          transaction: t
+        });
+
+        if (existingOrder) {
+          orderId = existingOrder.id;
+          console.log(`📋 Найден существующий Order: ${orderId}`);
+        } else {
+          // Создаем минимальный Order для связи
+          const tempOrder = await Order.create({
+            service_id: execution.service_id,
+            executer_id: executer.id,
+            total_sum: finalPrice,
+            status: 'completed',
+            payment_status: 'paid',
+            created_at: new Date()
+          }, { transaction: t });
+
+          orderId = tempOrder.id;
+          console.log(`📋 Создан новый Order: ${orderId}`);
+        }
+      } catch (orderError) {
+        console.warn('⚠️ Не удалось создать/найти Order, используем null:', orderError.message);
+        orderId = null;
+      }
+
+      await ExecuterEarnings.create({
+        executer_id: executer.id,
+        service_id: execution.service_id,
+        order_id: orderId,
+        amount: finalPrice,
+        base_price: basePrice,
+        custom_price: individualPrice !== basePrice ? individualPrice : null,
+        status: 'paid', // Сразу помечаем как выплачено, поскольку баланс уже обновлен
+        created_at: new Date()
+      }, { transaction: t });
+
+      console.log(`💰 Создана запись о заработке: ${finalPrice}₽ для исполнителя ${executer.id} за услугу ${execution.service_id} (order_id: ${orderId})`);
 
       await t.commit();
 

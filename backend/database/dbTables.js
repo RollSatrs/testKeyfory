@@ -179,6 +179,7 @@ export const ExecuterEarnings = sequelize.define('ExecuterEarnings', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   executer_id: { type: DataTypes.INTEGER, references: { model: 'executers', key: 'id' }, allowNull: false },
   service_id: { type: DataTypes.INTEGER, references: { model: 'services', key: 'id' }, allowNull: false },
+  order_id: { type: DataTypes.INTEGER, references: { model: 'orders', key: 'id' }, allowNull: true },
   amount: { type: DataTypes.FLOAT, allowNull: false }, // сумма заработка
   base_price: { type: DataTypes.FLOAT, allowNull: false }, // базовая цена услуги
   custom_price: { type: DataTypes.FLOAT, allowNull: true }, // индивидуальная цена (если есть)

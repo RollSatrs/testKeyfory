@@ -1,4 +1,4 @@
-import { FiEdit, FiTrendingUp, FiDollarSign } from "react-icons/fi";
+import { FiEdit, FiTrendingUp, FiDollarSign, FiEye } from "react-icons/fi";
 import { FaRubleSign } from "react-icons/fa";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../../lib/api";
@@ -18,6 +18,8 @@ import {
 export function PricingTable() {
   const [services, setServices] = useState([]);
   const [executers, setExecuters] = useState([]);
+  const [executerEarnings, setExecuterEarnings] = useState({});
+  const [serviceStats, setServiceStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [editModal, setEditModal] = useState(false);
   const [selectedService, setSelectedService] = useState(null);
@@ -26,6 +28,8 @@ export function PricingTable() {
   useEffect(() => {
     fetchServices();
     fetchExecuters();
+    fetchExecuterEarnings();
+    fetchServiceStats();
   }, []);
 
   async function fetchServices() {
@@ -46,6 +50,40 @@ export function PricingTable() {
       setExecuters(data);
     } catch (error) {
       console.error("Ошибка загрузки исполнителей:", error);
+    }
+  }
+
+  async function fetchExecuterEarnings() {
+    try {
+      const data = await apiFetch("/api/admin/earnings/executers");
+      const earningsMap = {};
+      data.forEach((item) => {
+        earningsMap[item.executer_id] = {
+          totalEarnings: item.totalEarnings || 0,
+          completedOrders: item.completedOrders || 0,
+          monthlyEarnings: item.monthlyEarnings || 0,
+        };
+      });
+      setExecuterEarnings(earningsMap);
+    } catch (error) {
+      console.error("Ошибка загрузки заработка исполнителей:", error);
+    }
+  }
+
+  async function fetchServiceStats() {
+    try {
+      const data = await apiFetch("/api/admin/earnings/services");
+      const statsMap = {};
+      data.forEach((item) => {
+        statsMap[item.service_id] = {
+          totalEarnings: item.totalEarnings || 0,
+          completedOrders: item.completedOrders || 0,
+          averagePrice: item.averagePrice || 0,
+        };
+      });
+      setServiceStats(statsMap);
+    } catch (error) {
+      console.error("Ошибка загрузки статистики услуг:", error);
     }
   }
 
@@ -172,32 +210,80 @@ export function PricingTable() {
       ),
     },
     {
+      title: "Статистика услуги",
+      key: "service_stats",
+      width: 180,
+      render: (_, record) => {
+        const stats = serviceStats[record.id] || {};
+        return (
+          <div className="space-y-1">
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">Заработок:</span>
+              <span className="text-xs font-medium text-green-600">
+                ₽{stats.totalEarnings || 0}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">Заказов:</span>
+              <span className="text-xs font-medium text-blue-600">
+                {stats.completedOrders || 0}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs text-gray-500">Средняя цена:</span>
+              <span className="text-xs font-medium text-purple-600">
+                ₽{stats.averagePrice || 0}
+              </span>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
       title: "Индивидуальные цены",
       key: "custom_pricing",
-      width: 200,
+      width: 280,
       render: (_, record) => {
-        const customCount = record.custom_pricing?.length || 0;
+        const customPricing = record.custom_pricing || [];
+        if (customPricing.length === 0) {
+          return <span className="text-gray-400 text-sm">Не настроены</span>;
+        }
+
         return (
-          <div>
-            {customCount > 0 ? (
-              <Tooltip
-                title={
-                  <div>
-                    {record.custom_pricing?.map((pricing) => (
-                      <div key={pricing.executer_id}>
-                        {pricing.executer_name}: ₽{pricing.custom_price}
-                      </div>
-                    ))}
+          <div className="space-y-2">
+            {customPricing.slice(0, 3).map((pricing) => {
+              const executer = executers.find(
+                (e) => e.id === pricing.executer_id
+              );
+              const earnings = executerEarnings[pricing.executer_id] || {};
+
+              return (
+                <div
+                  key={pricing.executer_id}
+                  className="flex items-center justify-between text-xs p-2 bg-gray-50 rounded border-l-2 border-blue-400"
+                >
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900">
+                      {executer?.name || `Исполнитель ${pricing.executer_id}`}
+                    </div>
+                    <div className="text-gray-500 text-xs">
+                      💰 ₽{earnings.totalEarnings || 0} | 📋{" "}
+                      {earnings.completedOrders || 0} заказов
+                    </div>
                   </div>
-                }
-              >
-                <Tag color="orange">
-                  {customCount} исполнител
-                  {customCount === 1 ? "ь" : customCount < 5 ? "я" : "ей"}
-                </Tag>
-              </Tooltip>
-            ) : (
-              <Tag color="default">Стандартная цена</Tag>
+                  <div className="text-right">
+                    <div className="font-semibold text-green-600">
+                      ₽{pricing.custom_price}
+                    </div>
+                    <div className="text-xs text-gray-400">цена</div>
+                  </div>
+                </div>
+              );
+            })}
+            {customPricing.length > 3 && (
+              <div className="text-xs text-gray-500 text-center p-1 bg-gray-100 rounded">
+                +{customPricing.length - 3} исполнителей
+              </div>
             )}
           </div>
         );
@@ -217,17 +303,31 @@ export function PricingTable() {
     {
       title: "Действия",
       key: "actions",
-      width: 100,
+      width: 120,
       render: (_, record) => (
-        <Button
-          type="primary"
-          ghost
-          icon={<FiEdit />}
-          size="small"
-          onClick={() => openPricingModal(record)}
-        >
-          Настроить
-        </Button>
+        <div className="flex gap-1">
+          <Tooltip title="Редактировать индивидуальные цены">
+            <Button
+              type="primary"
+              ghost
+              icon={<FiEdit />}
+              size="small"
+              onClick={() => openPricingModal(record)}
+            />
+          </Tooltip>
+          <Tooltip title="Просмотреть статистику">
+            <Button
+              type="default"
+              ghost
+              icon={<FiEye />}
+              size="small"
+              onClick={() => {
+                console.log("Статистика для услуги:", record.name);
+                // TODO: Открыть модальное окно со статистикой
+              }}
+            />
+          </Tooltip>
+        </div>
       ),
     },
   ];

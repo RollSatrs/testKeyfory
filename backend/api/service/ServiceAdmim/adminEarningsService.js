@@ -225,6 +225,80 @@ class AdminEarningsService {
             throw error;
         }
     }
+
+    // Получить статистику заработка по исполнителям (для PricingTable)
+    async getExecuterEarningsForPricing() {
+        try {
+            const executerEarnings = await ExecuterEarnings.findAll({
+                attributes: [
+                    'executer_id',
+                    [Op.literal('SUM(amount)'), 'totalEarnings'],
+                    [Op.literal('COUNT(*)'), 'completedOrders']
+                ],
+                include: [
+                    {
+                        model: Executer,
+                        attributes: ['id', 'name']
+                    }
+                ],
+                group: ['executer_id', 'Executer.id'],
+                having: Op.literal('SUM(amount) > 0')
+            });
+
+            // Преобразуем в удобный формат для фронтенда
+            const result = {};
+            executerEarnings.forEach(earning => {
+                result[earning.executer_id] = {
+                    totalEarnings: parseInt(earning.dataValues.totalEarnings) || 0,
+                    completedOrders: parseInt(earning.dataValues.completedOrders) || 0,
+                    executerName: earning.Executer?.name || `Исполнитель ${earning.executer_id}`
+                };
+            });
+
+            return result;
+        } catch (error) {
+            console.error('Ошибка получения статистики исполнителей:', error);
+            throw error;
+        }
+    }
+
+    // Получить статистику заработка по услугам (для PricingTable)
+    async getServiceEarningsForPricing() {
+        try {
+            const serviceStats = await ExecuterEarnings.findAll({
+                attributes: [
+                    'service_id',
+                    [Op.literal('SUM(amount)'), 'totalEarnings'],
+                    [Op.literal('COUNT(*)'), 'completedOrders'],
+                    [Op.literal('AVG(amount)'), 'averagePrice']
+                ],
+                include: [
+                    {
+                        model: Services,
+                        attributes: ['id', 'name']
+                    }
+                ],
+                group: ['service_id', 'Service.id'],
+                having: Op.literal('SUM(amount) > 0')
+            });
+
+            // Преобразуем в удобный формат для фронтенда
+            const result = {};
+            serviceStats.forEach(stat => {
+                result[stat.service_id] = {
+                    totalEarnings: parseInt(stat.dataValues.totalEarnings) || 0,
+                    completedOrders: parseInt(stat.dataValues.completedOrders) || 0,
+                    averagePrice: parseInt(stat.dataValues.averagePrice) || 0,
+                    serviceName: stat.Service?.name || `Услуга ${stat.service_id}`
+                };
+            });
+
+            return result;
+        } catch (error) {
+            console.error('Ошибка получения статистики услуг:', error);
+            throw error;
+        }
+    }
 }
 
 export default new AdminEarningsService();

@@ -13,7 +13,7 @@ import {
 import { Card, Select, Spin, Statistic, Row, Col } from "antd";
 import { FaUser, FaMedal, FaChartBar } from "react-icons/fa";
 import { useState, useEffect } from "react";
-import apiFetch from "../../../lib/api";
+import { apiFetch } from "../../../lib/api";
 
 const { Option } = Select;
 

@@ -118,6 +118,35 @@ class AdminPricingService {
             return 0;
         }
     }
+
+    // Получить детальную таблицу заработков
+    async getEarningsDetails(filters = {}) {
+        try {
+            // Импортируем adminEarningsService для получения реальных заработков
+            const { default: adminEarningsService } = await import('./adminEarningsService.js');
+
+            // Получаем все заработки с фильтрами
+            const earnings = await adminEarningsService.getAllEarnings(filters);
+
+            // Преобразуем данные в нужный формат для таблицы
+            const earningsDetails = earnings.map(earning => ({
+                id: earning.id,
+                executer_name: earning.Executer?.name || `Исполнитель ${earning.executer_id}`,
+                service_name: earning.Service?.name || `Услуга ${earning.service_id}`,
+                amount: earning.amount || 0,
+                date: earning.created_at,
+                order_id: earning.order_id,
+                executer_id: earning.executer_id,
+                service_id: earning.service_id,
+                status: earning.status
+            }));
+
+            return earningsDetails;
+        } catch (error) {
+            console.error('Ошибка получения детальных заработков:', error);
+            throw error;
+        }
+    }
 }
 
 export default new AdminPricingService();

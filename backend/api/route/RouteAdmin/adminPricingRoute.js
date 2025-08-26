@@ -69,4 +69,23 @@ router.get('/get/:executer_id/:service_id', async (req, res) => {
     }
 });
 
+// Получить детальную таблицу заработков исполнителей
+router.get('/earnings-details', async (req, res) => {
+    try {
+        const { from, to, executer_id, service_id } = req.query;
+        const filters = {};
+
+        if (from) filters.from = from;
+        if (to) filters.to = to;
+        if (executer_id) filters.executer_id = executer_id;
+        if (service_id) filters.service_id = service_id;
+
+        const earningsDetails = await adminPricingService.getEarningsDetails(filters);
+        res.json(earningsDetails);
+    } catch (error) {
+        console.error('Ошибка получения детальных заработков:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 export default router;
