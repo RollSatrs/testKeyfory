@@ -1231,23 +1231,54 @@ router.post('/bot-complete-order', async (req, res) => {
     let individualPrice = 0;
     let basePrice = 0;
     try {
-      const serviceAccess = await ServiceAccess.findOne({
-        where: {
-          executer_id: executer.id,
-          service_id: execution.service_id,
-          status: 'active'
-        }
-      });
-
+      // Сначала получаем базовую цену услуги
       const service = await Services.findByPk(execution.service_id);
       basePrice = Number.isFinite(service?.price) ? Number(service.price) : 0;
 
-  const accessPrice = serviceAccess && Number.isFinite(Number(serviceAccess.price)) ? Number(serviceAccess.price) : undefined;
-  individualPrice = Number.isFinite(accessPrice) ? accessPrice : basePrice;
-  console.log(`💰 Выбранная цена для записи: ${individualPrice}₽ (базовая: ${basePrice}₽)`);
+      // Ищем ServiceAccess - поддерживаем как активные, так и записи без статуса
+      const serviceAccess = await ServiceAccess.findOne({
+        where: {
+          executer_id: executer.id,
+          service_id: execution.service_id
+          // Убираем фильтр по статусу, так как в базе статус undefined
+        }
+      });
+
+      // Ищем индивидуальную цену в ExecuterPricing
+      const executerPricing = await ExecuterPricing.findOne({
+        where: {
+          executer_id: executer.id,
+          service_id: execution.service_id
+        }
+      });
+
+      // Определяем итоговую цену по приоритету:
+      // 1. ExecuterPricing.custom_price (высший приоритет)
+      // 2. ServiceAccess.price (если указана)
+      // 3. Service.price (базовая цена)
+      if (executerPricing && Number.isFinite(Number(executerPricing.custom_price))) {
+        individualPrice = Number(executerPricing.custom_price);
+        console.log(`💰 Используем индивидуальную цену: ${individualPrice}₽`);
+      } else if (serviceAccess && Number.isFinite(Number(serviceAccess.price))) {
+        individualPrice = Number(serviceAccess.price);
+        console.log(`💰 Используем цену из ServiceAccess: ${individualPrice}₽`);
+      } else {
+        individualPrice = basePrice;
+        console.log(`💰 Используем базовую цену услуги: ${individualPrice}₽`);
+      }
+
+      console.log(`💰 Итоговая цена для записи: ${individualPrice}₽ (базовая: ${basePrice}₽)`);
     } catch (priceError) {
-      console.error('⚠️ Ошибка получения цены, использую 0:', priceError.message);
-      individualPrice = 0;
+      console.error('⚠️ Ошибка получения цены, использую базовую цену услуги:', priceError.message);
+
+      // Fallback: пытаемся получить хотя бы базовую цену
+      try {
+        const service = await Services.findByPk(execution.service_id);
+        individualPrice = basePrice = Number.isFinite(service?.price) ? Number(service.price) : 0;
+      } catch (fallbackError) {
+        console.error('⚠️ Не удалось получить даже базовую цену:', fallbackError.message);
+        individualPrice = basePrice = 0;
+      }
     }
 
     // Don't allow completing if another executer already completed this order
