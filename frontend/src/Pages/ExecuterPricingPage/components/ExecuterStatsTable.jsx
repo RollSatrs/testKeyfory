@@ -195,30 +195,6 @@ export function ExecuterStatsTable({
       align: "center",
     },
     {
-      title: "Среднее время",
-      key: "avg_time",
-      render: (_, record) => {
-        const stats = timeStats[record.executer_id];
-        if (!stats) {
-          return <span className="text-gray-400">Нет данных</span>;
-        }
-        return (
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-1 text-orange-600 font-medium">
-              <FaClock />
-              <span>{formatTime(stats.avg_time_minutes)}</span>
-            </div>
-          </div>
-        );
-      },
-      sorter: (a, b) => {
-        const aTime = timeStats[a.executer_id]?.avg_time_minutes || 0;
-        const bTime = timeStats[b.executer_id]?.avg_time_minutes || 0;
-        return aTime - bTime;
-      },
-      align: "center",
-    },
-    {
       title: "Действия",
       key: "actions",
       render: (_, record) => (
@@ -305,18 +281,7 @@ export function ExecuterStatsTable({
                 <h4 className="text-md font-semibold mb-3 text-gray-700">
                   Статистика времени выполнения
                 </h4>
-                <div className="grid grid-cols-3 gap-4">
-                  <Card size="small">
-                    <Statistic
-                      title="Среднее время"
-                      value={formatTime(
-                        timeStats[detailsModal.record.executer_id]
-                          .avg_time_minutes
-                      )}
-                      prefix={<FaClock />}
-                      valueStyle={{ color: "#fa8c16" }}
-                    />
-                  </Card>
+                <div className="grid grid-cols-2 gap-4">
                   <Card size="small">
                     <Statistic
                       title="Быстрейшее"
