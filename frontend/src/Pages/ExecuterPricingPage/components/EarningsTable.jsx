@@ -1,15 +1,6 @@
 import { useState, useEffect } from "react";
-import {
-  Table,
-  Button,
-  Space,
-  Modal,
-  Popconfirm,
-  message,
-  Tag,
-  Tooltip,
-} from "antd";
-import { FaEye, FaTrash, FaRubleSign, FaCalendarAlt } from "react-icons/fa";
+import { Table, Button, Space, Modal, Tag, Tooltip } from "antd";
+import { FaEye, FaRubleSign, FaCalendarAlt } from "react-icons/fa";
 import { apiFetch } from "../../../lib/api.js";
 
 export function EarningsTable({
@@ -92,21 +83,6 @@ export function EarningsTable({
 
   const showDetails = (record) => {
     setDetailsModal({ visible: true, record });
-  };
-
-  const handleDelete = async (id) => {
-    try {
-      await apiFetch("/api/admin/earnings/delete", {
-        method: "DELETE",
-        body: { id },
-      });
-      message.success("Запись удалена");
-      fetchData();
-      onChange?.();
-    } catch (error) {
-      console.error("Ошибка удаления записи:", error);
-      message.error("Ошибка при удалении записи");
-    }
   };
 
   const columns = [
@@ -196,22 +172,10 @@ export function EarningsTable({
               onClick={() => showDetails(record)}
             />
           </Tooltip>
-          <Popconfirm
-            title="Удалить запись?"
-            description="Это действие нельзя отменить"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Да"
-            cancelText="Нет"
-            okType="danger"
-          >
-            <Tooltip title="Удалить">
-              <Button danger size="small" icon={<FaTrash />} />
-            </Tooltip>
-          </Popconfirm>
         </Space>
       ),
       align: "center",
-      width: 120,
+      width: 80,
     },
   ];
 

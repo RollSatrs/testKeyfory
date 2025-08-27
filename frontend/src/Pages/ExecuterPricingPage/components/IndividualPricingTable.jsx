@@ -169,9 +169,8 @@ export function IndividualPricingTable({
 
   const handleDelete = async (id) => {
     try {
-      await apiFetch("/api/admin/pricing/delete", {
+      await apiFetch(`/api/admin/pricing/delete/${id}`, {
         method: "DELETE",
-        body: { id },
       });
       message.success("Индивидуальная цена удалена");
       fetchData();

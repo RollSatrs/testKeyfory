@@ -468,4 +468,43 @@ router.get('/services', async (req, res) => {
     }
 });
 
+// Специальный эндпоинт для полной очистки статистических данных
+router.delete('/clear-all-data', async (req, res) => {
+    try {
+        const { ServiceExecution, ExecuterPricing, ExecuterEarnings } = await import('../../../database/dbTables.js');
+
+        // Очищаем все связанные таблицы
+        const serviceExecutionResult = await ServiceExecution.destroy({
+            where: {},
+            force: true
+        });
+
+        const pricingResult = await ExecuterPricing.destroy({
+            where: {},
+            force: true
+        });
+
+        // Очищаем таблицу ExecuterEarnings
+        const earningsResult = await ExecuterEarnings.destroy({
+            where: {},
+            force: true
+        });
+
+        console.log(`Очищено ServiceExecution записей: ${serviceExecutionResult}`);
+        console.log(`Очищено ExecuterPricing записей: ${pricingResult}`);
+        console.log(`Очищено ExecuterEarnings записей: ${earningsResult}`);
+
+        res.json({
+            success: true,
+            message: 'Все статистические данные успешно очищены',
+            deletedServiceExecutions: serviceExecutionResult,
+            deletedPricing: pricingResult,
+            deletedEarnings: earningsResult
+        });
+    } catch (error) {
+        console.error('Ошибка очистки всех данных:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 export default router;
