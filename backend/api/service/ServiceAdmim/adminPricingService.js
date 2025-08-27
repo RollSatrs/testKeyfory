@@ -26,6 +26,7 @@ class AdminPricingService {
                 custom_price: item.custom_price,
                 base_price: item.Service ? item.Service.price : 0,
                 executer_name: item.Executer ? item.Executer.name : null,
+                executer_telegram_id: item.Executer ? item.Executer.telegram_id : null,
                 service_name: item.Service ? item.Service.name : null,
                 created_at: item.created_at
             }));
