@@ -295,6 +295,168 @@ router.get('/executers', async (req, res) => {
     }
 });
 
+// Получить статистику заработка по исполнителям (новый эндпоинт для ExecuterStatsTable)
+router.get('/by-executer', async (req, res) => {
+    try {
+        const { start_date, end_date, executer_id } = req.query;
+
+        // Импортируем модели прямо здесь
+        const { Executer, ServiceExecution, Services } = await import('../../../database/dbTables.js');
+        const { Op } = await import('sequelize');
+
+        // Получаем всех исполнителей
+        const executers = await Executer.findAll({
+            attributes: ['id', 'name', 'telegram_id', 'status']
+        });
+
+        // Для каждого исполнителя получаем статистику
+        const executersWithStats = await Promise.all(executers.map(async (executer) => {
+            try {
+                // Фильтры для ServiceExecution
+                const whereConditions = {
+                    executer_id: executer.id,
+                    status: 'completed'
+                };
+
+                if (start_date) {
+                    whereConditions.completed_at = {
+                        ...whereConditions.completed_at,
+                        [Op.gte]: start_date
+                    };
+                }
+
+                if (end_date) {
+                    whereConditions.completed_at = {
+                        ...whereConditions.completed_at,
+                        [Op.lte]: end_date + ' 23:59:59'
+                    };
+                }
+
+                // Если фильтр по конкретному исполнителю и это не он - пропускаем
+                if (executer_id && executer.id.toString() !== executer_id.toString()) {
+                    return null;
+                }
+
+                // Получаем выполненные заказы
+                const executions = await ServiceExecution.findAll({
+                    where: whereConditions,
+                    include: [{
+                        model: Services,
+                        as: 'Service',
+                        attributes: ['name'],
+                        required: false
+                    }]
+                });
+
+                // Вычисляем статистику
+                const totalAmount = executions.reduce((sum, exec) => sum + (exec.price || 0), 0);
+                const orderCount = executions.length;
+                const avgAmount = orderCount > 0 ? totalAmount / orderCount : 0;
+
+                // Получаем уникальные услуги
+                const services = [...new Set(
+                    executions
+                        .map(exec => exec.Service?.name)
+                        .filter(Boolean)
+                )];
+
+                return {
+                    executer_id: executer.id,
+                    executer_name: executer.name,
+                    telegram_id: executer.telegram_id,
+                    total_amount: totalAmount,
+                    order_count: orderCount,
+                    avg_amount: Math.round(avgAmount),
+                    services: services
+                };
+            } catch (error) {
+                console.error(`Ошибка обработки исполнителя ${executer.id}:`, error);
+                return {
+                    executer_id: executer.id,
+                    executer_name: executer.name,
+                    telegram_id: executer.telegram_id,
+                    total_amount: 0,
+                    order_count: 0,
+                    avg_amount: 0,
+                    services: []
+                };
+            }
+        }));
+
+        // Фильтруем null значения и сортируем по заработку
+        const result = executersWithStats
+            .filter(Boolean)
+            .sort((a, b) => b.total_amount - a.total_amount);
+
+        res.json(result);
+    } catch (error) {
+        console.error('Ошибка получения статистики по исполнителям:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
+// Получить статистику времени выполнения по исполнителям
+router.get('/execution-time', async (req, res) => {
+    try {
+        const { ServiceExecution } = await import('../../../database/dbTables.js');
+        const { Op } = await import('sequelize');
+
+        // Получаем завершенные заказы с временными метками
+        const executions = await ServiceExecution.findAll({
+            where: {
+                status: 'completed',
+                created_at: { [Op.ne]: null },
+                completed_at: { [Op.ne]: null }
+            },
+            attributes: ['executer_id', 'created_at', 'completed_at'],
+            raw: true
+        });
+
+        // Группируем по исполнителям и считаем статистику
+        const timeStats = {};
+
+        executions.forEach(execution => {
+            const createdAt = new Date(execution.created_at);
+            const completedAt = new Date(execution.completed_at);
+            const diffMinutes = Math.round((completedAt - createdAt) / (1000 * 60));
+
+            // Пропускаем некорректные данные
+            if (diffMinutes <= 0 || diffMinutes > 10080) { // больше недели - явно ошибка
+                return;
+            }
+
+            if (!timeStats[execution.executer_id]) {
+                timeStats[execution.executer_id] = {
+                    times: [],
+                    total_completed: 0
+                };
+            }
+
+            timeStats[execution.executer_id].times.push(diffMinutes);
+            timeStats[execution.executer_id].total_completed++;
+        });
+
+        // Вычисляем статистику для каждого исполнителя
+        const result = {};
+        Object.keys(timeStats).forEach(executerId => {
+            const times = timeStats[executerId].times;
+            if (times.length > 0) {
+                result[executerId] = {
+                    avg_time_minutes: Math.round(times.reduce((sum, time) => sum + time, 0) / times.length),
+                    fastest_time_minutes: Math.min(...times),
+                    slowest_time_minutes: Math.max(...times),
+                    total_completed: times.length
+                };
+            }
+        });
+
+        res.json(result);
+    } catch (error) {
+        console.error('Ошибка получения статистики времени:', error);
+        res.status(500).json({ error: 'Ошибка сервера' });
+    }
+});
+
 // Получить статистику заработка по услугам (для PricingTable)
 router.get('/services', async (req, res) => {
     try {

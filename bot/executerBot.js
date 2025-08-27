@@ -904,7 +904,7 @@ const manageOrder = async (ctx, orderNumber) => {
     }
 
     managementButtons.push([
-      { text: '✅ Выполнить услугу', callback_data: `complete_order_${orderNumber}` },
+      { text: '✅ Выполнил услугу', callback_data: `complete_order_${orderNumber}` },
       { text: '❌ Не выполнил услугу', callback_data: `cancel_order_${orderNumber}` }
     ]);
 
