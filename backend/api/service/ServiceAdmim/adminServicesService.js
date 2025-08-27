@@ -1,10 +1,15 @@
 import { Services, Material, ExecuterPricing, Executer, ServiceAccess, ServiceExecution } from "../../../database/dbTables.js";
 import { sequelize } from "../../../database/databaseOn.js";
+import { Op } from 'sequelize';
 
 
-export async function getAllServices() {
+export async function getAllServices(includeDeleted = false) {
     try {
+        // Условие для фильтрации удаленных услуг
+        const whereClause = includeDeleted ? {} : { status: { [Op.ne]: 'deleted' } };
+
         const services = await Services.findAll({
+            where: whereClause,
             include: [
                 {
                     model: Executer,
@@ -226,18 +231,47 @@ export async function deleteService(id) {
                 throw new Error('Service not found');
             }
 
-            // Delete related materials for this service (one material = one row invariant)
-            await Material.destroy({ where: { service_id: id }, transaction: t });
+            // Проверяем, есть ли связанные записи заработков
+            const { ExecuterEarnings } = await import('../../../database/dbTables.js');
+            const earningsCount = await ExecuterEarnings.count({
+                where: { service_id: id },
+                transaction: t
+            });
 
-            // Cleanup small related tables to avoid dangling refs
-            await ServiceAccess.destroy({ where: { service_id: id }, transaction: t });
-            await ExecuterPricing.destroy({ where: { service_id: id }, transaction: t });
+            if (earningsCount > 0) {
+                // Если есть заработки, выполняем мягкое удаление
+                console.log(`Найдено ${earningsCount} записей заработков для услуги ${id}. Выполняем мягкое удаление.`);
 
-            // Finally remove the service itself
-            await service.destroy({ transaction: t });
+                // Помечаем услугу как удаленную вместо физического удаления
+                await service.update({
+                    status: 'deleted',
+                    name: `[УДАЛЕНА] ${service.name}`
+                }, { transaction: t });
 
-            await t.commit();
-            return { message: 'Service and related materials deleted successfully' };
+                // Удаляем связанные данные, кроме заработков
+                await Material.destroy({ where: { service_id: id }, transaction: t });
+                await ServiceAccess.destroy({ where: { service_id: id }, transaction: t });
+                await ExecuterPricing.destroy({ where: { service_id: id }, transaction: t });
+
+                await t.commit();
+                return {
+                    message: 'Service marked as deleted. Earnings preserved.',
+                    softDeleted: true,
+                    earningsPreserved: earningsCount
+                };
+            } else {
+                // Если нет заработков, можно удалить полностью
+                await Material.destroy({ where: { service_id: id }, transaction: t });
+                await ServiceAccess.destroy({ where: { service_id: id }, transaction: t });
+                await ExecuterPricing.destroy({ where: { service_id: id }, transaction: t });
+                await service.destroy({ transaction: t });
+
+                await t.commit();
+                return {
+                    message: 'Service deleted completely',
+                    softDeleted: false
+                };
+            }
         } catch (err) {
             await t.rollback();
             throw err;

@@ -185,7 +185,7 @@ export const ExecuterEarnings = sequelize.define('ExecuterEarnings', {
   custom_price: { type: DataTypes.FLOAT, allowNull: true }, // индивидуальная цена (если есть)
   status: { type: DataTypes.STRING, defaultValue: 'pending' }, // pending, paid, cancelled
   created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
-}, { tableName: 'executer_earnings', timestamps: false });
+}, { tableName: 'executer_earnings', timestamps: false, freezeTableName: true });
 
 // Индивидуальное ценообразование для исполнителей
 export const ExecuterPricing = sequelize.define('ExecuterPricing', {
