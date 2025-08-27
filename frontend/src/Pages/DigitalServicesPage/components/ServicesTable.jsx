@@ -259,6 +259,14 @@ export function ServicesTable({
     }
   }
 
+  // Функция для открытия модального окна загрузки расходников
+  function openUploadModal(service) {
+    setSelectedService(service);
+    setUploadModal(true);
+    setFileList([]);
+    setManualInput("");
+  }
+
   // Функция загрузки расходников из файла
   const handleFileUpload = async (options) => {
     const { file } = options;
@@ -457,8 +465,10 @@ export function ServicesTable({
           size="small"
           onClick={() => openMaterialsModal(record)}
           icon={<FaBoxOpen />}
+          type="primary"
+          ghost
         >
-          Посмотреть ключи
+          Управление ключами
         </Button>
       ),
     },
@@ -866,14 +876,6 @@ export function ServicesTable({
       render: (_, record) => (
         <Space>
           <Button
-            icon={<FaUpload />}
-            onClick={() => openUploadModal(record)}
-            size="small"
-            type="primary"
-            ghost
-            title="Загрузить расходники"
-          />
-          <Button
             icon={<FaDollarSign />}
             onClick={() => openPricingModal(record)}
             size="small"
@@ -1088,6 +1090,20 @@ export function ServicesTable({
             </Card>
           </div>
         )}
+
+        {/* Кнопка добавления расходников */}
+        <div style={{ marginBottom: 16, textAlign: "right" }}>
+          <Button
+            type="primary"
+            icon={<FaUpload />}
+            onClick={() => {
+              setMaterialsModal(false);
+              openUploadModal(selectedService);
+            }}
+          >
+            Добавить расходники
+          </Button>
+        </div>
 
         {/* Таблица материалов */}
         {serviceMaterials.length > 0 ? (
