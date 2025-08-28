@@ -472,14 +472,9 @@ export function KeysMaterialsTable({
         );
 
         return (
-          <Tooltip title={tooltipContent} placement="top">
-            <Tag
-              color={statusColor}
-              style={{ fontSize: "12px", cursor: "pointer" }}
-            >
-              {statusText}
-            </Tag>
-          </Tooltip>
+          <Tag color={statusColor} style={{ fontSize: "12px" }}>
+            {statusText}
+          </Tag>
         );
       },
     },
@@ -665,24 +660,34 @@ export function KeysMaterialsTable({
       key: "executers",
       width: 200,
       render: (_, record) => {
-        // Проверяем прямое назначение через executer_id
+        // 1. Проверяем прямое назначение через executer_id в материале
+        if (record.executer_id && record.executer_name) {
+          const isActive =
+            record.executer_status === "active" ||
+            record.status === "active" ||
+            !record.executer_status; // Если статус не указан, считаем активным
+          return (
+            <Tag color={isActive ? "green" : "orange"}>
+              {record.executer_name}
+            </Tag>
+          );
+        }
+
+        // 2. Проверяем прямое назначение через assignedExecuter
         const directExecuter = record.assignedExecuter;
-
-        // Проверяем назначение через ServiceAccess (старая система)
-        const svc = services.find((s) => s.id === record.service_id);
-        const assignedExecuters = svc?.assigned_executers || [];
-
-        // Если есть прямое назначение
         if (directExecuter) {
           return (
             <Tag
               color={directExecuter.status === "active" ? "green" : "orange"}
             >
-              {directExecuter.name || `ID: ${directExecuter.id}`}
-              {directExecuter.telegram_id && ` (${directExecuter.telegram_id})`}
+              {directExecuter.name || "Неизвестный исполнитель"}
             </Tag>
           );
         }
+
+        // 3. Проверяем назначение через ServiceAccess (включая архивированные услуги)
+        const svc = services.find((s) => s.id === record.service_id);
+        const assignedExecuters = svc?.assigned_executers || [];
 
         // Если есть назначения через ServiceAccess
         if (assignedExecuters.length > 0) {
@@ -690,7 +695,9 @@ export function KeysMaterialsTable({
             const executer = assignedExecuters[0];
             return (
               <Tag color={executer.status === "active" ? "green" : "orange"}>
-                {executer.executer_name}
+                {executer.executer_name ||
+                  executer.name ||
+                  "Неизвестный исполнитель"}
               </Tag>
             );
           }
@@ -700,7 +707,12 @@ export function KeysMaterialsTable({
               title={
                 <div>
                   {assignedExecuters.map((executer, index) => (
-                    <div key={index}>• {executer.executer_name}</div>
+                    <div key={index}>
+                      •{" "}
+                      {executer.executer_name ||
+                        executer.name ||
+                        "Неизвестный исполнитель"}
+                    </div>
                   ))}
                 </div>
               }
@@ -717,7 +729,16 @@ export function KeysMaterialsTable({
           );
         }
 
-        // Если никого не назначено
+        // 4. Если услуга не найдена, но материал имеет executer_id - показываем его
+        if (record.executer_id) {
+          return (
+            <Tag color="default">
+              {record.executer_name || "Неизвестный исполнитель"}
+            </Tag>
+          );
+        }
+
+        // 5. Если никого не назначено
         return <Tag color="default">Не назначены</Tag>;
       },
     },

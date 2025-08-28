@@ -44,7 +44,19 @@ class AdminEarningsService {
                 order: [['created_at', 'DESC']]
             });
 
-            return earnings;
+            // Сериализуем данные для фронтенда
+            const serializedEarnings = earnings.map(earning => {
+                const earningData = earning.toJSON();
+                return {
+                    ...earningData,
+                    executer_name: earningData.Executer?.name || null,
+                    executer_telegram_id: earningData.Executer?.telegram_id || null,
+                    service_name: earningData.Service?.name || null,
+                    order_status: earningData.Order?.status || null
+                };
+            });
+
+            return serializedEarnings;
         } catch (error) {
             console.error('Ошибка получения заработка:', error);
             throw error;

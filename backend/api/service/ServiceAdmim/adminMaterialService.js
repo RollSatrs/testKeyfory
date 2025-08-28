@@ -69,19 +69,8 @@ export async function getAllMaterials() {
                     }
                 }
 
-                // Для всех активных заказов этой услуги (если материал доступен)
-                if (material.status === 'available' && serviceExecutions.length > 0) {
-                    serviceExecutions.forEach(execution => {
-                        if (execution.Executer && !relatedOrders.find(o => o.order_number === execution.order_number)) {
-                            relatedOrders.push({
-                                order_number: execution.order_number,
-                                executer_name: execution.Executer.name,
-                                executer_id: execution.executer_id,
-                                status: execution.status
-                            });
-                        }
-                    });
-                }
+                // УБИРАЕМ НЕКОРРЕКТНУЮ ЛОГИКУ: НЕ привязываем все активные заказы к доступным материалам
+                // Материал должен показывать заказ только если он реально назначен на этот заказ
 
                 // Do not attach active_orders to material response (UI wants single-row materials)
                 if (relatedOrders.length > 0) {

@@ -244,30 +244,56 @@ router.get('/order-materials/:orderNumber', async (req, res) => {
         });
       }
 
-      // Получаем все доступные материалы для услуги из этого заказа
-      const materials = await Material.findAll({
+      // Сначала получаем уже назначенные материалы для этого заказа
+      const assignedMaterials = await Material.findAll({
         where: {
           service_id: execution.service_id,
-          status: 'available' // Только доступные материалы
+          order_number: orderNumber,  // Материалы, уже назначенные к этому заказу
+          executer_id: executer.id    // Назначенные этому исполнителю
+        },
+        attributes: ['id', 'contents', 'status', 'type_key', 'service_id', 'order_number', 'executer_id'],
+        order: [['used_date', 'ASC']],  // По дате использования
+      });
+
+      console.log(`📦 Найдено назначенных материалов для заказа ${orderNumber}: ${assignedMaterials.length}`);
+
+      // Если есть назначенные материалы, возвращаем их
+      if (assignedMaterials.length > 0) {
+        assignedMaterials.forEach(material => {
+          console.log(`📦 Assigned Material: ${material.contents} (Status: ${material.status}, Order: ${material.order_number})`);
+        });
+
+        return res.json({
+          success: true,
+          data: assignedMaterials
+        });
+      }
+
+      // Если назначенных материалов нет, показываем доступные (для обратной совместимости)
+      const availableMaterials = await Material.findAll({
+        where: {
+          service_id: execution.service_id,
+          status: 'available', // Только доступные материалы
+          order_number: [null, ''] // Не назначенные к заказам
         },
         attributes: ['id', 'contents', 'status', 'type_key', 'service_id'],
-        order: [['createdAt', 'ASC']],
+        order: [['added_date', 'ASC']],  // Тот же порядок, что в автоназначении
         limit: 10 // Ограничиваем количество для производительности
       });
 
-      console.log(`📦 Найдено доступных материалов для услуги ${execution.service_id}: ${materials.length}`);
+      console.log(`📦 Найдено доступных материалов для услуги ${execution.service_id}: ${availableMaterials.length}`);
 
       // Логируем материалы перед отправкой
-      materials.forEach(material => {
-        console.log(`📦 Material: ${material.contents} (Status: ${material.status})`);
+      availableMaterials.forEach(material => {
+        console.log(`📦 Available Material: ${material.contents} (Status: ${material.status})`);
       });
 
       const response = {
         success: true,
-        data: materials
+        data: availableMaterials
       };
 
-      console.log(`📤 Отправляем ответ:`, response);
+      console.log(`📤 Отправляем доступные материалы:`, response);
 
       res.json(response);
     } else {
@@ -279,6 +305,148 @@ router.get('/order-materials/:orderNumber', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Ошибка при получении материалов заказа:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/executers-bot/reserve-material - Резервировать материал для показа исполнителю
+router.post('/reserve-material', async (req, res) => {
+  try {
+    const { service_id, telegram_id } = req.body;
+
+    console.log(`\n📝 === РЕЗЕРВАЦИЯ МАТЕРИАЛА ===`);
+    console.log(`🎯 Service ID: ${service_id}`);
+    console.log(`👤 Telegram ID: ${telegram_id}`);
+
+    if (!service_id || !telegram_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service ID и Telegram ID обязательны'
+      });
+    }
+
+    // Сначала освобождаем старые резервации этого пользователя (старше 10 минут)
+    await Material.update(
+      { reserved_for: null, reserved_at: null },
+      {
+        where: {
+          reserved_for: telegram_id,
+          reserved_at: {
+            [Op.lt]: new Date(Date.now() - 10 * 60 * 1000) // 10 минут назад
+          }
+        }
+      }
+    );
+
+    // Находим доступный материал для резервации
+    const availableMaterial = await Material.findOne({
+      where: {
+        service_id: service_id,
+        status: 'available',
+        reserved_for: null // Не зарезервирован
+      },
+      order: [['added_date', 'ASC']] // Самый старый
+    });
+
+    if (!availableMaterial) {
+      return res.status(404).json({
+        success: false,
+        message: 'Нет доступных материалов для этой услуги'
+      });
+    }
+
+    // Резервируем материал
+    await availableMaterial.update({
+      reserved_for: telegram_id,
+      reserved_at: new Date()
+    });
+
+    console.log(`✅ Материал ${availableMaterial.id} зарезервирован для пользователя ${telegram_id}`);
+
+    res.json({
+      success: true,
+      data: {
+        id: availableMaterial.id,
+        contents: availableMaterial.contents,
+        service_id: availableMaterial.service_id,
+        reserved_until: new Date(Date.now() + 10 * 60 * 1000) // 10 минут от текущего времени
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка при резервации материала:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/executers-bot/use-reserved-material - Использовать зарезервированный материал
+router.post('/use-reserved-material', async (req, res) => {
+  try {
+    const { telegram_id, order_number, executer_id, service_id } = req.body;
+
+    console.log(`\n📝 === ИСПОЛЬЗОВАНИЕ ЗАРЕЗЕРВИРОВАННОГО МАТЕРИАЛА ===`);
+    console.log(`👤 Telegram ID: ${telegram_id}`);
+    console.log(`📋 Order Number: ${order_number}`);
+    console.log(`👤 Executer ID: ${executer_id}`);
+    console.log(`🎯 Service ID: ${service_id}`);
+
+    // Находим зарезервированный материал этого пользователя для данной услуги
+    const reservedMaterial = await Material.findOne({
+      where: {
+        service_id: service_id,
+        reserved_for: telegram_id,
+        status: 'available',
+        reserved_at: {
+          [Op.gt]: new Date(Date.now() - 10 * 60 * 1000) // Резервация не старше 10 минут
+        }
+      }
+    });
+
+    if (!reservedMaterial) {
+      return res.status(404).json({
+        success: false,
+        message: 'Зарезервированный материал не найден или резервация истекла'
+      });
+    }
+
+    // Получаем информацию об исполнителе
+    const executer = await Executer.findByPk(executer_id);
+    const executerName = executer ? executer.name : 'Неизвестный исполнитель';
+
+    // Используем зарезервированный материал
+    await reservedMaterial.update({
+      status: 'used',
+      order_number: order_number,
+      executer_id: executer_id,
+      executer_name: executerName,
+      used_date: new Date(),
+      reserved_for: null, // Очищаем резервацию
+      reserved_at: null
+    });
+
+    console.log(`✅ Зарезервированный материал ${reservedMaterial.id} использован для заказа ${order_number}`);
+
+    res.json({
+      success: true,
+      message: 'Материал успешно использован',
+      data: {
+        material_id: reservedMaterial.id,
+        contents: reservedMaterial.contents,
+        order_number: order_number,
+        executer_name: executerName
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка при использовании зарезервированного материала:', error);
     res.status(500).json({
       success: false,
       message: 'Ошибка сервера',
@@ -1287,16 +1455,22 @@ router.post('/bot-complete-order', async (req, res) => {
       return res.status(400).json({ success: false, message: `Заказ ${orderNumber} уже завершён другим исполнителем` });
     }
 
-    // Выполним обновления в транзакции: пометка материалов, обновление execution и корректное изменение баланса
+    // Выполним обновления в транзакции: обновление execution и корректное изменение баланса
     const t = await sequelize.transaction();
     try {
-      // Обновляем материалы в заказе
-      await Material.update({
-        status: 'used'
-      }, {
+      // Материалы уже должны быть помечены как 'used' при их назначении
+      // Проверяем и логируем состояние материалов для отладки
+      const relatedMaterials = await Material.findAll({
         where: { order_number: orderNumber },
+        attributes: ['id', 'status', 'order_number', 'executer_id'],
         transaction: t
       });
+
+      console.log(`📦 Материалы для заказа ${orderNumber}:`, relatedMaterials.map(m => ({
+        id: m.id,
+        status: m.status,
+        executer_id: m.executer_id
+      })));
 
       // Сохраняем предыдущую цену, чтобы корректно обновить баланс только на дельту
       const previousPrice = Number.isFinite(Number(execution.price)) ? Number(execution.price) : 0;
@@ -1391,18 +1565,20 @@ router.post('/bot-complete-order', async (req, res) => {
   }
 });
 
-// GET /api/executers/completed-orders/:executerId - Получить выполненные заказы
+// GET /api/executers/completed-orders/:executerId - Получить выполненные и отмененные заказы
 router.get('/completed-orders/:executerId', async (req, res) => {
   try {
     const { executerId } = req.params;
 
-    console.log(`\n✅ === API: ПОЛУЧЕНИЕ ВЫПОЛНЕННЫХ ЗАКАЗОВ ===`);
+    console.log(`\n✅ === API: ПОЛУЧЕНИЕ ВЫПОЛНЕННЫХ И ОТМЕНЕННЫХ ЗАКАЗОВ ===`);
     console.log(`👤 Executer ID: ${executerId}`);
 
     const executions = await ServiceExecution.findAll({
       where: {
         executer_id: executerId,
-        status: 'completed'
+        status: {
+          [Op.in]: ['completed', 'cancelled']
+        }
       },
       include: [{
         model: Services,
@@ -1423,13 +1599,13 @@ router.get('/completed-orders/:executerId', async (req, res) => {
       return executionData;
     });
 
-    console.log(`✅ Найдено выполненных заказов: ${executions.length} (с индивидуальными ценами)`);
+    console.log(`✅ Найдено заказов в истории: ${executions.length} (выполненные и отмененные, с индивидуальными ценами)`);
 
     res.json(ordersWithPrices);
   } catch (error) {
-    console.error('❌ Ошибка при получении выполненных заказов:', error);
+    console.error('❌ Ошибка при получении заказов для истории:', error);
     res.status(500).json({
-      message: 'Ошибка при получении выполненных заказов',
+      message: 'Ошибка при получении заказов для истории',
       error: error.message
     });
   }

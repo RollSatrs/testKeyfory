@@ -244,3 +244,18 @@ adminRoute.get('/verify', authMiddleware, async (req, res) => {
     res.status(401).json({ valid: false, error: 'Токен недействителен' });
   }
 });
+
+// Эндпоинт для настроек замены материалов (заглушка)
+adminRoute.get('/replacement-settings', authMiddleware, async (req, res) => {
+  try {
+    // Возвращаем базовые настройки замены
+    res.json({
+      autoReplace: true,
+      notifyAdminOnReplace: true,
+      maxReplacementsPerDay: 10
+    });
+  } catch (err) {
+    console.error('Ошибка при получении настроек замены:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});

@@ -132,6 +132,20 @@ export function ServicesTable({
     message.success("Услуга перемещена в архив");
   }
 
+  async function handlePermanentDelete(id) {
+    try {
+      await apiFetch(`/api/admin/services/permanent-delete/${id}`, {
+        method: "DELETE",
+      });
+      fetchServices();
+      if (onChange) onChange();
+      message.success("Услуга полностью удалена");
+    } catch (error) {
+      console.error("Ошибка при удалении услуги:", error);
+      message.error("Ошибка при удалении услуги");
+    }
+  }
+
   async function handleRestore(id) {
     try {
       await apiFetch(`/api/admin/services/restore/${id}`, { method: "POST" });
@@ -970,34 +984,74 @@ export function ServicesTable({
             disabled={record.is_deleted}
           />
           {record.is_deleted ? (
-            <Popconfirm
-              title="Восстановить услугу из архива?"
-              onConfirm={() => handleRestore(record.id)}
-              okText="Да"
-              cancelText="Нет"
-            >
-              <Button
-                icon={<FaUndo />}
-                type="primary"
-                size="small"
-                title="Восстановить из архива"
-              />
-            </Popconfirm>
+            <>
+              <Popconfirm
+                title="Восстановить услугу из архива?"
+                onConfirm={() => handleRestore(record.id)}
+                okText="Да"
+                cancelText="Нет"
+              >
+                <Button
+                  icon={<FaUndo />}
+                  type="primary"
+                  size="small"
+                  title="Восстановить из архива"
+                />
+              </Popconfirm>
+              <Popconfirm
+                title="Удалить услугу навсегда?"
+                description="Это действие необратимо! Услуга и все связанные с ней данные будут полностью удалены из системы."
+                onConfirm={() => handlePermanentDelete(record.id)}
+                okText="Да, удалить навсегда"
+                cancelText="Отмена"
+                okType="danger"
+              >
+                <Button
+                  icon={<FaTrash />}
+                  danger
+                  size="small"
+                  title="Удалить навсегда"
+                  style={{ backgroundColor: "#ff4d4f", borderColor: "#ff4d4f" }}
+                />
+              </Popconfirm>
+            </>
           ) : (
-            <Popconfirm
-              title="Переместить услугу в архив?"
-              description="Услуга будет скрыта, но сохранится в системе со всей статистикой"
-              onConfirm={() => handleDelete(record.id)}
-              okText="Да"
-              cancelText="Нет"
-            >
-              <Button
-                icon={<FaArchive />}
-                danger
-                size="small"
-                title="Переместить в архив"
-              />
-            </Popconfirm>
+            <>
+              <Popconfirm
+                title="Переместить услугу в архив?"
+                description="Услуга будет скрыта, но сохранится в системе со всей статистикой"
+                onConfirm={() => handleDelete(record.id)}
+                okText="Да"
+                cancelText="Нет"
+              >
+                <Button
+                  icon={<FaArchive />}
+                  danger
+                  size="small"
+                  title="Переместить в архив"
+                />
+              </Popconfirm>
+              <Popconfirm
+                title="Удалить услугу навсегда?"
+                description="Это действие необратимо! Услуга и все связанные с ней данные будут полностью удалены из системы."
+                onConfirm={() => handlePermanentDelete(record.id)}
+                okText="Да, удалить навсегда"
+                cancelText="Отмена"
+                okType="danger"
+              >
+                <Button
+                  icon={<FaTrash />}
+                  danger
+                  size="small"
+                  title="Удалить навсегда"
+                  style={{
+                    backgroundColor: "#d32f2f",
+                    borderColor: "#d32f2f",
+                    color: "white",
+                  }}
+                />
+              </Popconfirm>
+            </>
           )}
         </Space>
       ),

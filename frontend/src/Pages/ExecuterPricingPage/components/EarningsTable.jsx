@@ -89,24 +89,27 @@ export function EarningsTable({
     {
       title: "Исполнитель",
       key: "executer",
-      render: (_, record) => (
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-            <span className="text-blue-600 font-semibold text-xs">
-              {(record.executer_name || "И").charAt(0).toUpperCase()}
-            </span>
-          </div>
-          <div>
-            <div className="font-medium text-gray-900">
-              {record.executer_name || `Исполнитель ${record.executer_id}`}
+      render: (_, record) => {
+        const executerName =
+          record.executer_name || `Исполнитель ${record.executer_id}`;
+        const telegramId = record.executer_telegram_id || "Не указан";
+
+        return (
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+              <span className="text-blue-600 font-semibold text-xs">
+                {executerName.charAt(0).toUpperCase()}
+              </span>
             </div>
-            <div className="text-xs text-gray-500">
-              Telegram:{" "}
-              {record.executer_telegram_id || record.telegram_id || "Не указан"}
+            <div>
+              <div className="font-medium text-gray-900">{executerName}</div>
+              <div className="text-xs text-gray-500">
+                Telegram ID: {telegramId}
+              </div>
             </div>
           </div>
-        </div>
-      ),
+        );
+      },
       sorter: (a, b) =>
         (a.executer_name || "").localeCompare(b.executer_name || ""),
     },
@@ -114,14 +117,17 @@ export function EarningsTable({
       title: "Услуга",
       dataIndex: "service_name",
       key: "service_name",
-      render: (name, record) => (
-        <Tag color={name ? "cyan" : "orange"} className="font-medium">
-          {(name || record.service_name_cached || "Услуга удалена").replace(
-            /^\[УДАЛЕНА\]\s*/,
-            ""
-          )}
-        </Tag>
-      ),
+      render: (name, record) => {
+        const serviceName = name || "Услуга удалена";
+        return (
+          <Tag
+            color={serviceName !== "Услуга удалена" ? "cyan" : "orange"}
+            className="font-medium"
+          >
+            {serviceName}
+          </Tag>
+        );
+      },
       sorter: (a, b) =>
         (a.service_name || "").localeCompare(b.service_name || ""),
     },
@@ -230,7 +236,7 @@ export function EarningsTable({
                   {detailsModal.record.executer_name ||
                     `Исполнитель ${detailsModal.record.executer_id}`}
                   <div className="text-xs text-gray-500 mt-1">
-                    Telegram:{" "}
+                    Telegram ID:{" "}
                     {detailsModal.record.executer_telegram_id || "Не указан"}
                   </div>
                 </div>
@@ -238,9 +244,7 @@ export function EarningsTable({
               <div>
                 <span className="font-medium text-gray-600">Услуга:</span>
                 <div className="mt-1 text-gray-900">
-                  {(
-                    detailsModal.record.service_name || "Услуга удалена"
-                  ).replace(/^\[УДАЛЕНА\]\s*/, "")}
+                  {detailsModal.record.service_name || "Услуга удалена"}
                 </div>
               </div>
               <div>

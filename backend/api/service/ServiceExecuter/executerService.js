@@ -368,16 +368,20 @@ export const createServiceExecution = async (serviceId, executerId, orderNumber)
       });
     }
 
-    // Обновляем номер заказа в материалах этой услуги
-    await Material.update(
-      { order_number: orderNumber },
-      {
-        where: {
-          service_id: serviceId,
-          status: 'available'
-        }
-      }
-    );
+    // НЕ обновляем номер заказа во ВСЕХ материалах - это должно делаться только при автоназначении
+    // или при явном выборе материала исполнителем.
+    // Удаляем эту логику, чтобы не мешать автоназначению в executerRoute.js
+
+    // // Обновляем номер заказа в материалах этой услуги
+    // await Material.update(
+    //   { order_number: orderNumber },
+    //   {
+    //     where: {
+    //       service_id: serviceId,
+    //       status: 'available'
+    //     }
+    //   }
+    // );
 
     // Записываем лог
     await createExecuterLog(

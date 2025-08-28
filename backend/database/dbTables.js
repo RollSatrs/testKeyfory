@@ -84,6 +84,8 @@ export const Material = sequelize.define('Material',{
     allowNull: true
   }, // ID исполнителя
   executer_name: { type: DataTypes.STRING, allowNull: true }, // Имя исполнителя
+  reserved_for: { type: DataTypes.BIGINT, allowNull: true }, // Telegram ID пользователя, который резервирует материал
+  reserved_at: { type: DataTypes.DATE, allowNull: true }, // Время резервации
   create_date_material: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'material', timestamps: true });
 

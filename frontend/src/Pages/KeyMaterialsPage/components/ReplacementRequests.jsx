@@ -87,13 +87,14 @@ const ReplacementRequests = () => {
 
       if (response.ok) {
         const settings = await response.json();
-        // Преобразуем массив в объект для быстрого поиска по ключу executer_id-service_id
-        const settingsMap = {};
-        settings.forEach((setting) => {
-          const key = `${setting.executer_id}-${setting.service_id}`;
-          settingsMap[key] = setting;
-        });
-        setReplacementSettings(settingsMap);
+        // API возвращает объект настроек, а не массив
+        // Проверяем, что settings - это объект
+        if (settings && typeof settings === "object") {
+          setReplacementSettings(settings);
+        } else {
+          console.warn("Неожиданный формат настроек замены:", settings);
+          setReplacementSettings({});
+        }
       }
     } catch (error) {
       console.error("Error fetching replacement settings:", error);

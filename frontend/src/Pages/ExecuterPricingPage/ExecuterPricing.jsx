@@ -7,8 +7,6 @@ import { PricingSearch } from "./components/PricingSearch.jsx";
 import { Tabs } from "antd";
 import { useState, useCallback } from "react";
 
-const { TabPane } = Tabs;
-
 export function ExecuterPricing() {
   const [refresh, setRefresh] = useState(false);
   const [search, setSearch] = useState("");
@@ -17,6 +15,47 @@ export function ExecuterPricing() {
   const [dateRange, setDateRange] = useState(null);
 
   const handleRefresh = useCallback(() => setRefresh((r) => !r), []);
+
+  const tabItems = [
+    {
+      key: "earnings",
+      label: "Статистика заработка",
+      children: (
+        <EarningsTable
+          refresh={refresh}
+          onChange={handleRefresh}
+          search={search}
+          executerFilter={executerFilter}
+          serviceFilter={serviceFilter}
+          dateRange={dateRange}
+        />
+      ),
+    },
+    {
+      key: "executerStats",
+      label: "Статистика по исполнителям",
+      children: (
+        <ExecuterStatsTable
+          refresh={refresh}
+          onChange={handleRefresh}
+          executerFilter={executerFilter}
+          dateRange={dateRange}
+        />
+      ),
+    },
+    {
+      key: "individualPricing",
+      label: "Индивидуальные цены",
+      children: (
+        <IndividualPricingTable
+          refresh={refresh}
+          onChange={handleRefresh}
+          executerFilter={executerFilter}
+          serviceFilter={serviceFilter}
+        />
+      ),
+    },
+  ];
 
   return (
     <>
@@ -39,36 +78,7 @@ export function ExecuterPricing() {
       />
 
       <div className="bg-white shadow p-6 rounded-4xl">
-        <Tabs defaultActiveKey="earnings" size="large">
-          <TabPane tab="Статистика заработка" key="earnings">
-            <EarningsTable
-              refresh={refresh}
-              onChange={handleRefresh}
-              search={search}
-              executerFilter={executerFilter}
-              serviceFilter={serviceFilter}
-              dateRange={dateRange}
-            />
-          </TabPane>
-
-          <TabPane tab="Статистика по исполнителям" key="executerStats">
-            <ExecuterStatsTable
-              refresh={refresh}
-              onChange={handleRefresh}
-              executerFilter={executerFilter}
-              dateRange={dateRange}
-            />
-          </TabPane>
-
-          <TabPane tab="Индивидуальные цены" key="individualPricing">
-            <IndividualPricingTable
-              refresh={refresh}
-              onChange={handleRefresh}
-              executerFilter={executerFilter}
-              serviceFilter={serviceFilter}
-            />
-          </TabPane>
-        </Tabs>
+        <Tabs defaultActiveKey="earnings" size="large" items={tabItems} />
       </div>
     </>
   );

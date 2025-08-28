@@ -284,25 +284,88 @@ executerRoute.post('/service-execution', async (req, res) => {
     // Если включено автоматическое назначение материала
     if (autoAssignMaterial) {
       try {
-        // Ищем доступный материал для этой услуги
-        const availableMaterial = await Material.findOne({
-          where: {
-            service_id: serviceId,
-            status: 'available'
-          },
-          order: [['created_at', 'ASC']] // Берем самый старый материал
-        });
+        console.log(`🔧 Автоназначение материала для услуги ${serviceId}`);
 
-        if (availableMaterial) {
+        // Сначала ищем зарезервированный материал для этого исполнителя
+        const executer = await Executer.findByPk(executerId);
+        let assignedMaterial = null;
+
+        if (executer && executer.telegram_id) {
+          assignedMaterial = await Material.findOne({
+            where: {
+              service_id: serviceId,
+              reserved_for: executer.telegram_id,
+              status: 'available',
+              reserved_at: {
+                [Op.gt]: new Date(Date.now() - 10 * 60 * 1000) // Резервация не старше 10 минут
+              }
+            }
+          });
+
+          if (assignedMaterial) {
+            console.log(`✅ Найден зарезервированный материал ${assignedMaterial.id} для исполнителя ${executer.name}`);
+          }
+        }
+
+        // Если зарезервированного материала нет, ищем любой доступный
+        if (!assignedMaterial) {
+          console.log(`🔍 Зарезервированный материал не найден, ищем любой доступный`);
+
+          assignedMaterial = await Material.findOne({
+            where: {
+              service_id: serviceId,
+              [Op.and]: [
+                {
+                  [Op.or]: [
+                    { status: 'available' },
+                    { status: 'ДОСТУПЕН' },
+                    { status: null },
+                    { status: '' }
+                  ]
+                },
+                {
+                  [Op.or]: [
+                    { order_number: null },
+                    { order_number: '' }
+                  ]
+                }
+              ],
+              reserved_for: null // Не зарезервирован другим пользователем
+            },
+            order: [['added_date', 'ASC']] // Берем самый старый материал (используем added_date вместо created_at)
+          });
+
+          if (assignedMaterial) {
+            console.log(`✅ Найден доступный материал ${assignedMaterial.id} для назначения`);
+          }
+        }
+
+        if (assignedMaterial) {
+          // Получаем имя исполнителя
+          const executerName = executer ? executer.name : 'Неизвестный исполнитель';
+
+          console.log(`🔧 Назначаем материал ${assignedMaterial.id} к заказу ${orderNumber}`);
+          console.log(`📊 Текущий статус материала: ${assignedMaterial.status}`);
+          console.log(`📋 Текущий номер заказа: ${assignedMaterial.order_number}`);
+
+          // Проверим, что материал еще не использован
+          if (assignedMaterial.status === 'used' || assignedMaterial.order_number) {
+            console.warn(`⚠️ ПРЕДУПРЕЖДЕНИЕ: Материал ${assignedMaterial.id} уже имеет статус "${assignedMaterial.status}" или номер заказа "${assignedMaterial.order_number}"`);
+          }
+
           // Назначаем материал к заказу
-          await availableMaterial.update({
+          await assignedMaterial.update({
             status: 'used',
             order_number: orderNumber,
             executer_id: executerId,
-            executer_name: 'Автоназначение' // Можно получить имя исполнителя из базы
+            executer_name: executerName,
+            used_date: new Date(),
+            reserved_for: null, // Очищаем резервацию
+            reserved_at: null
           });
 
-          console.log(`✅ Материал ${availableMaterial.id} автоматически назначен к заказу ${orderNumber}`);
+          const wasReserved = assignedMaterial.reserved_for ? '(зарезервированный)' : '(обычный)';
+          console.log(`✅ Материал ${assignedMaterial.id} ${wasReserved} автоматически назначен к заказу ${orderNumber} для исполнителя ${executerName}`);
         } else {
           console.log(`⚠️ Нет доступных материалов для услуги ${serviceId}`);
         }
@@ -442,11 +505,18 @@ executerRoute.post('/complete-order', async (req, res) => {
       updated_at: new Date()
     });
 
-    // Помечаем материалы как использованные
-    await Material.update(
-      { status: 'used' },
-      { where: { order_number: orderNumber } }
-    );
+    // Материалы уже должны быть помечены как 'used' при их назначении
+    // Проверяем и логируем состояние материалов для отладки
+    const relatedMaterials = await Material.findAll({
+      where: { order_number: orderNumber },
+      attributes: ['id', 'status', 'order_number', 'executer_id']
+    });
+
+    console.log(`📦 Материалы для заказа ${orderNumber}:`, relatedMaterials.map(m => ({
+      id: m.id,
+      status: m.status,
+      executer_id: m.executer_id
+    })));
 
     console.log('✅ Заказ завершен:', orderNumber);
 

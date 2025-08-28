@@ -310,7 +310,7 @@ bot.start(async (ctx) => {
       await ctx.reply(
         `🎉 *Добро пожаловать, ${executerData.name || firstName}!*\n\n` +
         `✅ Авторизация успешна\n` +
-        `🆔 ID исполнителя: ${executerData.id}\n` +
+        `🆔 Telegram ID: ${executerData.telegram_id}\n` +
         `💰 Общий заработок: ${balanceToShow || 0}₽\n\n` +
         `Выберите действие из меню:`,
         {
@@ -358,7 +358,7 @@ const getMainMenu = () => {
     keyboard: [
   [{ text: '🛠️ Мои услуги' }],
   [{ text: '� Активные услуги' }, { text: '📊 Статистика' }],
-  [{ text: '✅ Выполненные услуги' }]
+  [{ text: '📚 История заказов' }]
     ],
       resize_keyboard: true,
       one_time_keyboard: false
@@ -690,7 +690,7 @@ const showStatistics = async (ctx) => {
   }
 };
 
-// Показать выполненные услуги (заказы)
+// Показать историю заказов (выполненные и отмененные услуги)
 const showCompletedServices = async (ctx) => {
   try {
     const session = userSessions[ctx.chat.id];
@@ -699,32 +699,32 @@ const showCompletedServices = async (ctx) => {
     }
 
     const response = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
-    const completed = response.data || [];
+    const historyOrders = response.data || [];
 
-    // Получаем общий заработок
+    // Получаем общий заработок (только с завершенных заказов)
     let balanceToShow = 0;
     try {
       balanceToShow = await calculateTotalEarnings(session.executerId);
     } catch (statsErr) {
-      console.warn('Не удалось рассчитать заработок для выполненных услуг:', statsErr.message);
+      console.warn('Не удалось рассчитать заработок для истории заказов:', statsErr.message);
       balanceToShow = session.balance || 0;
     }
 
-    if (!Array.isArray(completed) || completed.length === 0) {
-      return ctx.reply(`✅ *Выполненные услуги:*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n❌ У вас пока нет выполненных услуг`, { parse_mode: 'Markdown', ...getMainMenu() });
+    if (!Array.isArray(historyOrders) || historyOrders.length === 0) {
+      return ctx.reply(`📚 *История заказов:*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n❌ У вас пока нет заказов в истории`, { parse_mode: 'Markdown', ...getMainMenu() });
     }
 
-    // Build a clean multi-line block per completed order (no buttons)
+    // Build a clean multi-line block per order in history (no buttons)
     const parts = [];
-    parts.push(`✅ *Выполненные услуги*\n\n💰 Общий заработок: ${balanceToShow}₽`);
+    parts.push(`📚 *История заказов*\n\n💰 Общий заработок: ${balanceToShow}₽`);
 
-    completed.forEach((order) => {
+    historyOrders.forEach((order) => {
       const serviceName = order.Service?.name || order.service_name || order.name || 'Услуга';
       const priceRaw = order.price ?? order.Service?.price ?? null;
       const standardPrice = order.Service?.price ?? order.standard_price ?? priceRaw;
       const createdAt = order.completed_at || order.created_at ? new Date(order.completed_at || order.created_at).toLocaleDateString() : '—';
       const id = order.id || order.execution_id || order.executionId || '—';
-      const statusText = (order.status === 'completed' || order.status === 'done') ? 'Выполнен' : translateStatus(order.status || 'completed');
+      const statusText = translateStatus(order.status || 'unknown');
 
       const block = [];
       block.push('Заказ');
@@ -744,11 +744,11 @@ const showCompletedServices = async (ctx) => {
       ...getMainMenu()
     });
 
-    await logActivity(session.executerId, 'view_completed_services', 'Просмотр выполненных услуг');
+    await logActivity(session.executerId, 'view_order_history', 'Просмотр истории заказов (выполненные и отмененные)');
 
   } catch (error) {
-    console.error('❌ Ошибка получения выполненных услуг:', error);
-    ctx.reply('❌ Ошибка при получении выполненных услуг');
+    console.error('❌ Ошибка получения истории заказов:', error);
+    ctx.reply('❌ Ошибка при получении истории заказов');
   }
 };
 
@@ -882,8 +882,8 @@ const manageOrder = async (ctx, orderNumber) => {
     message += `📅 Создан: ${orderData.created_at ? new Date(orderData.created_at).toLocaleDateString() : 'Не указано'}\n\n`;
 
     if (hasMaterials) {
-      // Показываем только ПЕРВЫЙ доступный материал (один расходник за раз)
-      const assignedMaterial = orderMaterials[0]; // берем только первый материал
+      // Показываем только ПЕРВЫЙ назначенный материал
+      const assignedMaterial = orderMaterials[0]; // берем первый материал
       message += `📦 *Ваш материал для этого заказа:*\n\n`;
       message += `\`${assignedMaterial.contents || assignedMaterial.name || 'Материал'}\`\n`;
       if (assignedMaterial.description) {
@@ -891,24 +891,8 @@ const manageOrder = async (ctx, orderNumber) => {
       }
       message += '\n_Материал выше можно скопировать_\n\n';
 
-      // КРИТИЧЕСКИ ВАЖНО: Помечаем материал как использованный, чтобы другие исполнители его не получили
-      try {
-        console.log(`🔒 Помечаем материал ${assignedMaterial.id} как использованный для исполнителя ${session.executerId}`);
-        const markUsedResponse = await fetchAsAxios('POST', `/api/executers/materials/${assignedMaterial.id}/mark-used`, {
-          executerId: session.executerId,
-          orderNumber: orderNumber,
-          reason: 'Материал выдан исполнителю в управлении заказом'
-        });
-
-        if (markUsedResponse.ok) {
-          console.log(`✅ Материал ${assignedMaterial.id} успешно помечен как использованный`);
-        } else {
-          console.error(`❌ Ошибка пометки материала ${assignedMaterial.id} как использованного:`, markUsedResponse.data);
-        }
-      } catch (markError) {
-        console.error(`❌ Критическая ошибка при пометке материала как использованного:`, markError);
-        // Продолжаем работу, но логируем ошибку для отслеживания
-      }
+      // Материал уже помечен как использованный при автоназначении в backend
+      console.log(`✅ Показываем назначенный материал ${assignedMaterial.id} для заказа ${orderNumber}`);
     } else {
       message += `📦 Нет доступных материалов для этой услуги\n\n`;
     }
@@ -1053,9 +1037,9 @@ bot.on('text', async (ctx) => {
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Активные услуги" (fuzzy)');
       return;
     }
-    if (/выполнен/i.test(lower) && /услуг/i.test(lower)) {
+    if (/выполнен|история|завершен/i.test(lower) && /услуг|заказ/i.test(lower)) {
       await showCompletedServices(ctx);
-      await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Выполненные услуги" (fuzzy)');
+      await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "История заказов" (fuzzy)');
       return;
     }
     if (/статист/i.test(lower)) {
@@ -1102,9 +1086,9 @@ bot.on('text', async (ctx) => {
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Статистика"');
       break;
 
-    case '✅ Выполненные услуги':
+    case '📚 История заказов':
       await showCompletedServices(ctx);
-      await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Выполненные услуги"');
+      await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "История заказов"');
       break;
 
     default:
@@ -1134,21 +1118,51 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
     console.log(`\n📝 === ВВОД НОМЕРА ЗАКАЗА ===`);
     console.log(`📋 Order Number: ${orderNumber}`);
     console.log(`🛠️ Service ID: ${waitingData.serviceId}`);
+    console.log(`🔑 Reserved Material: ${waitingData.reservedMaterial?.id || 'Нет'}`);
 
-    // Создаем ServiceExecution с автоматическим назначением материала
+    // Если есть зарезервированный материал, сначала используем его
+    let materialSuccessfullyUsed = false;
+    if (waitingData.reservedMaterial) {
+      try {
+        console.log(`🔧 Используем зарезервированный материал ${waitingData.reservedMaterial.id}`);
+
+        const useReservedResponse = await fetchAsAxios('POST', '/api/executers-bot/use-reserved-material', {
+          telegram_id: session.telegramId,
+          order_number: orderNumber,
+          executer_id: session.executerId,
+          service_id: parseInt(waitingData.serviceId)
+        });
+
+        if (useReservedResponse.data?.success) {
+          console.log(`✅ Зарезервированный материал успешно использован`);
+          materialSuccessfullyUsed = true;
+        } else {
+          console.warn('⚠️ Не удалось использовать зарезервированный материал, переходим к обычной логике');
+        }
+      } catch (reserveError) {
+        console.warn('⚠️ Ошибка при использовании зарезервированного материала:', reserveError.message);
+      }
+    }
+
+    // Создаем ServiceExecution. Автоназначение только если материал не был использован выше
     const response = await fetchAsAxios('POST', '/api/executers/service-execution', {
       serviceId: waitingData.serviceId,
       executerId: session.executerId,
       orderNumber: orderNumber,
-      autoAssignMaterial: true  // Добавляем флаг для автоматического назначения
-    });
-
-    if (response.data.success) {
+      autoAssignMaterial: !materialSuccessfullyUsed  // НЕ автоназначаем, если материал уже использован
+    });    if (response.data.success) {
       // Очищаем состояние ожидания
       delete waitingStates.orderNumber[chatId];
 
       // Небольшое подтверждение создания заказа, затем показываем экран управления заказом
-      await ctx.reply(`✅ *Заказ #${orderNumber} создан!*\n\n🛠️ Услуга: ${waitingData.serviceName}\n📊 Статус: Активен`, { parse_mode: 'Markdown' });
+      const materialText = waitingData.reservedMaterial
+        ? `\n🔑 Материал: ${waitingData.reservedMaterial.contents}`
+        : '';
+
+      await ctx.reply(
+        `✅ *Заказ #${orderNumber} создан!*\n\n🛠️ Услуга: ${waitingData.serviceName}${materialText}\n📊 Статус: Активен`,
+        { parse_mode: 'Markdown' }
+      );
 
       await logActivity(session.executerId, 'create_order', `Создан заказ #${orderNumber} для услуги "${waitingData.serviceName}".`, orderNumber);
 
@@ -1194,15 +1208,15 @@ const handleCancellationReasonInput = async (ctx, reason) => {
         `❌ *Услуга #${waitingData.orderNumber} не выполнена*\n\n` +
         `📝 Причина: ${reason}\n` +
         `🔄 Материалы возвращены в статус "Доступны"\n` +
-        `🗑️ Заказ удален из системы\n\n` +
-        `Заказ больше не отображается в активных услугах.`,
-        {
-          parse_mode: 'Markdown',
-          ...getMainMenu()
-        }
+        `� Заказ перемещен в историю\n\n` +
+        `Заказ больше не отображается в активных услугах, но остается в "Моих услугах".`,
+        { parse_mode: 'Markdown' }
       );
 
       await logActivity(session.executerId, 'cancel_order', `Не выполнил услугу #${waitingData.orderNumber}. Причина: ${reason}. Материалы возвращены.`, waitingData.orderNumber);
+
+      // Показываем обновленный список активных услуг
+      await showActiveServices(ctx);
     } else {
       ctx.reply(`❌ Ошибка отмены заказа: ${response.data.message}`);
       await logActivity(session.executerId, 'cancel_order_failed', `Ошибка отмены заказа #${waitingData.orderNumber}: ${response.data.message}`, waitingData.orderNumber);
@@ -1324,12 +1338,32 @@ bot.action(/^select_service_(\d+)$/, async (ctx) => {
       return ctx.reply('❌ Услуга не найдена');
     }
 
+    // Резервируем материал для этого пользователя
+    let reservedMaterial = null;
+    try {
+      console.log(`🔧 Резервируем материал для услуги ${serviceId}, пользователь: ${session.telegramId}`);
+
+      const reserveResponse = await fetchAsAxios('POST', '/api/executers-bot/reserve-material', {
+        service_id: parseInt(serviceId),
+        telegram_id: session.telegramId
+      });
+
+      if (reserveResponse.data?.success) {
+        reservedMaterial = reserveResponse.data.data;
+        console.log(`✅ Материал ${reservedMaterial.id} зарезервирован для пользователя ${session.telegramId}`);
+      }
+    } catch (reserveError) {
+      console.warn('⚠️ Не удалось зарезервировать материал:', reserveError.message);
+    }
+
     // Устанавливаем состояние ожидания номера заказа
     waitingStates.orderNumber[chatId] = {
       serviceId: serviceId,
-      serviceName: service.name
+      serviceName: service.name,
+      reservedMaterial: reservedMaterial // Сохраняем информацию о зарезервированном материале
     };
 
+    // Не показываем материал пользователю, но резервируем его внутренне
     await ctx.reply(
       `🛠️ *Выбрана услуга: ${service.name}*\n\n` +
       `💰 Цена: ${formatPrice(service.price)}\n` +
