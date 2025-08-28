@@ -1,7 +1,7 @@
 // One-off cleanup script: remove all data except entries in `admins` table.
 // Usage: node scripts/clean_db_except_admins.js
 
-import('./database/dbTables.js').then(async (models) => {
+import('../database/dbTables.js').then(async (models) => {
   const {
     Admin,
     Log,

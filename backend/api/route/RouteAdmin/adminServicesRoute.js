@@ -5,6 +5,8 @@ import {
     getServiceById,
     updateService,
     deleteService,
+    restoreService,
+    permanentDeleteService,
     getServiceStats,
     assignExecutersToService,
     removeExecuterFromService,
@@ -20,7 +22,8 @@ dotenv.config();
 // GET /services/get - получить все услуги
 sercesRoute.get('/get', async (req, res) => {
     try {
-        const services = await getAllServices();
+        const includeDeleted = req.query.includeDeleted === 'true';
+        const services = await getAllServices(includeDeleted);
         res.json(services);
     } catch (error) {
         console.error('Error fetching services:', error);
@@ -72,13 +75,38 @@ sercesRoute.put('/update/:id', async (req, res) => {
     }
 });
 
-// DELETE /services/delete/:id - удалить услугу
+// DELETE /services/delete/:id - удалить услугу (soft delete)
 sercesRoute.delete('/delete/:id', async (req, res) => {
     try {
-        const result = await deleteService(req.params.id);
+        // Получаем adminId из middleware аутентификации
+        const adminId = req.admin?.id || req.user?.adminId || null;
+        const result = await deleteService(req.params.id, adminId);
         res.json(result);
     } catch (error) {
         console.error('Error deleting service:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// POST /services/restore/:id - восстановить удаленную услугу
+sercesRoute.post('/restore/:id', async (req, res) => {
+    try {
+        const adminId = req.admin?.id || req.user?.adminId || null;
+        const result = await restoreService(req.params.id, adminId);
+        res.json(result);
+    } catch (error) {
+        console.error('Error restoring service:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// DELETE /services/permanent-delete/:id - окончательно удалить услугу
+sercesRoute.delete('/permanent-delete/:id', async (req, res) => {
+    try {
+        const result = await permanentDeleteService(req.params.id);
+        res.json(result);
+    } catch (error) {
+        console.error('Error permanently deleting service:', error);
         res.status(400).json({ error: error.message });
     }
 });

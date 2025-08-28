@@ -882,14 +882,33 @@ const manageOrder = async (ctx, orderNumber) => {
     message += `📅 Создан: ${orderData.created_at ? new Date(orderData.created_at).toLocaleDateString() : 'Не указано'}\n\n`;
 
     if (hasMaterials) {
-      message += `📦 *Доступные материалы для услуги:*\n\n`;
-      orderMaterials.forEach((material, index) => {
-        message += `${index + 1}. \`${material.contents || material.name || 'Материал'}\`\n`;
-        if (material.description) message += `   📝 ${material.description}\n`;
-        message += '\n';
-      });
-      message += `_Материалы выше можно скопировать_\n\n`;
-      message += `💡 Выберите материал для назначения заказу или работайте с любым доступным.\n\n`;
+      // Показываем только ПЕРВЫЙ доступный материал (один расходник за раз)
+      const assignedMaterial = orderMaterials[0]; // берем только первый материал
+      message += `📦 *Ваш материал для этого заказа:*\n\n`;
+      message += `\`${assignedMaterial.contents || assignedMaterial.name || 'Материал'}\`\n`;
+      if (assignedMaterial.description) {
+        message += `📝 ${assignedMaterial.description}\n`;
+      }
+      message += '\n_Материал выше можно скопировать_\n\n';
+
+      // КРИТИЧЕСКИ ВАЖНО: Помечаем материал как использованный, чтобы другие исполнители его не получили
+      try {
+        console.log(`🔒 Помечаем материал ${assignedMaterial.id} как использованный для исполнителя ${session.executerId}`);
+        const markUsedResponse = await fetchAsAxios('POST', `/api/executers/materials/${assignedMaterial.id}/mark-used`, {
+          executerId: session.executerId,
+          orderNumber: orderNumber,
+          reason: 'Материал выдан исполнителю в управлении заказом'
+        });
+
+        if (markUsedResponse.ok) {
+          console.log(`✅ Материал ${assignedMaterial.id} успешно помечен как использованный`);
+        } else {
+          console.error(`❌ Ошибка пометки материала ${assignedMaterial.id} как использованного:`, markUsedResponse.data);
+        }
+      } catch (markError) {
+        console.error(`❌ Критическая ошибка при пометке материала как использованного:`, markError);
+        // Продолжаем работу, но логируем ошибку для отслеживания
+      }
     } else {
       message += `📦 Нет доступных материалов для этой услуги\n\n`;
     }
@@ -898,7 +917,7 @@ const manageOrder = async (ctx, orderNumber) => {
 
     const managementButtons = [];
     if (hasMaterials) {
-      managementButtons.push([{ text: '🔄 Заменить материалы', callback_data: `replace_materials_${orderNumber}` }]);
+      managementButtons.push([{ text: '🔄 Заменить материал', callback_data: `replace_materials_${orderNumber}` }]);
     } else {
       managementButtons.push([{ text: '📞 Обратиться к админу', callback_data: `contact_admin_${orderNumber}` }]);
     }
@@ -955,19 +974,39 @@ const showMaterialsText = async (ctx, orderNumber) => {
       balanceToShow = session.balance || 0;
     }
 
-    let message = `📝 *Материалы для заказа #${orderNumber}*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n`;
+    let message = `📝 *Материал для заказа #${orderNumber}*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n`;
     message += `_Вы можете скопировать текст ниже:_\n\n`;
 
-    materials.forEach((material, index) => {
-      message += `\`${material.contents || material.name || 'Материал'}\`\n`;
-      if (material.description) {
-        message += `📝 ${material.description}\n`;
+    // Показываем только ПЕРВЫЙ материал (один расходник за раз)
+    if (materials.length > 0) {
+      const assignedMaterial = materials[0];
+      message += `\`${assignedMaterial.contents || assignedMaterial.name || 'Материал'}\`\n`;
+      if (assignedMaterial.description) {
+        message += `📝 ${assignedMaterial.description}\n`;
       }
-      if (material.quantity && material.unit) {
-        message += `📦 Количество: ${material.quantity} ${material.unit}\n`;
+      if (assignedMaterial.quantity && assignedMaterial.unit) {
+        message += `📦 Количество: ${assignedMaterial.quantity} ${assignedMaterial.unit}\n`;
       }
-      message += '\n';
-    });
+
+      // КРИТИЧЕСКИ ВАЖНО: Помечаем материал как использованный, чтобы другие исполнители его не получили
+      try {
+        console.log(`🔒 Помечаем материал ${assignedMaterial.id} как использованный для исполнителя ${session.executerId}`);
+        const markUsedResponse = await fetchAsAxios('POST', `/api/executers/materials/${assignedMaterial.id}/mark-used`, {
+          executerId: session.executerId,
+          orderNumber: orderNumber,
+          reason: 'Материал выдан исполнителю'
+        });
+
+        if (markUsedResponse.ok) {
+          console.log(`✅ Материал ${assignedMaterial.id} успешно помечен как использованный`);
+        } else {
+          console.error(`❌ Ошибка пометки материала ${assignedMaterial.id} как использованного:`, markUsedResponse.data);
+        }
+      } catch (markError) {
+        console.error(`❌ Критическая ошибка при пометке материала как использованного:`, markError);
+        // Продолжаем работу, но логируем ошибку для отслеживания
+      }
+    }
 
     await ctx.reply(message, {
       parse_mode: 'Markdown',
@@ -1343,7 +1382,7 @@ bot.action(/^replace_materials_(.+)$/, async (ctx) => {
     console.log(`📋 Order Number: ${orderNumber}`);
 
     // Получаем материалы заказа
-  const response = await fetchAsAxios('GET', `/api/executers-bot/order-materials/${orderNumber}`, null, { telegramId: session.telegramId });
+    const response = await fetchAsAxios('GET', `/api/executers-bot/order-materials/${orderNumber}`, null, { telegramId: session.telegramId });
 
     if (!response.data.success || response.data.data.length === 0) {
       return ctx.reply(
@@ -1362,26 +1401,43 @@ bot.action(/^replace_materials_(.+)$/, async (ctx) => {
 
     const materials = response.data.data;
 
-    // Создаем кнопки для каждого материала
-    const materialButtons = materials.slice(0, 10).map(material => [{
-      text: `🔄 ${(material.contents || material.name || 'Материал').substring(0, 35)}...`,
-      callback_data: `select_material_${orderNumber}_${material.id}`
-    }]);
+    // Если есть только один материал, сообщаем что заменить нечем
+    if (materials.length === 1) {
+      return ctx.reply(
+        '❌ *Нет других материалов для замены*\n\n' +
+        'Это единственный доступный материал для данной услуги.\n\n' +
+        '📞 Обратитесь к администратору для добавления новых материалов.',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+            ]]
+          }
+        }
+      );
+    }
 
-    materialButtons.push([
-      { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
-    ]);
+    // Автоматически заменяем на следующий доступный материал (второй в списке)
+    const newMaterial = materials[1]; // берем второй материал как замену
 
-    let message = `🔄 *Замена материалов для заказа #${orderNumber}*\n\n`;
-    message += `📦 Выберите материал, который нужно заменить:\n\n`;
+    let message = `🔄 *Материал заменен для заказа #${orderNumber}*\n\n`;
+    message += `✅ Новый материал:\n`;
+    message += `\`${newMaterial.contents || newMaterial.name || 'Материал'}\`\n\n`;
 
-    materials.forEach((material, index) => {
-      message += `${index + 1}. ${(material.contents || material.name || 'Материал').substring(0, 50)}...\n`;
-    });
+    if (newMaterial.description) {
+      message += `📝 ${newMaterial.description}\n\n`;
+    }
+
+    message += `_Материал выше можно скопировать_`;
 
     await ctx.reply(message, {
       parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: materialButtons }
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+        ]]
+      }
     });
 
   } catch (error) {

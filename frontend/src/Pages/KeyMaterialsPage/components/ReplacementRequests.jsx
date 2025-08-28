@@ -1,6 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Input, message, Tag, Space, Card, Descriptions, Select } from 'antd';
-import { EyeOutlined, CheckOutlined, CloseOutlined, SwapOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from "react";
+import {
+  Table,
+  Button,
+  Modal,
+  Input,
+  message,
+  Tag,
+  Space,
+  Card,
+  Descriptions,
+  Select,
+} from "antd";
+import {
+  EyeOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  SwapOutlined,
+} from "@ant-design/icons";
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -10,21 +26,27 @@ const ReplacementRequests = () => {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [adminResponse, setAdminResponse] = useState('');
+  const [adminResponse, setAdminResponse] = useState("");
   const [processing, setProcessing] = useState(false);
   const [availableMaterials, setAvailableMaterials] = useState([]);
   const [selectedNewMaterial, setSelectedNewMaterial] = useState(null);
   const [replaceModalVisible, setReplaceModalVisible] = useState(false);
+  const [replacementSettings, setReplacementSettings] = useState({});
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [currentExecuterService, setCurrentExecuterService] = useState({
+    executerId: null,
+    serviceId: null,
+  });
 
   // Загрузка запросов на замену
   const fetchReplacementRequests = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch('/api/admin/material-replacements', {
+      const token = localStorage.getItem("admin_token");
+      const response = await fetch("/api/admin/material-replacements", {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       // Проверяем статус ответа
@@ -33,20 +55,48 @@ const ReplacementRequests = () => {
       }
 
       // Проверяем Content-Type
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
         const text = await response.text();
-        console.error('Received non-JSON response:', text.substring(0, 200));
-        throw new Error('Server returned non-JSON response');
+        console.error("Received non-JSON response:", text.substring(0, 200));
+        throw new Error("Server returned non-JSON response");
       }
 
       const data = await response.json();
       setRequests(data);
+
+      // Загружаем настройки авто-замены
+      await fetchReplacementSettings();
     } catch (error) {
-      message.error('Ошибка при загрузке запросов на замену');
-      console.error('Error fetching replacement requests:', error);
+      message.error("Ошибка при загрузке запросов на замену");
+      console.error("Error fetching replacement requests:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Загрузка настроек авто-замены для всех пар исполнитель-услуга
+  const fetchReplacementSettings = async () => {
+    try {
+      const token = localStorage.getItem("admin_token");
+      const response = await fetch("/api/admin/replacement-settings", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const settings = await response.json();
+        // Преобразуем массив в объект для быстрого поиска по ключу executer_id-service_id
+        const settingsMap = {};
+        settings.forEach((setting) => {
+          const key = `${setting.executer_id}-${setting.service_id}`;
+          settingsMap[key] = setting;
+        });
+        setReplacementSettings(settingsMap);
+      }
+    } catch (error) {
+      console.error("Error fetching replacement settings:", error);
     }
   };
 
@@ -57,12 +107,15 @@ const ReplacementRequests = () => {
   // Загрузка доступных материалов для замены
   const fetchAvailableMaterials = async (requestId) => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch(`/api/admin/material-replacements/${requestId}/available-materials`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      const token = localStorage.getItem("admin_token");
+      const response = await fetch(
+        `/api/admin/material-replacements/${requestId}/available-materials`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         }
-      });
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -71,48 +124,51 @@ const ReplacementRequests = () => {
       const materials = await response.json();
       setAvailableMaterials(materials);
     } catch (error) {
-      message.error('Ошибка при загрузке доступных материалов');
-      console.error('Error fetching available materials:', error);
+      message.error("Ошибка при загрузке доступных материалов");
+      console.error("Error fetching available materials:", error);
     }
   };
 
   // Обработка замены материала
   const processReplacement = async () => {
     if (!selectedNewMaterial) {
-      message.warning('Выберите материал для замены');
+      message.warning("Выберите материал для замены");
       return;
     }
 
     setProcessing(true);
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch(`/api/admin/material-replacements/${selectedRequest.id}/replace`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          newMaterialId: selectedNewMaterial,
-          admin_comment: adminResponse || null
-        })
-      });
+      const token = localStorage.getItem("admin_token");
+      const response = await fetch(
+        `/api/admin/material-replacements/${selectedRequest.id}/replace`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            newMaterialId: selectedNewMaterial,
+            admin_comment: adminResponse || null,
+          }),
+        }
+      );
 
       if (response.ok) {
-        message.success('Материал успешно заменен');
+        message.success("Материал успешно заменен");
         setReplaceModalVisible(false);
         setModalVisible(false);
-        setAdminResponse('');
+        setAdminResponse("");
         setSelectedNewMaterial(null);
         fetchReplacementRequests(); // Перезагрузка списка
       } else {
         const errorText = await response.text();
-        console.error('Server error:', errorText);
-        message.error('Ошибка при замене материала');
+        console.error("Server error:", errorText);
+        message.error("Ошибка при замене материала");
       }
     } catch (error) {
-      message.error('Ошибка при замене материала');
-      console.error('Error processing replacement:', error);
+      message.error("Ошибка при замене материала");
+      console.error("Error processing replacement:", error);
     } finally {
       setProcessing(false);
     }
@@ -125,27 +181,68 @@ const ReplacementRequests = () => {
     setReplaceModalVisible(true);
   };
 
+  // Показать модальное окно настроек авто-замены
+  const showSettingsModal = (executerId, serviceId) => {
+    setCurrentExecuterService({ executerId, serviceId });
+    setSettingsModalVisible(true);
+  };
+
+  // Сохранить настройки авто-замены
+  const saveReplacementSettings = async (autoApprove) => {
+    try {
+      const token = localStorage.getItem("admin_token");
+      const response = await fetch("/api/admin/replacement-settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          executer_id: currentExecuterService.executerId,
+          service_id: currentExecuterService.serviceId,
+          auto_approve: autoApprove,
+        }),
+      });
+
+      if (response.ok) {
+        message.success("Настройки сохранены");
+        setSettingsModalVisible(false);
+        await fetchReplacementSettings(); // Перезагружаем настройки
+      } else {
+        message.error("Ошибка при сохранении настроек");
+      }
+    } catch (error) {
+      message.error("Ошибка при сохранении настроек");
+      console.error("Error saving settings:", error);
+    }
+  };
+
   // Обработка запроса на замену
   const processRequest = async (requestId, decision) => {
     setProcessing(true);
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await fetch(`/api/admin/material-replacements/${requestId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          status: decision,
-          admin_comment: adminResponse || null
-        })
-      });
+      const token = localStorage.getItem("admin_token");
+      const response = await fetch(
+        `/api/admin/material-replacements/${requestId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            status: decision,
+            admin_comment: adminResponse || null,
+          }),
+        }
+      );
 
       if (response.ok) {
-        message.success(`Запрос ${decision === 'approved' ? 'одобрен' : 'отклонён'}`);
+        message.success(
+          `Запрос ${decision === "approved" ? "одобрен" : "отклонён"}`
+        );
         setModalVisible(false);
-        setAdminResponse('');
+        setAdminResponse("");
         fetchReplacementRequests(); // Перезагрузка списка заявок
 
         // Уведомляем родительский компонент об изменениях для обновления списка материалов
@@ -154,12 +251,12 @@ const ReplacementRequests = () => {
         }
       } else {
         const errorText = await response.text();
-        console.error('Server error:', errorText);
-        message.error('Ошибка при обработке запроса');
+        console.error("Server error:", errorText);
+        message.error("Ошибка при обработке запроса");
       }
     } catch (error) {
-      message.error('Ошибка при обработке запроса');
-      console.error('Error processing request:', error);
+      message.error("Ошибка при обработке запроса");
+      console.error("Error processing request:", error);
     } finally {
       setProcessing(false);
     }
@@ -174,59 +271,99 @@ const ReplacementRequests = () => {
   // Статус тэги
   const getStatusTag = (status) => {
     const statusMap = {
-      pending: { color: 'orange', text: 'Ожидает' },
-      approved: { color: 'green', text: 'Одобрен' },
-      rejected: { color: 'red', text: 'Отклонён' }
+      pending: { color: "orange", text: "Ожидает" },
+      approved: { color: "green", text: "Одобрен" },
+      rejected: { color: "red", text: "Отклонён" },
     };
 
-    const statusInfo = statusMap[status] || { color: 'default', text: status };
+    const statusInfo = statusMap[status] || { color: "default", text: status };
     return <Tag color={statusInfo.color}>{statusInfo.text}</Tag>;
   };
 
   const columns = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 70
+      title: "ID",
+      dataIndex: "id",
+      key: "id",
+      width: 70,
     },
     {
-      title: 'Заказ',
-      dataIndex: ['Order', 'id'],
-      key: 'orderId',
-      render: (orderId) => `#${orderId}`
+      title: "Заказ",
+      dataIndex: ["Order", "id"],
+      key: "orderId",
+      render: (orderId) => `#${orderId}`,
     },
     {
-      title: 'Услуга',
-      dataIndex: ['Order', 'Service', 'name'],
-      key: 'serviceName'
+      title: "Услуга",
+      dataIndex: ["Order", "Service", "name"],
+      key: "serviceName",
     },
     {
-      title: 'Исполнитель',
-      dataIndex: ['Executer', 'name'],
-      key: 'executerName'
+      title: "Исполнитель",
+      dataIndex: ["Executer", "name"],
+      key: "executerName",
     },
     {
-      title: 'Причина',
-      dataIndex: 'reason',
-      key: 'reason',
-      ellipsis: true
+      title: "Причина",
+      dataIndex: "reason",
+      key: "reason",
+      ellipsis: true,
     },
     {
-      title: 'Статус',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status) => getStatusTag(status)
+      title: "Статус",
+      dataIndex: "status",
+      key: "status",
+      render: (status) => getStatusTag(status),
     },
     {
-      title: 'Дата создания',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (date) => new Date(date).toLocaleDateString('ru-RU')
+      title: "Авто-замена",
+      key: "autoReplacement",
+      render: (_, record) => {
+        const executerId = record.Executer?.id;
+        const serviceId = record.Order?.Service?.id;
+        const settingKey = `${executerId}-${serviceId}`;
+        const setting = replacementSettings[settingKey];
+
+        if (setting) {
+          return (
+            <Space direction="vertical" size={2}>
+              <Tag color={setting.auto_approve ? "green" : "orange"}>
+                {setting.auto_approve ? "Авто-одобрение" : "Ручное одобрение"}
+              </Tag>
+              <Button
+                size="small"
+                type="link"
+                onClick={() => showSettingsModal(executerId, serviceId)}
+              >
+                Настроить
+              </Button>
+            </Space>
+          );
+        } else {
+          return (
+            <Space direction="vertical" size={2}>
+              <Tag color="default">Не настроено</Tag>
+              <Button
+                size="small"
+                type="link"
+                onClick={() => showSettingsModal(executerId, serviceId)}
+              >
+                Создать настройку
+              </Button>
+            </Space>
+          );
+        }
+      },
     },
     {
-      title: 'Действия',
-      key: 'actions',
+      title: "Дата создания",
+      dataIndex: "created_at",
+      key: "created_at",
+      render: (date) => new Date(date).toLocaleDateString("ru-RU"),
+    },
+    {
+      title: "Действия",
+      key: "actions",
       render: (_, record) => (
         <Space>
           <Button
@@ -237,7 +374,7 @@ const ReplacementRequests = () => {
           >
             Подробнее
           </Button>
-          {record.status === 'pending' && (
+          {record.status === "pending" && (
             <Button
               type="default"
               icon={<SwapOutlined />}
@@ -248,8 +385,8 @@ const ReplacementRequests = () => {
             </Button>
           )}
         </Space>
-      )
-    }
+      ),
+    },
   ];
 
   return (
@@ -263,7 +400,8 @@ const ReplacementRequests = () => {
           pageSize: 10,
           showSizeChanger: true,
           showQuickJumper: true,
-          showTotal: (total, range) => `${range[0]}-${range[1]} из ${total} записей`
+          showTotal: (total, range) =>
+            `${range[0]}-${range[1]} из ${total} записей`,
         }}
       />
 
@@ -272,67 +410,99 @@ const ReplacementRequests = () => {
         open={modalVisible}
         onCancel={() => {
           setModalVisible(false);
-          setAdminResponse('');
+          setAdminResponse("");
         }}
-        footer={selectedRequest?.status === 'pending' ? [
-          <Button key="cancel" onClick={() => setModalVisible(false)}>
-            Отмена
-          </Button>,
-          <Button
-            key="reject"
-            danger
-            icon={<CloseOutlined />}
-            loading={processing}
-            onClick={() => processRequest(selectedRequest.id, 'rejected')}
-          >
-            Отклонить
-          </Button>,
-          <Button
-            key="approve"
-            type="primary"
-            icon={<CheckOutlined />}
-            loading={processing}
-            onClick={() => processRequest(selectedRequest.id, 'approved')}
-          >
-            Одобрить
-          </Button>
-        ] : [
-          <Button key="close" type="primary" onClick={() => setModalVisible(false)}>
-            Закрыть
-          </Button>
-        ]}
+        footer={
+          selectedRequest?.status === "pending"
+            ? [
+                <Button key="cancel" onClick={() => setModalVisible(false)}>
+                  Отмена
+                </Button>,
+                <Button
+                  key="reject"
+                  danger
+                  icon={<CloseOutlined />}
+                  loading={processing}
+                  onClick={() => processRequest(selectedRequest.id, "rejected")}
+                >
+                  Отклонить
+                </Button>,
+                <Button
+                  key="approve"
+                  type="primary"
+                  icon={<CheckOutlined />}
+                  loading={processing}
+                  onClick={() => processRequest(selectedRequest.id, "approved")}
+                >
+                  Одобрить
+                </Button>,
+              ]
+            : [
+                <Button
+                  key="close"
+                  type="primary"
+                  onClick={() => setModalVisible(false)}
+                >
+                  Закрыть
+                </Button>,
+              ]
+        }
         width={700}
       >
         {selectedRequest && (
           <div>
             <Descriptions bordered column={1} size="small">
-              <Descriptions.Item label="ID запроса">{selectedRequest.id}</Descriptions.Item>
-              <Descriptions.Item label="Заказ">#{selectedRequest.Order?.id}</Descriptions.Item>
-              <Descriptions.Item label="Услуга">{selectedRequest.Order?.Service?.name}</Descriptions.Item>
-              <Descriptions.Item label="Исполнитель">{selectedRequest.Executer?.name}</Descriptions.Item>
-              <Descriptions.Item label="Telegram ID">{selectedRequest.Executer?.telegram_id}</Descriptions.Item>
-              <Descriptions.Item label="Статус">{getStatusTag(selectedRequest.status)}</Descriptions.Item>
+              <Descriptions.Item label="ID запроса">
+                {selectedRequest.id}
+              </Descriptions.Item>
+              <Descriptions.Item label="Заказ">
+                #{selectedRequest.Order?.id}
+              </Descriptions.Item>
+              <Descriptions.Item label="Услуга">
+                {selectedRequest.Order?.Service?.name}
+              </Descriptions.Item>
+              <Descriptions.Item label="Исполнитель">
+                {selectedRequest.Executer?.name}
+              </Descriptions.Item>
+              <Descriptions.Item label="Telegram ID">
+                {selectedRequest.Executer?.telegram_id}
+              </Descriptions.Item>
+              <Descriptions.Item label="Статус">
+                {getStatusTag(selectedRequest.status)}
+              </Descriptions.Item>
               <Descriptions.Item label="Дата создания">
-                {new Date(selectedRequest.created_at).toLocaleString('ru-RU')}
+                {new Date(selectedRequest.created_at).toLocaleString("ru-RU")}
               </Descriptions.Item>
               <Descriptions.Item label="Причина замены">
-                <div style={{ whiteSpace: 'pre-wrap' }}>{selectedRequest.reason}</div>
+                <div style={{ whiteSpace: "pre-wrap" }}>
+                  {selectedRequest.reason}
+                </div>
               </Descriptions.Item>
               {selectedRequest.admin_response && (
                 <Descriptions.Item label="Ответ администратора">
-                  <div style={{ whiteSpace: 'pre-wrap' }}>{selectedRequest.admin_response}</div>
+                  <div style={{ whiteSpace: "pre-wrap" }}>
+                    {selectedRequest.admin_response}
+                  </div>
                 </Descriptions.Item>
               )}
               {selectedRequest.processed_at && (
                 <Descriptions.Item label="Дата обработки">
-                  {new Date(selectedRequest.processed_at).toLocaleString('ru-RU')}
+                  {new Date(selectedRequest.processed_at).toLocaleString(
+                    "ru-RU"
+                  )}
                 </Descriptions.Item>
               )}
             </Descriptions>
 
-            {selectedRequest.status === 'pending' && (
+            {selectedRequest.status === "pending" && (
               <div style={{ marginTop: 16 }}>
-                <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: 8,
+                    fontWeight: "bold",
+                  }}
+                >
                   Ответ администратора (необязательно):
                 </label>
                 <TextArea
@@ -353,7 +523,7 @@ const ReplacementRequests = () => {
         onCancel={() => {
           setReplaceModalVisible(false);
           setSelectedNewMaterial(null);
-          setAdminResponse('');
+          setAdminResponse("");
         }}
         footer={[
           <Button key="cancel" onClick={() => setReplaceModalVisible(false)}>
@@ -367,34 +537,53 @@ const ReplacementRequests = () => {
             onClick={processReplacement}
           >
             Заменить материал
-          </Button>
+          </Button>,
         ]}
         width={600}
       >
         {selectedRequest && (
           <div>
-            <Descriptions bordered column={1} size="small" style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="Заказ">#{selectedRequest.Order?.id}</Descriptions.Item>
-              <Descriptions.Item label="Услуга">{selectedRequest.Order?.Service?.name}</Descriptions.Item>
-              <Descriptions.Item label="Исполнитель">{selectedRequest.Executer?.name}</Descriptions.Item>
+            <Descriptions
+              bordered
+              column={1}
+              size="small"
+              style={{ marginBottom: 16 }}
+            >
+              <Descriptions.Item label="Заказ">
+                #{selectedRequest.Order?.id}
+              </Descriptions.Item>
+              <Descriptions.Item label="Услуга">
+                {selectedRequest.Order?.Service?.name}
+              </Descriptions.Item>
+              <Descriptions.Item label="Исполнитель">
+                {selectedRequest.Executer?.name}
+              </Descriptions.Item>
               <Descriptions.Item label="Причина замены">
-                <div style={{ whiteSpace: 'pre-wrap' }}>{selectedRequest.reason}</div>
+                <div style={{ whiteSpace: "pre-wrap" }}>
+                  {selectedRequest.reason}
+                </div>
               </Descriptions.Item>
             </Descriptions>
 
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: 8,
+                  fontWeight: "bold",
+                }}
+              >
                 Выберите новый материал:
               </label>
               <Select
-                style={{ width: '100%' }}
+                style={{ width: "100%" }}
                 placeholder="Выберите материал для замены"
                 value={selectedNewMaterial}
                 onChange={(value) => setSelectedNewMaterial(value)}
                 showSearch
                 optionFilterProp="children"
               >
-                {availableMaterials.map(material => (
+                {availableMaterials.map((material) => (
                   <Option key={material.id} value={material.id}>
                     {material.type_key} - {material.contents}
                   </Option>
@@ -403,7 +592,13 @@ const ReplacementRequests = () => {
             </div>
 
             <div>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: 8,
+                  fontWeight: "bold",
+                }}
+              >
                 Комментарий (необязательно):
               </label>
               <TextArea
@@ -415,6 +610,51 @@ const ReplacementRequests = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        title="Настройки авто-замены материалов"
+        open={settingsModalVisible}
+        onCancel={() => setSettingsModalVisible(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setSettingsModalVisible(false)}>
+            Отмена
+          </Button>,
+          <Button key="manual" onClick={() => saveReplacementSettings(false)}>
+            Ручное одобрение
+          </Button>,
+          <Button
+            key="auto"
+            type="primary"
+            onClick={() => saveReplacementSettings(true)}
+          >
+            Авто-одобрение
+          </Button>,
+        ]}
+        width={500}
+      >
+        <div>
+          <p style={{ marginBottom: 16 }}>
+            Выберите режим обработки запросов на замену материалов для данной
+            пары исполнитель-услуга:
+          </p>
+
+          <div style={{ marginBottom: 16 }}>
+            <h4>Ручное одобрение:</h4>
+            <p style={{ color: "#666", marginLeft: 16 }}>
+              Все запросы на замену материалов будут требовать ручного
+              подтверждения администратором.
+            </p>
+          </div>
+
+          <div>
+            <h4>Авто-одобрение:</h4>
+            <p style={{ color: "#666", marginLeft: 16 }}>
+              Запросы на замену материалов будут автоматически одобряться
+              системой без участия администратора.
+            </p>
+          </div>
+        </div>
       </Modal>
     </Card>
   );

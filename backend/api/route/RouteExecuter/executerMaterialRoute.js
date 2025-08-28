@@ -5,7 +5,8 @@ import {
   getMaterialsForOrder,
   useMaterial,
   getMaterialsStats,
-  requestMaterialReplacement
+  requestMaterialReplacement,
+  markMaterialAsUsed
 } from '../../service/ServiceExecuter/executerMaterialService.js';
 
 export const executerMaterialRoute = express.Router();
@@ -158,6 +159,36 @@ executerMaterialRoute.post('/request-replacement/:materialId', authExecuterMiddl
     res.json(result);
   } catch (error) {
     console.error('Ошибка запроса замены материала:', error.message);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Пометить материал как использованный (резервация для исполнителя)
+executerMaterialRoute.post('/:materialId/mark-used', authExecuterMiddleware, async (req, res) => {
+  try {
+    const executerId = req.user.executerId;
+    const materialId = req.params.materialId;
+    const { orderNumber, reason } = req.body;
+
+    if (!orderNumber) {
+      return res.status(400).json({
+        success: false,
+        error: 'Номер заказа обязателен'
+      });
+    }
+
+    const result = await markMaterialAsUsed(materialId, executerId, orderNumber, reason);
+
+    res.json({
+      success: true,
+      message: 'Материал помечен как использованный',
+      material: result
+    });
+  } catch (error) {
+    console.error('Ошибка пометки материала как использованного:', error.message);
     res.status(400).json({
       success: false,
       error: error.message

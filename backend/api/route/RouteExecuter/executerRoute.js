@@ -26,6 +26,7 @@ import {
   createServiceExecution
 } from '../../service/ServiceExecuter/executerService.js'
 import { Services, ServiceExecution, Material, Executer } from '../../../database/dbTables.js';
+import { Op } from 'sequelize';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken'
 import { authExecuterMiddleware } from '../../middleware.js';
@@ -216,10 +217,18 @@ executerRoute.get('/materials/:orderNumber', async (req, res) => {
     }
 
     const materials = await Material.findAll({
-      where: { order_number: orderNumber }
+      where: {
+        order_number: orderNumber,
+        [Op.or]: [
+          { is_used: false },
+          { is_used: null }
+        ]
+      },
+      order: [['added_date', 'ASC']],
+      limit: 1 // Возвращаем только один материал
     });
 
-    console.log(`📦 Найдено материалов: ${materials.length}`);
+    console.log(`📦 Найдено доступных материалов: ${materials.length}`);
 
     res.json({
       success: true,

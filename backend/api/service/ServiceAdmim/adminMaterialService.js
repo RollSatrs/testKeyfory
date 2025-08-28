@@ -13,6 +13,12 @@ export async function getAllMaterials() {
                     model: Services,
                     as: 'Service',
                     attributes: ['name', 'category']
+                },
+                {
+                    model: Executer,
+                    as: 'Executer',
+                    attributes: ['id', 'name', 'telegram_id'],
+                    required: false
                 }
             ],
             order: [['create_date_material', 'DESC']]
@@ -180,6 +186,18 @@ export async function updateMaterial(id, data) {
         const material = await Material.findByPk(id);
         if (!material) {
             throw new Error('Material not found');
+        }
+
+        // Если передан executer_id, получаем имя исполнителя
+        if (data.executer_id) {
+            const { Executer } = await import('../../database/dbTables.js');
+            const executer = await Executer.findByPk(data.executer_id);
+            if (executer) {
+                data.executer_name = executer.name;
+            }
+        } else if (data.executer_id === null) {
+            // Если executer_id устанавливается в null, очищаем и executer_name
+            data.executer_name = null;
         }
 
         const updatedMaterial = await material.update(data);

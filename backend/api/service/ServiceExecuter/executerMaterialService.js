@@ -48,11 +48,14 @@ export const getMaterialsForOrder = async (orderId, executerId) => {
       throw new Error('Заказ не найден или не принадлежит исполнителю');
     }
 
-    // Получаем материалы для услуги этого заказа, которые еще не привязаны к другому заказу
+    // Получаем материалы для услуги этого заказа, которые еще не использованы
     const materials = await Material.findAll({
       where: {
         service_id: order.service_id,
-        order_id: null
+        [Op.or]: [
+          { is_used: false },
+          { is_used: null }
+        ]
       },
       order: [['added_date', 'ASC']]
     });
@@ -206,5 +209,51 @@ export const requestMaterialReplacement = async (materialId, executerId, reason 
   } catch (error) {
     console.error('Ошибка при запросе замены материала:', error);
     throw new Error(error.message || 'Ошибка при запросе замены материала');
+  }
+};
+
+// Пометить материал как использованный (резервация для конкретного исполнителя)
+export const markMaterialAsUsed = async (materialId, executerId, orderNumber, reason = 'Материал выдан исполнителю') => {
+  try {
+    console.log(`🔒 Начинаем пометку материала ${materialId} как использованный для исполнителя ${executerId}`);
+
+    // Находим материал
+    const material = await Material.findOne({
+      where: { id: materialId }
+    });
+
+    if (!material) {
+      throw new Error('Материал не найден');
+    }
+
+    // Проверяем, что материал еще не использован
+    if (material.is_used) {
+      console.warn(`⚠️ Материал ${materialId} уже помечен как использованный`);
+      return material;
+    }
+
+    // Находим заказ по номеру
+    const order = await Order.findOne({
+      where: { order_number: orderNumber, executer_id: executerId }
+    });
+
+    if (!order) {
+      throw new Error(`Заказ ${orderNumber} не найден для исполнителя ${executerId}`);
+    }
+
+    // Помечаем материал как использованный
+    await material.update({
+      is_used: true,
+      used_date: new Date(),
+      order_id: order.id,
+      used_reason: reason
+    });
+
+    console.log(`✅ Материал ${materialId} успешно помечен как использованный для заказа ${orderNumber}`);
+
+    return material;
+  } catch (error) {
+    console.error('Ошибка при пометке материала как использованного:', error);
+    throw new Error(error.message || 'Ошибка при пометке материала как использованного');
   }
 };

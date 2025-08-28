@@ -33,6 +33,18 @@ export const Services = sequelize.define('Services',{
       key: 'id'
     }
   },
+  is_deleted: { type: DataTypes.BOOLEAN, defaultValue: false }, // Soft delete флаг
+  deleted_at: { type: DataTypes.DATE, allowNull: true }, // Дата удаления
+  deleted_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'admins',
+      key: 'id'
+    }
+  }, // ID администратора, который удалил
+  archived_name: { type: DataTypes.STRING, allowNull: true }, // Сохраненное имя на момент архивации
+  archived_category: { type: DataTypes.STRING, allowNull: true }, // Сохраненная категория на момент архивации
   create_date_service: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'services', timestamps: true });
 
@@ -49,6 +61,8 @@ export const Material = sequelize.define('Material',{
   },
   contents: { type: DataTypes.STRING },
   status: { type: DataTypes.STRING },
+  is_used: { type: DataTypes.BOOLEAN, defaultValue: false }, // Флаг использования материала
+  used_reason: { type: DataTypes.STRING, allowNull: true }, // Причина использования
   source: { type: DataTypes.STRING }, // API склада или ручная загрузка
   added_date: { type: DataTypes.DATE },
   used_date: { type: DataTypes.DATE },
@@ -61,6 +75,15 @@ export const Material = sequelize.define('Material',{
     }
   },
   order_number: { type: DataTypes.STRING, allowNull: true }, // Номер заказа
+  executer_id: {
+    type: DataTypes.INTEGER,
+    references: {
+      model: 'executers',
+      key: 'id'
+    },
+    allowNull: true
+  }, // ID исполнителя
+  executer_name: { type: DataTypes.STRING, allowNull: true }, // Имя исполнителя
   create_date_material: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'material', timestamps: true });
 
@@ -142,11 +165,18 @@ export const MaterialReplacement = sequelize.define('MaterialReplacement', {
 Admin.hasMany(Services, {foreignKey: 'admin_id'});
 Services.belongsTo(Admin, {foreignKey: 'admin_id'});
 
+// Связь для soft delete
+Admin.hasMany(Services, {foreignKey: 'deleted_by', as: 'deletedServices'});
+Services.belongsTo(Admin, {foreignKey: 'deleted_by', as: 'deletedBy'});
+
 Services.hasMany(Material, {foreignKey: 'service_id'});
 Material.belongsTo(Services, {foreignKey: 'service_id', as: 'Service'});
 
 Order.hasMany(Material, {foreignKey: 'order_id'});
 Material.belongsTo(Order, {foreignKey: 'order_id'});
+
+Executer.hasMany(Material, {foreignKey: 'executer_id'});
+Material.belongsTo(Executer, {foreignKey: 'executer_id', as: 'Executer'});
 
 Services.hasMany(Order, {foreignKey: 'service_id'});
 Order.belongsTo(Services, {foreignKey: 'service_id'});

@@ -4,6 +4,8 @@ import {
   FaUpload,
   FaBoxOpen,
   FaDollarSign,
+  FaArchive,
+  FaUndo,
 } from "react-icons/fa";
 import { useEffect, useState } from "react";
 import {
@@ -88,6 +90,7 @@ export function ServicesTable({
   });
   const [selectedExecuters, setSelectedExecuters] = useState([]);
   const [executerPrices, setExecuterPrices] = useState([]);
+  const [showDeleted, setShowDeleted] = useState(false); // Новое состояние для показа архивных услуг
   const [form, setForm] = useState({
     id: null,
     name: "",
@@ -99,11 +102,14 @@ export function ServicesTable({
   useEffect(() => {
     fetchServices();
     fetchExecuters();
-  }, [refresh]);
+  }, [refresh, showDeleted]);
 
   async function fetchServices() {
     try {
-      const data = await apiFetch("/api/admin/services/get");
+      const url = showDeleted
+        ? "/api/admin/services/get?includeDeleted=true"
+        : "/api/admin/services/get";
+      const data = await apiFetch(url);
       setServices(data);
     } catch (error) {
       console.error("Ошибка загрузки услуг:", error);
@@ -123,7 +129,19 @@ export function ServicesTable({
     await apiFetch(`/api/admin/services/delete/${id}`, { method: "DELETE" });
     fetchServices();
     if (onChange) onChange();
-    message.success("Услуга удалена");
+    message.success("Услуга перемещена в архив");
+  }
+
+  async function handleRestore(id) {
+    try {
+      await apiFetch(`/api/admin/services/restore/${id}`, { method: "POST" });
+      fetchServices();
+      if (onChange) onChange();
+      message.success("Услуга восстановлена из архива");
+    } catch (error) {
+      console.error("Ошибка при восстановлении услуги:", error);
+      message.error("Ошибка при восстановлении услуги");
+    }
   }
 
   function openEditModal(service) {
@@ -349,12 +367,17 @@ export function ServicesTable({
   };
 
   // Фильтрация перед отображением
-  const filteredServices = services.filter(
-    (s) =>
+  const filteredServices = services.filter((s) => {
+    // Фильтр по архивности - если showDeleted=true, показываем только архивные, иначе только активные
+    const archiveFilter = showDeleted ? s.is_deleted : !s.is_deleted;
+
+    return (
+      archiveFilter &&
       s.name.toLowerCase().includes(search.toLowerCase()) &&
       (statusFilter ? s.status === statusFilter : true) &&
       (categoryFilter ? s.category === categoryFilter : true)
-  );
+    );
+  });
 
   // Функция для перевода источника на русский
   const getSourceLabel = (source) => {
@@ -451,11 +474,48 @@ export function ServicesTable({
       title: "Название услуги",
       dataIndex: "name",
       key: "name",
+      render: (name, record) => (
+        <div>
+          {record.is_deleted && (
+            <div
+              style={{
+                fontSize: "11px",
+                color: "#ff4d4f",
+                fontWeight: "bold",
+                marginBottom: "2px",
+              }}
+            >
+              🗃️ АРХИВ
+            </div>
+          )}
+          <div
+            style={{
+              color: record.is_deleted ? "#8c8c8c" : "inherit",
+              fontWeight: record.is_deleted ? "normal" : "500",
+            }}
+          >
+            {record.is_deleted && record.archived_name
+              ? record.archived_name
+              : name}
+          </div>
+        </div>
+      ),
     },
     {
       title: "Категория",
       dataIndex: "category",
       key: "category",
+      render: (category, record) => (
+        <div
+          style={{
+            color: record.is_deleted ? "#8c8c8c" : "inherit",
+          }}
+        >
+          {record.is_deleted && record.archived_category
+            ? record.archived_category
+            : category}
+        </div>
+      ),
     },
     {
       title: "Расходники",
@@ -849,11 +909,27 @@ export function ServicesTable({
                 <Tooltip
                   key={`${order.order_number}-${idx}`}
                   title={
-                    "Номер: " +
-                    order.order_number +
-                    (order.executer_name
-                      ? "\nИсполнитель: " + order.executer_name
-                      : "")
+                    <div>
+                      <div style={{ fontWeight: "bold", marginBottom: "4px" }}>
+                        📋 Заказ #{order.order_number}
+                      </div>
+                      {order.executer_name && (
+                        <div style={{ color: "#87ceeb" }}>
+                          👤 Исполнитель: {order.executer_name}
+                        </div>
+                      )}
+                      {order.status && (
+                        <div
+                          style={{
+                            color: isCompleted ? "#90EE90" : "#FFA500",
+                            fontSize: "12px",
+                            marginTop: "2px",
+                          }}
+                        >
+                          📊 Статус: {isCompleted ? "Выполнен" : "В процессе"}
+                        </div>
+                      )}
+                    </div>
                   }
                   placement="top"
                 >
@@ -879,10 +955,11 @@ export function ServicesTable({
             icon={<FaDollarSign />}
             onClick={() => openPricingModal(record)}
             size="small"
+            disabled={record.is_deleted}
             style={{
-              backgroundColor: "#52c41a",
-              borderColor: "#52c41a",
-              color: "white",
+              backgroundColor: record.is_deleted ? "#d9d9d9" : "#52c41a",
+              borderColor: record.is_deleted ? "#d9d9d9" : "#52c41a",
+              color: record.is_deleted ? "#8c8c8c" : "white",
             }}
             title="Индивидуальные цены"
           />
@@ -890,15 +967,38 @@ export function ServicesTable({
             icon={<FaEdit />}
             onClick={() => openEditModal(record)}
             size="small"
+            disabled={record.is_deleted}
           />
-          <Popconfirm
-            title="Удалить услугу?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Да"
-            cancelText="Нет"
-          >
-            <Button icon={<FaTrash />} danger size="small" />
-          </Popconfirm>
+          {record.is_deleted ? (
+            <Popconfirm
+              title="Восстановить услугу из архива?"
+              onConfirm={() => handleRestore(record.id)}
+              okText="Да"
+              cancelText="Нет"
+            >
+              <Button
+                icon={<FaUndo />}
+                type="primary"
+                size="small"
+                title="Восстановить из архива"
+              />
+            </Popconfirm>
+          ) : (
+            <Popconfirm
+              title="Переместить услугу в архив?"
+              description="Услуга будет скрыта, но сохранится в системе со всей статистикой"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Да"
+              cancelText="Нет"
+            >
+              <Button
+                icon={<FaArchive />}
+                danger
+                size="small"
+                title="Переместить в архив"
+              />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -906,13 +1006,46 @@ export function ServicesTable({
 
   return (
     <div className="bg-white rounded-xl shadow p-4">
+      <div
+        style={{
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <h3 style={{ margin: 0 }}>Управление услугами</h3>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <Button
+            type={showDeleted ? "primary" : "default"}
+            onClick={() => setShowDeleted(!showDeleted)}
+            size="small"
+          >
+            {showDeleted ? "🗂️ Показать активные" : "🗃️ Показать архивные"}
+          </Button>
+        </div>
+      </div>
+
       <Table
         columns={columns}
         dataSource={filteredServices}
         rowKey="id"
         pagination={{ pageSize: 10 }}
         bordered
+        rowClassName={(record) => {
+          return record.is_deleted ? "deleted-service-row" : "";
+        }}
       />
+
+      <style jsx>{`
+        :global(.deleted-service-row) {
+          background-color: #f5f5f5 !important;
+          opacity: 0.7;
+        }
+        :global(.deleted-service-row:hover) {
+          background-color: #e8e8e8 !important;
+        }
+      `}</style>
       <Modal
         open={editForm}
         title="Редактировать услугу"

@@ -1,4 +1,4 @@
-import { Services, Material, ExecuterPricing, Executer, ServiceAccess, ServiceExecution } from "../../../database/dbTables.js";
+import { Services, Material, ExecuterPricing, Executer, ServiceAccess, ServiceExecution, Admin } from "../../../database/dbTables.js";
 import { sequelize } from "../../../database/databaseOn.js";
 import { Op } from 'sequelize';
 
@@ -6,7 +6,7 @@ import { Op } from 'sequelize';
 export async function getAllServices(includeDeleted = false) {
     try {
         // Условие для фильтрации удаленных услуг
-        const whereClause = includeDeleted ? {} : { status: { [Op.ne]: 'deleted' } };
+        const whereClause = includeDeleted ? {} : { is_deleted: false };
 
         const services = await Services.findAll({
             where: whereClause,
@@ -15,6 +15,12 @@ export async function getAllServices(includeDeleted = false) {
                     model: Executer,
                     as: 'assignedExecuter',
                     attributes: ['id', 'name', 'telegram_id', 'status'],
+                    required: false
+                },
+                {
+                    model: Admin,
+                    as: 'deletedBy',
+                    attributes: ['id', 'telegramId'], // используем telegramId вместо name
                     required: false
                 }
             ],
@@ -221,9 +227,79 @@ export async function updateService(id, data) {
     }
 }
 
-export async function deleteService(id) {
+export async function deleteService(id, adminId = null) {
     try {
-        // Use a transaction to ensure related cleanup is atomic
+        const service = await Services.findByPk(id);
+        if (!service) {
+            throw new Error('Service not found');
+        }
+
+        // Проверяем, не удалена ли уже услуга
+        if (service.is_deleted) {
+            throw new Error('Service is already deleted');
+        }
+
+        // Выполняем soft delete
+        const currentDate = new Date();
+        await service.update({
+            is_deleted: true,
+            deleted_at: currentDate,
+            deleted_by: adminId,
+            archived_name: service.name, // Сохраняем оригинальное имя
+            archived_category: service.category, // Сохраняем оригинальную категорию
+            status: 'deleted' // Дополнительно помечаем статус
+        });
+
+        console.log(`✅ Услуга ${service.name} (ID: ${id}) помечена как удаленная`);
+
+        return {
+            message: 'Service soft deleted successfully',
+            service_name: service.name,
+            deleted_at: currentDate,
+            softDeleted: true
+        };
+    } catch (error) {
+        console.error('❌ Ошибка при soft delete услуги:', error);
+        throw new Error(`Error deleting service: ${error.message}`);
+    }
+}
+
+// Функция для восстановления удаленной услуги
+export async function restoreService(id, adminId = null) {
+    try {
+        const service = await Services.findByPk(id);
+        if (!service) {
+            throw new Error('Service not found');
+        }
+
+        if (!service.is_deleted) {
+            throw new Error('Service is not deleted');
+        }
+
+        // Восстанавливаем услугу
+        await service.update({
+            is_deleted: false,
+            deleted_at: null,
+            deleted_by: null,
+            status: 'active' // Возвращаем активный статус
+        });
+
+        console.log(`✅ Услуга ${service.name} (ID: ${id}) восстановлена`);
+
+        return {
+            message: 'Service restored successfully',
+            service_name: service.name,
+            restored_at: new Date()
+        };
+    } catch (error) {
+        console.error('❌ Ошибка при восстановлении услуги:', error);
+        throw new Error(`Error restoring service: ${error.message}`);
+    }
+}
+
+// Функция для окончательного удаления (только для админа)
+export async function permanentDeleteService(id) {
+    try {
         const t = await sequelize.transaction();
         try {
             const service = await Services.findByPk(id, { transaction: t });
@@ -231,53 +307,25 @@ export async function deleteService(id) {
                 throw new Error('Service not found');
             }
 
-            // Проверяем, есть ли связанные записи заработков
-            const { ExecuterEarnings } = await import('../../../database/dbTables.js');
-            const earningsCount = await ExecuterEarnings.count({
-                where: { service_id: id },
-                transaction: t
-            });
+            // Удаляем связанные данные
+            await Material.destroy({ where: { service_id: id }, transaction: t });
+            await ServiceAccess.destroy({ where: { service_id: id }, transaction: t });
+            await ExecuterPricing.destroy({ where: { service_id: id }, transaction: t });
 
-            if (earningsCount > 0) {
-                // Если есть заработки, выполняем мягкое удаление
-                console.log(`Найдено ${earningsCount} записей заработков для услуги ${id}. Выполняем мягкое удаление.`);
+            // Физически удаляем услугу
+            await service.destroy({ transaction: t });
 
-                // Помечаем услугу как удаленную вместо физического удаления
-                await service.update({
-                    status: 'deleted',
-                    name: `[УДАЛЕНА] ${service.name}`
-                }, { transaction: t });
-
-                // Удаляем связанные данные, кроме заработков
-                await Material.destroy({ where: { service_id: id }, transaction: t });
-                await ServiceAccess.destroy({ where: { service_id: id }, transaction: t });
-                await ExecuterPricing.destroy({ where: { service_id: id }, transaction: t });
-
-                await t.commit();
-                return {
-                    message: 'Service marked as deleted. Earnings preserved.',
-                    softDeleted: true,
-                    earningsPreserved: earningsCount
-                };
-            } else {
-                // Если нет заработков, можно удалить полностью
-                await Material.destroy({ where: { service_id: id }, transaction: t });
-                await ServiceAccess.destroy({ where: { service_id: id }, transaction: t });
-                await ExecuterPricing.destroy({ where: { service_id: id }, transaction: t });
-                await service.destroy({ transaction: t });
-
-                await t.commit();
-                return {
-                    message: 'Service deleted completely',
-                    softDeleted: false
-                };
-            }
+            await t.commit();
+            return {
+                message: 'Service permanently deleted',
+                service_name: service.name
+            };
         } catch (err) {
             await t.rollback();
             throw err;
         }
     } catch (error) {
-        throw new Error(`Error deleting service: ${error.message}`);
+        throw new Error(`Error permanently deleting service: ${error.message}`);
     }
 }
 
