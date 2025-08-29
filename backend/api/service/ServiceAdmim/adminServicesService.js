@@ -185,6 +185,18 @@ export async function addServiices(data) {
         // Ensure newly created services are active by default so executers see them in the bot
         const svcStatus = (typeof status === 'string' && status.trim() !== '') ? status : 'active';
 
+        // Определяем, является ли услуга расходной (цифровой) по категории
+        const digitalCategories = [
+            'Игры', 'Программное обеспечение', 'Образование', 'Развлечения', 'Музыка',
+            'Видео и кино', 'Социальные сети', 'Облако и хостинг', 'Безопасность',
+            'VPN и прокси', 'Дизайн и графика', 'Разработка', 'Фриланс',
+            'Электронные книги', 'Новости и СМИ', 'Почта и коммуникации',
+            'Финансы и банки', 'Онлайн-магазины', 'Здоровье и спорт',
+            'Мобильные приложения', 'Фото и видео', 'Технологии',
+            'Криптовалюты', 'Маркетинг', 'Общение и знакомства'
+        ];
+        const isConsumable = digitalCategories.includes(category);
+
         const newService = await Services.create({
             name,
             category,
@@ -192,7 +204,8 @@ export async function addServiices(data) {
             status: svcStatus,
             loading_method: loading_method || 'manual',
             executer_id: executer_id || null,
-            admin_id: 1
+            admin_id: 1,
+            is_consumable: isConsumable // Устанавливаем флаг расходной услуги
         });
         return newService;
     } catch (error) {

@@ -42,7 +42,8 @@ export const Services = sequelize.define('Services',{
       model: 'admins',
       key: 'id'
     }
-  }, // ID администратора, который удалил
+  },
+  is_consumable: { type: DataTypes.BOOLEAN, defaultValue: false }, // Расходная услуга (цифровая) // ID администратора, который удалил
   archived_name: { type: DataTypes.STRING, allowNull: true }, // Сохраненное имя на момент архивации
   archived_category: { type: DataTypes.STRING, allowNull: true }, // Сохраненная категория на момент архивации
   create_date_service: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }

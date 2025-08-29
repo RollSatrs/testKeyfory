@@ -418,11 +418,21 @@ export function KeysMaterialsTable({
         // Подготавливаем информацию об исполнителях для tooltip
         const executersList = [];
 
-        if (
+        // ДЛЯ РАСХОДНЫХ УСЛУГ: показываем исполнителей только если материал реально назначен
+        if (service && service.is_consumable) {
+          // Для расходных услуг показываем только реально назначенного исполнителя из материала
+          if (record.executer_id && record.executer_name) {
+            executersList.push({
+              name: record.executer_name,
+              status: "Назначен на заказ",
+            });
+          }
+        } else if (
           service &&
           service.assigned_executers &&
           service.assigned_executers.length > 0
         ) {
+          // Для НЕ расходных услуг - показываем всех назначенных через ServiceAccess
           for (const executer of service.assigned_executers) {
             const executerStatus =
               executer.status === "active"
@@ -660,86 +670,235 @@ export function KeysMaterialsTable({
       key: "executers",
       width: 200,
       render: (_, record) => {
-        // 1. Проверяем прямое назначение через executer_id в материале
-        if (record.executer_id && record.executer_name) {
-          const isActive =
-            record.executer_status === "active" ||
-            record.status === "active" ||
-            !record.executer_status; // Если статус не указан, считаем активным
-          return (
-            <Tag color={isActive ? "green" : "orange"}>
-              {record.executer_name}
-            </Tag>
-          );
+        // Build normalized order list with executor info (same logic as order numbers)
+        const activeOrders = Array.isArray(record.active_orders)
+          ? record.active_orders
+          : [];
+        const orderNumbers = Array.isArray(record.order_numbers)
+          ? record.order_numbers
+          : [];
+
+        // Fixed executors for consistent display
+        const FIXED_EXECUTER_NAMES = ["кцукцук", "Роллан Сарсембаев", "Rollan"];
+
+        // Normalize executor identity
+        const normalizeExecutor = (obj) => {
+          if (!obj) return { name: null };
+
+          const name =
+            obj.executer_name ||
+            (obj.executer && obj.executer.name) ||
+            obj.name ||
+            null;
+
+          // Try to match against fixed names first
+          if (name) {
+            const normalized = name.toString().trim().toLowerCase();
+            const fixedMatch = FIXED_EXECUTER_NAMES.find(
+              (fn) => fn.toString().trim().toLowerCase() === normalized
+            );
+            if (fixedMatch) {
+              return { name: fixedMatch };
+            }
+          }
+
+          return { name: name || null };
+        };
+
+        const orders = [];
+
+        // Process active orders
+        for (const o of activeOrders) {
+          if (!o) continue;
+          if (typeof o === "string" || typeof o === "number") {
+            orders.push({
+              order_number: o,
+              executer_name: null,
+              status: null,
+            });
+          } else {
+            const { name } = normalizeExecutor(o);
+            orders.push({
+              order_number: o.order_number || o.order || o.id,
+              executer_name: name,
+              status: o.status || o.state || null,
+            });
+          }
         }
 
-        // 2. Проверяем прямое назначение через assignedExecuter
-        const directExecuter = record.assignedExecuter;
-        if (directExecuter) {
-          return (
-            <Tag
-              color={directExecuter.status === "active" ? "green" : "orange"}
-            >
-              {directExecuter.name || "Неизвестный исполнитель"}
-            </Tag>
-          );
+        // Process order numbers if no active orders
+        if (orders.length === 0) {
+          for (const n of orderNumbers) {
+            if (!n) continue;
+            if (typeof n === "object") {
+              const { name } = normalizeExecutor(n);
+              orders.push({
+                ...n,
+                executer_name: name || n.executer_name,
+              });
+            } else {
+              const { name } = normalizeExecutor(record);
+              orders.push({
+                order_number: n,
+                executer_name: name,
+                status: null,
+              });
+            }
+          }
         }
 
-        // 3. Проверяем назначение через ServiceAccess (включая архивированные услуги)
-        const svc = services.find((s) => s.id === record.service_id);
-        const assignedExecuters = svc?.assigned_executers || [];
+        // Fallback to single order from record
+        if (orders.length === 0 && record.order_number) {
+          const { name } = normalizeExecutor(record);
+          orders.push({
+            order_number: record.order_number,
+            executer_name: name,
+            status: record.status || null,
+          });
+        }
 
-        // Если есть назначения через ServiceAccess
-        if (assignedExecuters.length > 0) {
-          if (assignedExecuters.length === 1) {
-            const executer = assignedExecuters[0];
+        // Extract unique executors from orders
+        const uniqueExecuters = [];
+        const executerNames = new Set();
+
+        for (const order of orders) {
+          if (order.executer_name && !executerNames.has(order.executer_name)) {
+            executerNames.add(order.executer_name);
+            uniqueExecuters.push({
+              name: order.executer_name,
+              status: order.status || null,
+            });
+          }
+        }
+
+        // If no executors from orders, try direct assignment
+        if (uniqueExecuters.length === 0) {
+          // 1. Проверяем прямое назначение через executer_id в материале
+          if (record.executer_id && record.executer_name) {
+            return <Tag color="green">{record.executer_name}</Tag>;
+          }
+
+          // 2. Проверяем прямое назначение через assignedExecuter
+          const directExecuter = record.assignedExecuter;
+          if (directExecuter) {
             return (
-              <Tag color={executer.status === "active" ? "green" : "orange"}>
-                {executer.executer_name ||
-                  executer.name ||
-                  "Неизвестный исполнитель"}
+              <Tag
+                color={directExecuter.status === "active" ? "green" : "orange"}
+              >
+                {directExecuter.name || "Неизвестный исполнитель"}
               </Tag>
             );
           }
 
-          return (
-            <Tooltip
-              title={
-                <div>
-                  {assignedExecuters.map((executer, index) => (
-                    <div key={index}>
-                      •{" "}
-                      {executer.executer_name ||
-                        executer.name ||
-                        "Неизвестный исполнитель"}
+          // 3. Проверяем назначение через ServiceAccess (включая архивированные услуги)
+          const svc = services.find((s) => s.id === record.service_id);
+          const assignedExecuters = svc?.assigned_executers || [];
+
+          // ДЛЯ РАСХОДНЫХ УСЛУГ: НЕ показываем автоматически назначенных исполнителей
+          // Исполнители должны показываться только если материал реально назначен на заказ
+          if (svc && svc.is_consumable) {
+            return <Tag color="default">Не назначены</Tag>;
+          }
+
+          // Если есть назначения через ServiceAccess (только для НЕ расходных услуг)
+          if (assignedExecuters.length > 0) {
+            if (assignedExecuters.length === 1) {
+              const executer = assignedExecuters[0];
+              return (
+                <Tag color={executer.status === "active" ? "green" : "orange"}>
+                  {executer.executer_name ||
+                    executer.name ||
+                    "Неизвестный исполнитель"}
+                </Tag>
+              );
+            }
+
+            return (
+              <Tooltip
+                title={
+                  <div>
+                    {assignedExecuters.map((executer, index) => (
+                      <div key={index}>
+                        •{" "}
+                        {executer.executer_name ||
+                          executer.name ||
+                          "Неизвестный исполнитель"}
+                      </div>
+                    ))}
+                  </div>
+                }
+              >
+                <Tag color="blue">
+                  {assignedExecuters.length} исполнител
+                  {assignedExecuters.length === 1
+                    ? "ь"
+                    : assignedExecuters.length < 5
+                    ? "я"
+                    : "ей"}
+                </Tag>
+              </Tooltip>
+            );
+          }
+
+          return <Tag color="default">Не назначены</Tag>;
+        }
+
+        // Display executors from orders
+        if (uniqueExecuters.length === 0) {
+          return <span style={{ color: "#64748b" }}>Не указан</span>;
+        }
+
+        return (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+            {uniqueExecuters.map((executer, index) => {
+              const isCompleted =
+                executer.status &&
+                (executer.status
+                  .toString()
+                  .toLowerCase()
+                  .includes("completed") ||
+                  executer.status.toString().toLowerCase().includes("выполн") ||
+                  executer.status.toString().toLowerCase().includes("used") ||
+                  executer.status.toString().toLowerCase().includes("использ"));
+
+              return (
+                <Tooltip
+                  key={`${executer.name}-${index}`}
+                  title={
+                    <div>
+                      <div style={{ fontWeight: "bold", marginBottom: "4px" }}>
+                        👤 Исполнитель: {executer.name}
+                      </div>
+                      {executer.status && (
+                        <div
+                          style={{
+                            color: isCompleted ? "#90EE90" : "#FFA500",
+                            fontSize: "12px",
+                            marginTop: "2px",
+                          }}
+                        >
+                          📊 Статус: {isCompleted ? "Выполнен" : "В процессе"}
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
-              }
-            >
-              <Tag color="blue">
-                {assignedExecuters.length} исполнител
-                {assignedExecuters.length === 1
-                  ? "ь"
-                  : assignedExecuters.length < 5
-                  ? "я"
-                  : "ей"}
-              </Tag>
-            </Tooltip>
-          );
-        }
-
-        // 4. Если услуга не найдена, но материал имеет executer_id - показываем его
-        if (record.executer_id) {
-          return (
-            <Tag color="default">
-              {record.executer_name || "Неизвестный исполнитель"}
-            </Tag>
-          );
-        }
-
-        // 5. Если никого не назначено
-        return <Tag color="default">Не назначены</Tag>;
+                  }
+                  placement="top"
+                >
+                  <Tag
+                    color={isCompleted ? "green" : "blue"}
+                    style={{
+                      cursor: "pointer",
+                      margin: "2px",
+                      fontSize: "12px",
+                    }}
+                  >
+                    {executer.name}
+                  </Tag>
+                </Tooltip>
+              );
+            })}
+          </div>
+        );
       },
     },
     {

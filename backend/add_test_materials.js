@@ -6,21 +6,21 @@ async function addTestMaterials() {
 
     const materials = [
       {
-        service_id: 145,
+        service_id: 160,
         contents: 'TEST-11111-22222-33333-AAAAA',
         status: 'available',
         type_key: 'license',
         source: 'test'
       },
       {
-        service_id: 145,
+        service_id: 160,
         contents: 'TEST-44444-55555-66666-BBBBB',
         status: 'available',
         type_key: 'license',
         source: 'test'
       },
       {
-        service_id: 145,
+        service_id: 160,
         contents: 'TEST-77777-88888-99999-CCCCC',
         status: 'available',
         type_key: 'license',

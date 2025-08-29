@@ -1150,24 +1150,46 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
       executerId: session.executerId,
       orderNumber: orderNumber,
       autoAssignMaterial: !materialSuccessfullyUsed  // НЕ автоназначаем, если материал уже использован
-    });    if (response.data.success) {
+    });
+
+    if (response.data.success) {
       // Очищаем состояние ожидания
       delete waitingStates.orderNumber[chatId];
 
-      // Небольшое подтверждение создания заказа, затем показываем экран управления заказом
-      const materialText = waitingData.reservedMaterial
-        ? `\n🔑 Материал: ${waitingData.reservedMaterial.contents}`
-        : '';
+      let message;
+      if (materialSuccessfullyUsed) {
+        // Если зарезервированный материал был использован
+        message = `✅ *Заказ #${orderNumber} создан!*\n\n` +
+          `🛠️ **Услуга:** ${waitingData.serviceName}\n` +
+          `👤 **Исполнитель:** ${session.name || 'Вы'}\n\n` +
+          `📦 Зарезервированный материал успешно назначен на заказ\n\n` +
+          `_Теперь вы можете приступить к работе_`;
+      } else {
+        // Если использовалось обычное автоназначение материалов
+        message = `✅ *Заказ #${orderNumber} создан!*\n\n` +
+          `🛠️ **Услуга:** ${waitingData.serviceName}\n` +
+          `👤 **Исполнитель:** ${session.name || 'Вы'}\n\n` +
+          `📦 Материалы автоматически назначены\n\n` +
+          `_Теперь вы можете приступить к работе_`;
+      }
 
-      await ctx.reply(
-        `✅ *Заказ #${orderNumber} создан!*\n\n🛠️ Услуга: ${waitingData.serviceName}${materialText}\n📊 Статус: Активен`,
-        { parse_mode: 'Markdown' }
-      );
+      // Показываем сообщение об успешном создании
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '📋 Управлять заказом', callback_data: `manage_order_${orderNumber}` },
+            { text: '🏠 Главное меню', callback_data: 'main_menu' }
+          ]]
+        }
+      });
 
-      await logActivity(session.executerId, 'create_order', `Создан заказ #${orderNumber} для услуги "${waitingData.serviceName}".`, orderNumber);
+      await logActivity(session.executerId, 'create_order', `Создан заказ #${orderNumber} для услуги "${waitingData.serviceName}". Материал: ${materialSuccessfullyUsed ? 'зарезервированный' : 'автоназначение'}`, orderNumber);
 
-      // Перенаправляем в единый экран управления заказом (тот же, что вызывается по кнопке)
-      await manageOrder(ctx, orderNumber);
+      // Перенаправляем в экран управления заказом
+      setTimeout(() => {
+        manageOrder(ctx, orderNumber);
+      }, 1000);
     } else {
       ctx.reply(`❌ Ошибка создания заказа: ${response.data.message}`);
     }

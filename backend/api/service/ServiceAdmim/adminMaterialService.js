@@ -84,32 +84,42 @@ export async function getAllMaterials() {
                     materialData.order_number = material.order_number;
                     materialData.executer_name = material.executer_name || 'Неизвестный исполнитель';
                 } else {
-                    // Попытка подтянуть исполнителя, если материал доступен, но не привязан к заказу
-                    try {
-                        // 1) Если у услуги назначен исполнитель напрямую (Services.executer_id)
-                        const service = await Services.findByPk(material.service_id, {
-                            include: [{ model: Executer, as: 'assignedExecuter', attributes: ['id', 'name'] }]
-                        });
+                    // ДЛЯ РАСХОДНЫХ МАТЕРИАЛОВ: НЕ автоматически подтягиваем исполнителя
+                    // Исполнитель должен назначаться только при фактическом использовании материала через бот
 
-                        if (service && service.assignedExecuter) {
-                            materialData.executer_name = service.assignedExecuter.name;
-                            materialData.executer_id = service.assignedExecuter.id;
-                        } else {
-                            // 2) Ищем права доступа ServiceAccess и подтягиваем первого доступного исполнителя
-                            const accessList = await ServiceAccess.findAll({
-                                where: { service_id: material.service_id, has_access: true },
-                                include: [{ model: Executer, attributes: ['id', 'name'] }],
-                                limit: 1
+                    // Проверяем, является ли услуга расходной
+                    const service = await Services.findByPk(material.service_id);
+                    const isConsumableService = service && service.is_consumable;
+
+                    if (!isConsumableService) {
+                        // Для НЕ расходных материалов - оставляем старую логику подтягивания исполнителя
+                        try {
+                            // 1) Если у услуги назначен исполнитель напрямую (Services.executer_id)
+                            const serviceWithExecuter = await Services.findByPk(material.service_id, {
+                                include: [{ model: Executer, as: 'assignedExecuter', attributes: ['id', 'name'] }]
                             });
-                            if (accessList && accessList.length > 0 && accessList[0].Executer) {
-                                materialData.executer_name = accessList[0].Executer.name;
-                                materialData.executer_id = accessList[0].Executer.id;
+
+                            if (serviceWithExecuter && serviceWithExecuter.assignedExecuter) {
+                                materialData.executer_name = serviceWithExecuter.assignedExecuter.name;
+                                materialData.executer_id = serviceWithExecuter.assignedExecuter.id;
+                            } else {
+                                // 2) Ищем права доступа ServiceAccess и подтягиваем первого доступного исполнителя
+                                const accessList = await ServiceAccess.findAll({
+                                    where: { service_id: material.service_id, has_access: true },
+                                    include: [{ model: Executer, attributes: ['id', 'name'] }],
+                                    limit: 1
+                                });
+                                if (accessList && accessList.length > 0 && accessList[0].Executer) {
+                                    materialData.executer_name = accessList[0].Executer.name;
+                                    materialData.executer_id = accessList[0].Executer.id;
+                                }
                             }
+                        } catch (err) {
+                            // Не критично — просто не заполняем поле исполнителя
+                            // console.warn('Ошибка при попытке получить исполнителя для материала', err.message);
                         }
-                    } catch (err) {
-                        // Не критично — просто не заполняем поле исполнителя
-                        // console.warn('Ошибка при попытке получить исполнителя для материала', err.message);
                     }
+                    // Для расходных материалов оставляем executer_name и executer_id пустыми
                 }
 
                 return materialData;
