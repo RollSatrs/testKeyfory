@@ -1,5 +1,5 @@
 import express from 'express'
-import { MaterialReplacement, Order } from '../../../database/dbTables.js'
+import { MaterialReplacement, Order, Services } from '../../../database/dbTables.js'
 import { addAdmin, checkAdmin, login, getAllMaterialReplacements, updateReplacementStatus, getAdminStats, processReplacementWithNewMaterial, getAvailableMaterialsForReplacementAdmin } from '../../service/ServiceAdmim/adminService.js'
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken'
@@ -155,6 +155,56 @@ adminRoute.post('/simple-reset-password', async (req, res) => {
   }
 });
 
+// Создать новый запрос на замену материала
+adminRoute.post('/material-replacements', async (req, res) => {
+  try {
+    const { orderNumber, reason, executerId } = req.body;
+
+    if (!orderNumber || !reason) {
+      return res.status(400).json({
+        success: false,
+        error: 'Необходимы orderNumber и reason'
+      });
+    }
+
+    // Импортируем необходимые модели
+    const { ServiceExecution, MaterialReplacement } = await import('../../../database/dbTables.js');
+
+    // Найдем выполнение заказа по номеру заказа
+    const execution = await ServiceExecution.findOne({
+      where: { order_number: orderNumber }
+    });
+
+    if (!execution) {
+      return res.status(404).json({
+        success: false,
+        error: 'Заказ не найден'
+      });
+    }
+
+    // Создаем запрос на замену материала с правильным service_execution_id
+    const replacement = await MaterialReplacement.create({
+      service_execution_id: execution.id, // Используем ID выполнения услуги
+      reason: reason,
+      status: 'pending',
+      executer_id: executerId || execution.executer_id,
+      created_at: new Date()
+    });
+
+    res.json({
+      success: true,
+      data: replacement,
+      message: 'Запрос на замену материала создан'
+    });
+  } catch (err) {
+    console.error('Ошибка при создании запроса на замену:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка сервера'
+    });
+  }
+});
+
 // Получить все заявки на замену материалов
 adminRoute.get('/material-replacements', authMiddleware, async (req, res) => {
   try {
@@ -203,11 +253,15 @@ adminRoute.get('/material-replacements/:id/available-materials', authMiddleware,
   try {
     const { id } = req.params;
 
-    // Сначала получаем заявку, чтобы узнать service_id
+    // Импортируем необходимые модели
+    const { MaterialReplacement, ServiceExecution, Material } = await import('../../../database/dbTables.js');
+
+    // Получаем заявку с информацией об исполнении
     const replacement = await MaterialReplacement.findByPk(id, {
       include: [
         {
-          model: Order,
+          model: ServiceExecution,
+          as: 'ServiceExecution',
           attributes: ['service_id']
         }
       ]
@@ -217,7 +271,15 @@ adminRoute.get('/material-replacements/:id/available-materials', authMiddleware,
       return res.status(404).json({ error: 'Заявка не найдена' });
     }
 
-    const materials = await getAvailableMaterialsForReplacementAdmin(replacement.Order.service_id);
+    // Получаем доступные материалы для этой услуги
+    const materials = await Material.findAll({
+      where: {
+        service_id: replacement.ServiceExecution.service_id,
+        status: 'available'
+      },
+      attributes: ['id', 'name', 'contents', 'type_key']
+    });
+
     res.json(materials);
   } catch (err) {
     console.error('Ошибка при получении доступных материалов:', err);
@@ -245,17 +307,192 @@ adminRoute.get('/verify', authMiddleware, async (req, res) => {
   }
 });
 
-// Эндпоинт для настроек замены материалов (заглушка)
+// Эндпоинт для настроек замены материалов
 adminRoute.get('/replacement-settings', authMiddleware, async (req, res) => {
   try {
-    // Возвращаем базовые настройки замены
-    res.json({
-      autoReplace: true,
-      notifyAdminOnReplace: true,
-      maxReplacementsPerDay: 10
+    const services = await Services.findAll({
+      where: { is_deleted: false },
+      attributes: ['id', 'name', 'replacement_type'],
+      order: [['name', 'ASC']]
     });
+
+    res.json(services);
   } catch (err) {
     console.error('Ошибка при получении настроек замены:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Эндпоинт для обновления типа замены материалов для услуги
+adminRoute.post('/replacement-settings', authMiddleware, async (req, res) => {
+  try {
+    const { serviceId, replacementType } = req.body;
+
+    if (!serviceId || !replacementType) {
+      return res.status(400).json({ error: 'Необходимы serviceId и replacementType' });
+    }
+
+    if (!['manual', 'auto'].includes(replacementType)) {
+      return res.status(400).json({ error: 'replacementType должен быть "manual" или "auto"' });
+    }
+
+    const [updatedRowsCount] = await Services.update(
+      { replacement_type: replacementType },
+      { where: { id: serviceId, is_deleted: false } }
+    );
+
+    if (updatedRowsCount === 0) {
+      return res.status(404).json({ error: 'Услуга не найдена' });
+    }
+
+    res.json({
+      success: true,
+      message: `Тип замены для услуги обновлен на "${replacementType}"`
+    });
+  } catch (err) {
+    console.error('Ошибка при обновлении настроек замены:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Эндпоинт для получения типа замены конкретной услуги
+adminRoute.get('/service-replacement-type/:serviceId', async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+
+    const service = await Services.findOne({
+      where: {
+        id: serviceId,
+        is_deleted: false
+      },
+      attributes: ['id', 'name', 'replacement_type']
+    });
+
+    if (!service) {
+      return res.status(404).json({ error: 'Услуга не найдена' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        serviceId: service.id,
+        serviceName: service.name,
+        replacementType: service.replacement_type
+      }
+    });
+  } catch (err) {
+    console.error('Ошибка при получении типа замены услуги:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Эндпоинт для автоматической замены материала
+adminRoute.post('/auto-replace-material', async (req, res) => {
+  try {
+    console.log(`🔄 === API: АВТОМАТИЧЕСКАЯ ЗАМЕНА МАТЕРИАЛА ===`);
+    const { orderNumber, executerId } = req.body;
+    console.log(`📋 Order Number: ${orderNumber}, Executer ID: ${executerId}`);
+
+    if (!orderNumber || !executerId) {
+      return res.status(400).json({ error: 'Необходимы orderNumber и executerId' });
+    }
+
+    // Импортируем необходимые модели
+    const { Material, ServiceExecution, MaterialReplacement } = await import('../../../database/dbTables.js');
+
+    // Найдем выполнение заказа
+    const execution = await ServiceExecution.findOne({
+      where: { order_number: orderNumber },
+      include: [{
+        model: Services,
+        as: 'Service',
+        attributes: ['id', 'name']
+      }]
+    });
+
+    if (!execution) {
+      return res.status(404).json({ error: 'Заказ не найден' });
+    }
+
+    console.log(`🎯 Найдено выполнение заказа: ID ${execution.id}, Service ID: ${execution.service_id}, Executer ID: ${execution.executer_id}`);
+
+    // Найдем текущий материал для этого исполнителя и заказа
+    // Ищем материал который был назначен или используется для этого заказа
+    const currentMaterial = await Material.findOne({
+      where: {
+        service_id: execution.service_id,
+        executer_id: executerId,
+        status: ['assigned', 'used'] // Ищем и назначенные и уже использованные
+      }
+    });
+
+    if (!currentMaterial) {
+      return res.status(404).json({ error: 'Текущий материал исполнителя не найден' });
+    }
+
+    // Найдем новый доступный материал для замены
+    const newMaterial = await Material.findOne({
+      where: {
+        service_id: execution.service_id,
+        status: 'available'
+      }
+    });
+
+    if (!newMaterial) {
+      return res.status(400).json({ error: 'Нет доступных материалов для замены' });
+    }
+
+    // Выполняем замену в транзакции
+    const { sequelize } = await import('../../../database/databaseOn.js');
+
+    await sequelize.transaction(async (t) => {
+      // Если материал еще не использован, помечаем его как использованный
+      if (currentMaterial.status !== 'used') {
+        await currentMaterial.update({
+          status: 'used',
+          used_date: new Date()
+        }, { transaction: t });
+      }
+
+      // Назначаем новый материал исполнителю
+      await newMaterial.update({
+        status: 'assigned',
+        executer_id: executerId,
+        reserved_at: new Date()
+      }, { transaction: t });
+
+      // Создаем запись о замене
+      await MaterialReplacement.create({
+        service_execution_id: execution.id, // ID выполнения услуги (service_execution)
+        executer_id: execution.executer_id, // ID из таблицы executers
+        material_id: currentMaterial.id, // Старый материал
+        reason: 'Автоматическая замена материала',
+        status: 'completed',
+        admin_response: `Автоматическая замена: ${currentMaterial.contents || 'материал'} → ${newMaterial.contents || 'материал'}`,
+        processed_at: new Date(),
+        created_at: new Date()
+      }, { transaction: t });
+    });
+
+    res.json({
+      success: true,
+      message: 'Материал автоматически заменен',
+      data: {
+        oldMaterial: {
+          id: currentMaterial.id,
+          contents: currentMaterial.contents,
+          name: currentMaterial.name
+        },
+        newMaterial: {
+          id: newMaterial.id,
+          contents: newMaterial.contents,
+          name: newMaterial.name
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error('Ошибка при автоматической замене материала:', err);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });

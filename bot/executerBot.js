@@ -380,46 +380,46 @@ const showMyServices = async (ctx) => {
     const response = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
     const services = response.data || [];
 
-    // Доп. проверка: получаем все выполненные этим исполнителем заказы
-    // и собираем service_id, чтобы однозначно определить, какие услуги он уже завершал.
-    let completedServiceIds = new Set();
+    // Получаем АКТИВНЫЕ заказы этого исполнителя, чтобы исключить услуги с активными заказами
+    let activeServiceIds = new Set();
     try {
-      const compResp = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
-      const completedOrders = compResp.data || [];
-      for (const o of (Array.isArray(completedOrders) ? completedOrders : [])) {
+      const activeResp = await fetchAsAxios('GET', `/api/executers-bot/active-executions/${session.executerId}`);
+      const activeOrders = activeResp.data || [];
+      for (const o of (Array.isArray(activeOrders) ? activeOrders : [])) {
         const sid = o.service_id ?? o.Service?.id ?? o.serviceId ?? null;
-        if (sid != null) completedServiceIds.add(String(sid));
+        if (sid != null) {
+          // Проверяем, что заказ действительно активен (не завершен и не отменен)
+          const status = (o.status || '').toString().toLowerCase();
+          if (!['completed', 'cancelled', 'done', 'выполнен'].includes(status)) {
+            activeServiceIds.add(String(sid));
+          }
+        }
       }
-      if (DEBUG_BOT_SERVICES) console.log(`DEBUG_BOT_SERVICES: completedServiceIds for executer ${session.executerId}:`, Array.from(completedServiceIds));
+      if (DEBUG_BOT_SERVICES) console.log(`DEBUG_BOT_SERVICES: activeServiceIds for executer ${session.executerId}:`, Array.from(activeServiceIds));
     } catch (e) {
-      if (DEBUG_BOT_SERVICES) console.log('DEBUG_BOT_SERVICES: failed to load completed-orders for executer:', e.message);
+      if (DEBUG_BOT_SERVICES) console.log('DEBUG_BOT_SERVICES: failed to load active-executions for executer:', e.message);
     }
 
     if (DEBUG_BOT_SERVICES) {
       console.log('DEBUG_BOT_SERVICES: /services response raw:', JSON.stringify(response.data, null, 2));
     }
 
-    // Используем общую функцию фильтрации, но логируем per-service детали
+    // Исключаем услуги с активными заказами - показываем только те, по которым НЕТ активных заказов
     const visibleServices = [];
     for (const s of (Array.isArray(services) ? services : [])) {
       try {
-        const completedOrdersField = s.completed_orders;
-        const completedCountField = s.completed_count ?? s.completedCount;
-        const lastExec = s.lastExecution ?? s.last_execution ?? s.execution ?? null;
-        const execStatus = (s.executionStatus || s.execution_status || (lastExec && (lastExec.status || lastExec.state)) || '').toString();
-
-  // Если есть явные completed service_id из completed-orders — помечаем как выполненную
-  const completedForExec = completedServiceIds.has(String(s.id)) || isServiceCompletedForExecuter(s, session.executerId, session.name);
+        const hasActiveOrder = activeServiceIds.has(String(s.id));
 
         if (DEBUG_BOT_SERVICES) {
           console.log(
-            `DEBUG_SERVICES: id=${s.id} name="${s.name}" completed_count=${completedCountField} ` +
-            `execStatus="${execStatus}" completed_orders=${Array.isArray(completedOrdersField) ? completedOrdersField.length : String(completedOrdersField)} ` +
-            `lastExec=${lastExec ? JSON.stringify(lastExec) : 'null'} -> completedForThisExec=${completedForExec}`
+            `DEBUG_SERVICES: id=${s.id} name="${s.name}" hasActiveOrder=${hasActiveOrder}`
           );
         }
 
-        if (!completedForExec) visibleServices.push(s);
+        // Показываем только услуги БЕЗ активных заказов
+        if (!hasActiveOrder) {
+          visibleServices.push(s);
+        }
       } catch (err) {
         console.log('DEBUG_SERVICES: error evaluating service', s && s.id, err.message);
         visibleServices.push(s);
@@ -992,12 +992,19 @@ const showMaterialsText = async (ctx, orderNumber) => {
       }
     }
 
+    // Формируем кнопки управления заказом
+    const managementButtons = [];
+    managementButtons.push([{ text: '🔄 Заменить материал', callback_data: `replace_materials_${orderNumber}` }]);
+    managementButtons.push([
+      { text: '✅ Выполнил услугу', callback_data: `complete_order_${orderNumber}` },
+      { text: '❌ Не выполнил услугу', callback_data: `cancel_order_${orderNumber}` }
+    ]);
+    managementButtons.push([{ text: '🔙 К активным услугам', callback_data: 'back_to_active' }]);
+
     await ctx.reply(message, {
       parse_mode: 'Markdown',
       reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
-        ]]
+        inline_keyboard: managementButtons
       }
     });
 
@@ -1067,6 +1074,31 @@ bot.on('text', async (ctx) => {
 
   if (waitingStates.replacementReason[chatId]) {
     return handleReplacementReasonInput(ctx, text);
+  }
+
+  // Обработка кастомной причины замены
+  if (session.awaitingCustomReason) {
+    const orderNumber = session.awaitingCustomReason;
+    const customReason = text.trim();
+
+    // Очищаем состояние
+    delete session.awaitingCustomReason;
+
+    if (customReason.length < 3) {
+      return ctx.reply(
+        '❌ Причина слишком короткая. Минимум 3 символа.\n\n' +
+        'Попробуйте еще раз или выберите готовую причину:',
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 К выбору причин', callback_data: `replace_materials_${orderNumber}` }
+            ]]
+          }
+        }
+      );
+    }
+
+    return await sendReplacementRequest(ctx, orderNumber, customReason);
   }
 
   // Обработка кнопок главного меню
@@ -1173,23 +1205,17 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
           `_Теперь вы можете приступить к работе_`;
       }
 
-      // Показываем сообщение об успешном создании
+      // Показываем сообщение об успешном создании - ТОЛЬКО ТЕКСТ БЕЗ КНОПОК
       await ctx.reply(message, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '📋 Управлять заказом', callback_data: `manage_order_${orderNumber}` },
-            { text: '🏠 Главное меню', callback_data: 'main_menu' }
-          ]]
-        }
+        parse_mode: 'Markdown'
       });
 
       await logActivity(session.executerId, 'create_order', `Создан заказ #${orderNumber} для услуги "${waitingData.serviceName}". Материал: ${materialSuccessfullyUsed ? 'зарезервированный' : 'автоназначение'}`, orderNumber);
 
-      // Перенаправляем в экран управления заказом
-      setTimeout(() => {
-        manageOrder(ctx, orderNumber);
-      }, 1000);
+      // Показываем материалы для созданного заказа
+      await showMaterialsText(ctx, orderNumber);
+
+      // Кнопки убраны - исполнитель может продолжить работу через главное меню
     } else {
       ctx.reply(`❌ Ошибка создания заказа: ${response.data.message}`);
     }
@@ -1423,6 +1449,246 @@ bot.action(/^manage_order_(.+)$/, async (ctx) => {
 });
 
 // Заменить материалы
+
+// Функция для автоматической замены материалов
+async function handleAutoReplacement(ctx, orderNumber, session) {
+  try {
+    console.log(`🤖 Выполняем автоматическую замену для заказа ${orderNumber}`);
+
+    // Вызываем API для автоматической замены материала
+    const replacementResponse = await fetchAsAxios('POST', '/api/admin/auto-replace-material', {
+      orderNumber: orderNumber,
+      executerId: session.executerId
+    });
+
+    if (!replacementResponse || !replacementResponse.data || !replacementResponse.data.success) {
+      console.error('❌ Ошибка автоматической замены:', replacementResponse?.data || 'Response is null');
+      return ctx.reply(
+        '❌ *Ошибка автоматической замены*\n\n' +
+        'Не удалось выполнить автоматическую замену материала. Возможные причины:\n' +
+        '• Нет доступных материалов для замены\n' +
+        '• Материал не назначен исполнителю\n' +
+        '• Технические проблемы\n\n' +
+        '📞 Обратитесь к администратору.',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+            ]]
+          }
+        }
+      );
+    }
+
+    const { oldMaterial, newMaterial } = replacementResponse.data.data;
+
+    let message = `🤖 *Материал автоматически заменен для заказа #${orderNumber}*\n\n`;
+
+    message += `❌ *Заменен материал:*\n`;
+    message += `\`${oldMaterial.contents || 'Материал'}\`\n`;
+    message += `_Статус: Использован_\n\n`;
+
+    message += `✅ *Новый материал:*\n`;
+    message += `\`${newMaterial.contents || 'Материал'}\`\n`;
+    message += `_Статус: Назначен вам_\n\n`;
+
+    message += `_Материал выше можно скопировать_\n\n`;
+    message += `🔄 _Замена выполнена автоматически согласно настройкам услуги_\n`;
+    message += `📝 _Запись о замене сохранена в системе_`;
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+        ]]
+      }
+    });
+
+    console.log(`✅ Автоматическая замена выполнена: ${oldMaterial.id} → ${newMaterial.id}`);
+
+  } catch (error) {
+    console.error('❌ Ошибка автоматической замены:', error);
+    ctx.reply('❌ Ошибка при автоматической замене материалов');
+  }
+}
+
+// Функция для ручной замены материалов (через админа)
+async function handleManualReplacement(ctx, orderNumber, session) {
+  try {
+    console.log(`👤 Показываем выбор причин для ручной замены заказа ${orderNumber}`);
+
+    // Сначала получаем информацию о заказе для получения service_id
+    const executionResponse = await fetchAsAxios('GET', `/api/executers-bot/execution-by-order/${orderNumber}`);
+
+    if (!executionResponse || !executionResponse.data || !executionResponse.data.success) {
+      console.error('❌ Ошибка получения информации о заказе для ручной замены:', executionResponse?.data || 'Response is null');
+      return ctx.reply('❌ Ошибка получения информации о заказе');
+    }
+
+    const execution = executionResponse.data.data;
+
+    let message = `🔄 *Замена материалов*\n\n`;
+    message += `📋 Заказ: #${orderNumber}\n`;
+    message += `🎯 Услуга: ${execution.Service?.name || 'Неизвестная услуга'}\n\n`;
+    message += `❓ Выберите причину замены материала:`;
+
+    const keyboard = [
+      [{ text: '🔧 Материал неисправен', callback_data: `reason_broken_${orderNumber}` }],
+      [{ text: '🚫 Материал заблокирован', callback_data: `reason_blocked_${orderNumber}` }],
+      [{ text: '📦 Материал не подходит', callback_data: `reason_unsuitable_${orderNumber}` }],
+      [{ text: '⚡ Материал поврежден', callback_data: `reason_damaged_${orderNumber}` }],
+      [{ text: '📝 Другая причина', callback_data: `reason_custom_${orderNumber}` }],
+      [{ text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }]
+    ];
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    });
+
+    console.log(`✅ Показан выбор причин для замены заказа ${orderNumber}`);
+  } catch (error) {
+    console.error('❌ Ошибка при показе причин замены:', error);
+    ctx.reply('❌ Ошибка при обработке запроса на замену материалов');
+  }
+}
+
+// Обработчики для выбора причины замены
+bot.action(/^reason_(broken|blocked|unsuitable|damaged)_(.+)$/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const reasonType = ctx.match[1];
+    const orderNumber = ctx.match[2];
+    const session = userSessions[ctx.chat.id];
+
+    if (!session?.authenticated) {
+      return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    }
+
+    const reasonTexts = {
+      'broken': 'Материал неисправен',
+      'blocked': 'Материал заблокирован',
+      'unsuitable': 'Материал не подходит',
+      'damaged': 'Материал поврежден'
+    };
+
+    const reason = reasonTexts[reasonType] || 'Неизвестная причина';
+
+    console.log(`👤 Отправляем запрос на ручную замену для заказа ${orderNumber} с причиной: ${reason}`);
+
+    await sendReplacementRequest(ctx, orderNumber, reason);
+
+  } catch (error) {
+    console.error('❌ Ошибка обработки причины замены:', error);
+    ctx.reply('❌ Ошибка при отправке запроса на замену');
+  }
+});
+
+// Обработчик для кастомной причины
+bot.action(/^reason_custom_(.+)$/, async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const orderNumber = ctx.match[1];
+    const session = userSessions[ctx.chat.id];
+
+    if (!session?.authenticated) {
+      return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    }
+
+    // Сохраняем состояние для ввода кастомной причины
+    session.awaitingCustomReason = orderNumber;
+
+    await ctx.reply(
+      `📝 *Укажите причину замены*\n\n` +
+      `📋 Заказ: #${orderNumber}\n\n` +
+      `✍️ Напишите причину замены материала:`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 К выбору причин', callback_data: `replace_materials_${orderNumber}` }
+          ]]
+        }
+      }
+    );
+
+  } catch (error) {
+    console.error('❌ Ошибка запроса кастомной причины:', error);
+    ctx.reply('❌ Ошибка при запросе причины');
+  }
+});
+
+// Функция для отправки запроса на замену
+async function sendReplacementRequest(ctx, orderNumber, reason) {
+  try {
+    console.log(`📤 Отправляем запрос на замену для заказа ${orderNumber} с причиной: ${reason}`);
+
+    // Получаем информацию о заказе
+    const executionResponse = await fetchAsAxios('GET', `/api/executers-bot/execution-by-order/${orderNumber}`);
+
+    if (!executionResponse || !executionResponse.data || !executionResponse.data.success) {
+      console.error('❌ Ошибка получения информации о заказе для замены:', executionResponse?.data || 'Response is null');
+      return ctx.reply('❌ Ошибка получения информации о заказе');
+    }
+
+    const execution = executionResponse.data.data;
+
+    // Отправляем запрос на замену материала админу
+    const replacementData = {
+      orderNumber: orderNumber,
+      reason: reason
+    };
+
+    console.log(`📤 Отправляем данные запроса на замену:`, replacementData);
+
+    const replacementResponse = await fetchAsAxios('POST', '/api/admin/material-replacements', replacementData);
+
+    if (replacementResponse && replacementResponse.data && replacementResponse.data.success) {
+      let message = `✅ *Запрос на замену отправлен*\n\n`;
+      message += `📋 Заказ: #${orderNumber}\n`;
+      message += `🎯 Услуга: ${execution.Service?.name || 'Неизвестная услуга'}\n`;
+      message += `❓ Причина: ${reason}\n`;
+      message += `🕐 Дата: ${new Date().toLocaleString('ru-RU')}\n\n`;
+      message += `⏳ Ожидайте ответа администратора.\n`;
+      message += `📱 Вы получите уведомление, когда замена будет обработана.`;
+
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+          ]]
+        }
+      });
+
+      console.log(`✅ Запрос на ручную замену создан для заказа ${orderNumber} с причиной: ${reason}`);
+    } else {
+      console.error('❌ Ошибка создания запроса на замену:', replacementResponse?.data || 'Response is null');
+      await ctx.reply(
+        '❌ *Ошибка отправки запроса*\n\n' +
+        'Не удалось отправить запрос на замену материала. Попробуйте позже.',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+            ]]
+          }
+        }
+      );
+    }
+  } catch (error) {
+    console.error('❌ Ошибка отправки запроса на замену:', error);
+    ctx.reply('❌ Ошибка при отправке запроса на замену материалов');
+  }
+}
+
 bot.action(/^replace_materials_(.+)$/, async (ctx) => {
   try {
     await ctx.answerCbQuery();
@@ -1437,69 +1703,49 @@ bot.action(/^replace_materials_(.+)$/, async (ctx) => {
     console.log(`\n🔄 === ЗАМЕНА МАТЕРИАЛОВ ===`);
     console.log(`📋 Order Number: ${orderNumber}`);
 
-    // Получаем материалы заказа
-    const response = await fetchAsAxios('GET', `/api/executers-bot/order-materials/${orderNumber}`, null, { telegramId: session.telegramId });
+    // Получаем информацию о заказе, чтобы узнать serviceId
+    const executionResponse = await fetchAsAxios('GET', `/api/executers-bot/execution-by-order/${orderNumber}`);
 
-    if (!response.data.success || response.data.data.length === 0) {
-      return ctx.reply(
-        '❌ *Нет материалов для замены*\n\n' +
-        'Для этого заказа не найдено материалов.',
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
-            ]]
-          }
-        }
-      );
+    if (!executionResponse || !executionResponse.data || !executionResponse.data.success) {
+      console.error('❌ Ошибка получения информации о заказе:', executionResponse?.data || 'Response is null');
+      return ctx.reply('❌ Ошибка получения информации о заказе');
     }
 
-    const materials = response.data.data;
+    const execution = executionResponse.data.data;
+    console.log('🔍 Execution data:', execution);
 
-    // Если есть только один материал, сообщаем что заменить нечем
-    if (materials.length === 1) {
-      return ctx.reply(
-        '❌ *Нет других материалов для замены*\n\n' +
-        'Это единственный доступный материал для данной услуги.\n\n' +
-        '📞 Обратитесь к администратору для добавления новых материалов.',
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
-            ]]
-          }
-        }
-      );
+    if (!execution) {
+      console.error('❌ Заказ не найден');
+      return ctx.reply('❌ Заказ не найден');
     }
 
-    // Автоматически заменяем на следующий доступный материал (второй в списке)
-    const newMaterial = materials[1]; // берем второй материал как замену
+    const serviceId = execution.service_id;
+    console.log(`🎯 Service ID: ${serviceId}`);
 
-    let message = `🔄 *Материал заменен для заказа #${orderNumber}*\n\n`;
-    message += `✅ Новый материал:\n`;
-    message += `\`${newMaterial.contents || newMaterial.name || 'Материал'}\`\n\n`;
+    // Проверяем тип замены для данной услуги
+    const replacementTypeResponse = await fetchAsAxios('GET', `/api/admin/service-replacement-type/${serviceId}`);
 
-    if (newMaterial.description) {
-      message += `📝 ${newMaterial.description}\n\n`;
+    if (!replacementTypeResponse.data.success) {
+      console.log('⚠️ Не удалось получить тип замены, используем ручной режим');
+      // Если не удалось получить тип замены, используем ручной режим
+      return await handleManualReplacement(ctx, orderNumber, session);
     }
 
-    message += `_Материал выше можно скопировать_`;
+    const replacementType = replacementTypeResponse.data.data.replacementType;
+    console.log(`🔄 Тип замены для услуги "${replacementTypeResponse.data.data.serviceName}": ${replacementType}`);
 
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
-        ]]
-      }
-    });
+    if (replacementType === 'auto') {
+      // Автоматическая замена
+      return await handleAutoReplacement(ctx, orderNumber, session);
+    } else {
+      // Ручная замена - отправляем запрос админу
+      return await handleManualReplacement(ctx, orderNumber, session);
+    }
 
   } catch (error) {
-    console.error('❌ Ошибка показа материалов для замены:', error);
+    console.error('❌ Ошибка замены материалов:', error);
     await ctx.answerCbQuery();
-    ctx.reply('❌ Ошибка при загрузке материалов для замены');
+    ctx.reply('❌ Ошибка при обработке замены материалов');
   }
 });
 

@@ -2,7 +2,6 @@ import { KeysMaterialsHeader } from "./components/KeysMaterialsHeader";
 import { KeysMaterialsTable } from "./components/KeysMaterialsTable";
 import { KeysMaterialsStats } from "./components/KeysMaterialsStats";
 import { KeysMaterialsSearch as MaterialsSearch } from "./components/KeysMaterialsSearch";
-import ReplacementRequests from "./components/ReplacementRequests";
 import { useState, useCallback, useEffect } from "react";
 
 export function KeysMaterials() {
@@ -12,7 +11,7 @@ export function KeysMaterials() {
 
   const handleRefresh = useCallback(() => setRefresh((r) => !r), []);
 
-  // Устанавливаем глобальную функцию обновления для вызова из ReplacementRequests
+  // Устанавливаем глобальную функцию обновления для вызова из других компонентов (если потребуется)
   useEffect(() => {
     window.refreshMaterialsList = handleRefresh;
     return () => {
@@ -36,7 +35,6 @@ export function KeysMaterials() {
         search={search}
         statusFilter={statusFilter}
       />
-      <ReplacementRequests />
     </>
   );
 }

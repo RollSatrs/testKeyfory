@@ -13,6 +13,7 @@ import { Analytics } from "./Pages/AnalyticsPage/Analytics";
 import { ExecuterPricing } from "./Pages/ExecuterPricingPage/ExecuterPricing";
 import { SystemLogs } from "./Pages/SystemLogsPage/SystemLogs";
 import { Setting } from "./Pages/SettingPage/Setting";
+import MaterialReplacement from "./Pages/MaterialReplacementPage/MaterialReplacement";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Auth } from "./Pages/AuthPage/Auth";
 
@@ -41,6 +42,10 @@ export function App() {
           <Route path="users" element={<Executors />} />
           <Route path="orders" element={<Orders />} />
           <Route path="materials" element={<KeysMaterials />} />
+          <Route
+            path="material-replacement"
+            element={<MaterialReplacement />}
+          />
           <Route path="analytics" element={<Analytics />} />
           <Route path="executer-pricing" element={<ExecuterPricing />} />
           <Route path="logs" element={<SystemLogs />} />

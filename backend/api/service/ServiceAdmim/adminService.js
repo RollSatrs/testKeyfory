@@ -1,4 +1,4 @@
-import { Admin, MaterialReplacement, Order, Services, Executer, Material } from "../../../database/dbTables.js";
+import { Admin, MaterialReplacement, Order, Services, Executer, Material, ServiceExecution } from "../../../database/dbTables.js";
 import { Op } from 'sequelize';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
@@ -62,16 +62,16 @@ export async function login(telegramId, password) {
 export async function getAllMaterialReplacements() {
     try {
         const replacements = await MaterialReplacement.findAll({
-            where: {
-                status: 'pending' // Показываем только ожидающие заявки
-            },
+            // Убираем фильтр по статусу, чтобы показывать все заявки
             include: [
                 {
-                    model: Order,
-                    attributes: ['id', 'service_id'],
+                    model: ServiceExecution,
+                    as: 'ServiceExecution',
+                    attributes: ['id', 'order_number', 'service_id'],
                     include: [
                         {
                             model: Services,
+                            as: 'Service',
                             attributes: ['name']
                         }
                     ]

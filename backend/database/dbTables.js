@@ -44,6 +44,7 @@ export const Services = sequelize.define('Services',{
     }
   },
   is_consumable: { type: DataTypes.BOOLEAN, defaultValue: false }, // Расходная услуга (цифровая) // ID администратора, который удалил
+  replacement_type: { type: DataTypes.STRING, defaultValue: 'manual' }, // Тип замены материалов: 'manual' или 'auto'
   archived_name: { type: DataTypes.STRING, allowNull: true }, // Сохраненное имя на момент архивации
   archived_category: { type: DataTypes.STRING, allowNull: true }, // Сохраненная категория на момент архивации
   create_date_service: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
@@ -153,7 +154,7 @@ export const ServiceAccess = sequelize.define('ServiceAccess', {
 // Запросы на замену материалов
 export const MaterialReplacement = sequelize.define('MaterialReplacement', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  order_id: { type: DataTypes.INTEGER, references: { model: 'orders', key: 'id' }, allowNull: false },
+  service_execution_id: { type: DataTypes.INTEGER, references: { model: 'service_executions', key: 'id' }, allowNull: false },
   executer_id: { type: DataTypes.INTEGER, references: { model: 'executers', key: 'id' }, allowNull: false },
   material_id: { type: DataTypes.INTEGER, references: { model: 'material', key: 'id' }, allowNull: true },
   reason: { type: DataTypes.TEXT, allowNull: false }, // причина замены
