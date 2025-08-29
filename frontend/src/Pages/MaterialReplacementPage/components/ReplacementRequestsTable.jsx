@@ -72,6 +72,7 @@ const ReplacementRequestsTable = () => {
 
   // Загрузка доступных материалов для замены
   const fetchAvailableMaterials = async (requestId) => {
+    console.log("Fetching available materials for request ID:", requestId);
     try {
       const token = localStorage.getItem("admin_token");
       const response = await fetch(
@@ -83,11 +84,14 @@ const ReplacementRequestsTable = () => {
         }
       );
 
+      console.log("Available materials response status:", response.status);
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const materials = await response.json();
+      console.log("Available materials received:", materials);
       setAvailableMaterials(materials);
     } catch (error) {
       message.error("Ошибка при загрузке доступных материалов");

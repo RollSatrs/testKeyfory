@@ -1,5 +1,6 @@
 import { Executer, Services, Material, Log, ServiceAccess, MaterialReplacement, ServiceExecution } from '../../../database/dbTables.js';
 import { Op } from 'sequelize';
+import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
 
 // Функция для автоматического обновления активности исполнителя
 export const updateExecuterActivity = async (executerId) => {
@@ -378,7 +379,7 @@ export const createServiceExecution = async (serviceId, executerId, orderNumber)
     //   {
     //     where: {
     //       service_id: serviceId,
-    //       status: 'available'
+    //       status: MATERIAL_STATUS.AVAILABLE
     //     }
     //   }
     // );
@@ -620,7 +621,7 @@ export const getServiceExecutionMaterials = async (executionId, executerId) => {
     const materials = await Material.findAll({
       where: {
         service_id: execution.service_id,
-        status: 'available'
+        status: MATERIAL_STATUS.AVAILABLE
       }
     });
 
@@ -631,7 +632,7 @@ export const getServiceExecutionMaterials = async (executionId, executerId) => {
         {
           where: {
             service_id: execution.service_id,
-            status: 'available'
+            status: MATERIAL_STATUS.AVAILABLE
           }
         }
       );

@@ -2,6 +2,7 @@ import { Admin, MaterialReplacement, Order, Services, Executer, Material, Servic
 import { Op } from 'sequelize';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
 
 export async function addAdmin(telegramId, passwordHash) {
     try{
@@ -123,7 +124,7 @@ export async function updateReplacementStatus(replacementId, status, adminCommen
             // Меняем статус материала на "доступный"
             if (replacement.material_id) {
                 await Material.update(
-                    { status: 'available' },
+                    { status: MATERIAL_STATUS.AVAILABLE },
                     { where: { id: replacement.material_id } }
                 );
             }
@@ -138,7 +139,7 @@ export async function updateReplacementStatus(replacementId, status, adminCommen
             // Если отклонена, возвращаем материал в исходное состояние
             if (replacement.material_id) {
                 await Material.update(
-                    { status: 'available' },
+                    { status: MATERIAL_STATUS.AVAILABLE },
                     { where: { id: replacement.material_id } }
                 );
             }
@@ -168,11 +169,13 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
         const replacement = await MaterialReplacement.findByPk(replacementId, {
             include: [
                 {
-                    model: Order,
-                    attributes: ['id', 'service_id'],
+                    model: ServiceExecution,
+                    as: 'ServiceExecution',
+                    attributes: ['id', 'service_id', 'order_number'],
                     include: [
                         {
                             model: Services,
+                            as: 'Service',
                             attributes: ['name']
                         }
                     ]
@@ -198,25 +201,39 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
             throw new Error('Новый материал не найден');
         }
 
-        if (newMaterial.status !== 'available') {
+        if (newMaterial.status !== 'доступен') {
             throw new Error('Выбранный материал недоступен');
+        }
+
+        // Получаем информацию о старом материале для переноса данных
+        let oldMaterialData = null;
+        if (replacement.material_id) {
+            oldMaterialData = await Material.findByPk(replacement.material_id);
         }
 
         // Обновляем статусы материалов
         if (replacement.material_id) {
-            // Старый материал помечаем как замененный
+            // Старый материал помечаем как замененный и убираем все привязки
             await Material.update(
-                { status: 'replaced' },
+                {
+                    status: 'заменен',
+                    order_number: null,
+                    executer_id: null,
+                    service_execution_id: null,
+                    used_date: null
+                },
                 { where: { id: replacement.material_id } }
             );
         }
 
-        // Новый материал помечаем как доступный и привязываем к заказу
+        // Новый материал помечаем как использованный и переносим все привязки
         await Material.update(
             {
-                status: 'available',
-                order_id: replacement.order_id,
-                used_date: null
+                status: 'использован',
+                order_number: oldMaterialData?.order_number || null,
+                executer_id: oldMaterialData?.executer_id || null,
+                service_execution_id: replacement.service_execution_id,
+                used_date: new Date()
             },
             { where: { id: newMaterialId } }
         );
@@ -236,8 +253,8 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
             if (botModule.notifyMaterialReplacement) {
                 await botModule.notifyMaterialReplacement({
                     telegramId: replacement.Executer.telegram_id,
-                    orderId: replacement.order_id,
-                    serviceName: replacement.Order.Service.name,
+                    orderId: replacement.ServiceExecution.order_number,
+                    serviceName: replacement.ServiceExecution.Service.name,
                     oldMaterial: replacement.Material ? `${replacement.Material.type_key} - ${replacement.Material.contents}` : 'Не указан',
                     newMaterial: `${newMaterial.type_key} - ${newMaterial.contents}`,
                     adminComment: adminComment
@@ -331,10 +348,10 @@ export async function getAdminStats() {
         // Статистика материалов
         const totalMaterials = await Material.count();
         const availableMaterials = await Material.count({
-            where: { status: 'available' }
+            where: { status: MATERIAL_STATUS.AVAILABLE }
         });
         const usedMaterials = await Material.count({
-            where: { status: 'used' }
+            where: { status: MATERIAL_STATUS.USED }
         });
 
         return {
@@ -376,7 +393,7 @@ export async function getAvailableMaterialsForReplacementAdmin(serviceId) {
         const materials = await Material.findAll({
             where: {
                 service_id: serviceId,
-                status: 'available'
+                status: MATERIAL_STATUS.AVAILABLE
             },
             attributes: ['id', 'type_key', 'contents', 'added_date'],
             order: [['added_date', 'DESC']]
@@ -405,7 +422,7 @@ export async function replaceMaterial(oldMaterialId, newMaterialId) {
         }
 
         // Проверяем, что новый материал доступен
-        if (newMaterial.status !== 'available') {
+        if (newMaterial.status !== MATERIAL_STATUS.AVAILABLE) {
             throw new Error('Новый материал не доступен для использования');
         }
 
@@ -416,13 +433,13 @@ export async function replaceMaterial(oldMaterialId, newMaterialId) {
 
         // Обновляем статусы материалов
         await Material.update(
-            { status: 'available' },
+            { status: MATERIAL_STATUS.AVAILABLE },
             { where: { id: oldMaterialId } }
         );
 
         await Material.update(
             {
-                status: 'used',
+                status: MATERIAL_STATUS.USED,
                 order_number: oldMaterial.order_number,
                 executer_id: oldMaterial.executer_id,
                 executer_name: oldMaterial.executer_name

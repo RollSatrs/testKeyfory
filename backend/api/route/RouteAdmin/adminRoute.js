@@ -1,6 +1,7 @@
 import express from 'express'
 import { MaterialReplacement, Order, Services } from '../../../database/dbTables.js'
 import { addAdmin, checkAdmin, login, getAllMaterialReplacements, updateReplacementStatus, getAdminStats, processReplacementWithNewMaterial, getAvailableMaterialsForReplacementAdmin } from '../../service/ServiceAdmim/adminService.js'
+import { MATERIAL_STATUS } from '../../../constants/statusConstants.js'
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
@@ -275,9 +276,9 @@ adminRoute.get('/material-replacements/:id/available-materials', authMiddleware,
     const materials = await Material.findAll({
       where: {
         service_id: replacement.ServiceExecution.service_id,
-        status: 'available'
+        status: 'доступен'
       },
-      attributes: ['id', 'name', 'contents', 'type_key']
+      attributes: ['id', 'contents', 'type_key'] // Убираем 'name', так как его нет в таблице
     });
 
     res.json(materials);
@@ -422,7 +423,7 @@ adminRoute.post('/auto-replace-material', async (req, res) => {
       where: {
         service_id: execution.service_id,
         executer_id: executerId,
-        status: ['assigned', 'used'] // Ищем и назначенные и уже использованные
+        status: ['assigned', MATERIAL_STATUS.USED] // Ищем и назначенные и уже использованные
       }
     });
 
@@ -434,7 +435,7 @@ adminRoute.post('/auto-replace-material', async (req, res) => {
     const newMaterial = await Material.findOne({
       where: {
         service_id: execution.service_id,
-        status: 'available'
+        status: MATERIAL_STATUS.AVAILABLE
       }
     });
 
@@ -447,9 +448,9 @@ adminRoute.post('/auto-replace-material', async (req, res) => {
 
     await sequelize.transaction(async (t) => {
       // Если материал еще не использован, помечаем его как использованный
-      if (currentMaterial.status !== 'used') {
+      if (currentMaterial.status !== MATERIAL_STATUS.USED) {
         await currentMaterial.update({
-          status: 'used',
+          status: MATERIAL_STATUS.USED,
           used_date: new Date()
         }, { transaction: t });
       }
@@ -493,6 +494,35 @@ adminRoute.post('/auto-replace-material', async (req, res) => {
 
   } catch (err) {
     console.error('Ошибка при автоматической замене материала:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// Удалить запрос на замену
+adminRoute.delete('/material-replacements/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Импортируем необходимые модели
+    const { MaterialReplacement } = await import('../../../database/dbTables.js');
+
+    // Проверяем существование запроса
+    const replacement = await MaterialReplacement.findByPk(id);
+
+    if (!replacement) {
+      return res.status(404).json({ error: 'Запрос на замену не найден' });
+    }
+
+    // Удаляем запрос
+    await replacement.destroy();
+
+    res.json({
+      success: true,
+      message: 'Запрос на замену успешно удален'
+    });
+
+  } catch (err) {
+    console.error('Ошибка при удалении запроса на замену:', err);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });

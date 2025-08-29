@@ -1,5 +1,6 @@
 import { Material, Services, Order } from '../../../database/dbTables.js';
 import { Op } from 'sequelize';
+import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
 
 // Получить материалы, доступные для исполнителя (для его заказов)
 export const getMyMaterials = async (executerId) => {
@@ -99,7 +100,7 @@ export const useMaterial = async (materialId, orderId, executerId) => {
     // Обновляем материал: помечаем как использованный и привязываем к заказу
     await Material.update(
       {
-        status: 'used',
+        status: MATERIAL_STATUS.USED,
         order_id: orderId,
         used_date: new Date(),
         executer_id: executerId
@@ -138,7 +139,7 @@ export const getMaterialsStats = async (executerId) => {
           where: { executer_id: executerId }
         }
       ],
-      where: { status: 'used' }
+      where: { status: MATERIAL_STATUS.USED }
     });
 
     const availableForMyOrders = await Material.count({
@@ -157,7 +158,7 @@ export const getMaterialsStats = async (executerId) => {
         }
       ],
       where: {
-        status: 'available',
+        status: MATERIAL_STATUS.AVAILABLE,
         order_id: null
       }
     });
@@ -191,7 +192,7 @@ export const requestMaterialReplacement = async (materialId, executerId, reason 
       throw new Error('Материал не найден или не принадлежит вашим заказам');
     }
 
-    if (material.status !== 'used') {
+    if (material.status !== MATERIAL_STATUS.USED) {
       throw new Error('Можно запросить замену только для использованных материалов');
     }
 

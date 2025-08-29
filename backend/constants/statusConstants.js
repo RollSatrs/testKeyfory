@@ -7,10 +7,11 @@ export const SERVICE_STATUS = {
   INACTIVE: 'inactive'
 };
 
-// Статусы материалов
+// Статусы материалов (русские значения для базы данных)
 export const MATERIAL_STATUS = {
-  AVAILABLE: 'available',
-  USED: 'used',
+  AVAILABLE: 'доступен',
+  USED: 'использован',
+  REPLACED: 'заменен',
   PENDING_REPLACE: 'pending_replace',
   IN_USE: 'in_use'
 };

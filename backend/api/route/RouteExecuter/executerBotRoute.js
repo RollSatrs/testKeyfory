@@ -3,6 +3,7 @@ import { Op } from 'sequelize';
 import { Services, Material, ServiceAccess, Executer, ServiceExecution, MaterialReplacement, ExecuterPricing, Order } from '../../../database/dbTables.js';
 import { sequelize } from '../../../database/databaseOn.js';
 import { updateExecuterActivity } from '../../service/ServiceExecuter/executerService.js';
+import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
 
 const router = express.Router();
 
@@ -273,7 +274,7 @@ router.get('/order-materials/:orderNumber', async (req, res) => {
       const availableMaterials = await Material.findAll({
         where: {
           service_id: execution.service_id,
-          status: 'available', // Только доступные материалы
+          status: MATERIAL_STATUS.AVAILABLE, // Только доступные материалы
           order_number: [null, ''] // Не назначенные к заказам
         },
         attributes: ['id', 'contents', 'status', 'type_key', 'service_id'],
@@ -346,7 +347,7 @@ router.post('/reserve-material', async (req, res) => {
     const availableMaterial = await Material.findOne({
       where: {
         service_id: service_id,
-        status: 'available',
+        status: MATERIAL_STATUS.AVAILABLE,
         reserved_for: null // Не зарезервирован
       },
       order: [['added_date', 'ASC']] // Самый старый
@@ -403,7 +404,7 @@ router.post('/use-reserved-material', async (req, res) => {
       where: {
         service_id: service_id,
         reserved_for: telegram_id,
-        status: 'available',
+        status: MATERIAL_STATUS.AVAILABLE,
         reserved_at: {
           [Op.gt]: new Date(Date.now() - 10 * 60 * 1000) // Резервация не старше 10 минут
         }
@@ -423,7 +424,7 @@ router.post('/use-reserved-material', async (req, res) => {
 
     // Используем зарезервированный материал
     await reservedMaterial.update({
-      status: 'used',
+      status: MATERIAL_STATUS.USED,
       order_number: order_number,
       executer_id: executer_id,
       executer_name: executerName,
@@ -463,7 +464,7 @@ router.get('/material/:materialId', async (req, res) => {
     const material = await Material.findOne({
       where: {
         id: materialId,
-        status: 'available'
+        status: MATERIAL_STATUS.AVAILABLE
       }
     });
 
@@ -503,7 +504,7 @@ router.post('/use-material', async (req, res) => {
       return res.status(404).json({ message: 'Материал не найден' });
     }
 
-    if (material.status !== 'available') {
+    if (material.status !== MATERIAL_STATUS.AVAILABLE) {
       return res.status(400).json({ message: 'Материал недоступен для использования' });
     }
 
@@ -532,7 +533,7 @@ router.post('/use-material', async (req, res) => {
     });
 
     // Обновляем статус материала на 'used'
-    await material.update({ status: 'used' });
+    await material.update({ status: MATERIAL_STATUS.USED });
 
     // Создаем запись MaterialReplacement для связи
     await MaterialReplacement.create({
@@ -931,7 +932,7 @@ const createServiceExecutionHandler = async (req, res) => {
           service_id: service_id,
           order_id: null,
           order_number: null,
-          status: { [Op.ne]: 'used' }
+          status: { [Op.ne]: MATERIAL_STATUS.USED }
         },
         order: [['added_date', 'ASC']],
         transaction: t,
@@ -940,7 +941,7 @@ const createServiceExecutionHandler = async (req, res) => {
 
       if (availableMaterial) {
         await availableMaterial.update({
-          status: 'used',
+          status: MATERIAL_STATUS.USED,
           order_number: order_number,
           used_date: new Date(),
           executer_id: executer_id
@@ -1118,7 +1119,7 @@ router.post('/use-material-for-order', async (req, res) => {
 
     // Обновляем статус материала на "used" и добавляем номер заказа
     const [updatedRows] = await Material.update({
-      status: 'used',
+      status: MATERIAL_STATUS.USED,
       order_number: order_number,
       used_date: new Date(),
       executer_id: executer_id
@@ -1141,7 +1142,7 @@ router.post('/use-material-for-order', async (req, res) => {
       message: 'Материал успешно помечен как использованный',
       material_id,
       order_number,
-      status: 'used'
+      status: MATERIAL_STATUS.USED
     });
 
   } catch (error) {
@@ -1242,7 +1243,7 @@ router.post('/cancel-order', async (req, res) => {
 
     // Возвращаем материалы в статус "available" и очищаем order_number
     const [updatedMaterialsRows] = await Material.update({
-      status: 'available',
+      status: MATERIAL_STATUS.AVAILABLE,
       order_number: null,
       used_date: null,
       executer_id: null
@@ -1325,7 +1326,7 @@ router.post('/bot-cancel-order', async (req, res) => {
 
     // Возвращаем материалы в статус "available"
     await Material.update({
-      status: 'available',
+      status: MATERIAL_STATUS.AVAILABLE,
       order_number: null,
       executer_id: null,
       executer_name: null
@@ -1639,7 +1640,7 @@ router.post('/assign-material', async (req, res) => {
     const material = await Material.findOne({
       where: {
         id: materialId,
-        status: 'available'
+        status: MATERIAL_STATUS.AVAILABLE
       }
     });
 
@@ -1652,7 +1653,7 @@ router.post('/assign-material', async (req, res) => {
 
     // Назначаем материал заказу
     await material.update({
-      status: 'used',
+      status: MATERIAL_STATUS.USED,
       order_number: orderNumber,
       executer_id: executer.id,
       executer_name: executer.name,

@@ -1,6 +1,7 @@
 import { Services, Material, Order } from '../../../database/dbTables.js';
 import { sequelize } from '../../../database/databaseOn.js';
 import { Op } from 'sequelize';
+import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
 
 // Получить все доступные услуги для исполнителя
 export const getAvailableServices = async () => {
@@ -12,7 +13,7 @@ export const getAvailableServices = async () => {
       include: [
         {
           model: Material,
-          where: { status: 'available' },
+          where: { status: MATERIAL_STATUS.AVAILABLE },
           required: false,
           attributes: ['id', 'type_key', 'status']
         }
@@ -45,7 +46,7 @@ export const getServiceDetails = async (serviceId) => {
       include: [
         {
           model: Material,
-          where: { status: 'available' },
+          where: { status: MATERIAL_STATUS.AVAILABLE },
           required: false,
           attributes: ['id', 'type_key', 'status', 'added_date']
         },
@@ -144,7 +145,7 @@ export const getServicesStats = async (executerId) => {
       include: [
         {
           model: Material,
-          where: { status: 'available' },
+          where: { status: MATERIAL_STATUS.AVAILABLE },
           required: true
         }
       ],

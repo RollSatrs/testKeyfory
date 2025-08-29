@@ -1,6 +1,7 @@
 import { Services, Material, ExecuterPricing, Executer, ServiceAccess, ServiceExecution, Admin } from "../../../database/dbTables.js";
 import { sequelize } from "../../../database/databaseOn.js";
 import { Op } from 'sequelize';
+import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
 
 
 export async function getAllServices(includeDeleted = false) {
@@ -34,7 +35,7 @@ export async function getAllServices(includeDeleted = false) {
 
             // Считаем доступные ключи (материалы со статусом не "used")
             const availableKeys = materials.filter(m =>
-                m.status !== 'used' && m.status !== 'ИСПОЛЬЗОВАН'
+                m.status !== MATERIAL_STATUS.USED && m.status !== 'ИСПОЛЬЗОВАН'
             ).length;
 
             // Получаем уникальные источники материалов для услуги

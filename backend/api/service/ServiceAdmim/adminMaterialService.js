@@ -4,6 +4,7 @@ import path from 'path';
 import csv from 'csv-parser';
 import * as XLSX from 'xlsx';
 import { Sequelize } from 'sequelize';
+import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
 
 export async function getAllMaterials() {
     try {
@@ -64,7 +65,7 @@ export async function getAllMaterials() {
                             order_number: material.order_number,
                             executer_name: material.executer_name || 'Неизвестный исполнитель',
                             executer_id: material.executer_id || null,
-                            status: material.status || 'used'
+                            status: material.status || MATERIAL_STATUS.USED
                         });
                     }
                 }
@@ -154,7 +155,7 @@ export async function getMaterialById(id) {
 
 export async function addMaterial(data) {
     try {
-        const { type_key = 'key', contents, source = 'manual', service_id, status = 'available' } = data;
+        const { type_key = 'key', contents, source = 'manual', service_id, status = MATERIAL_STATUS.AVAILABLE } = data;
 
         if (!contents || !service_id) {
             throw new Error('Contents and service ID are required');
@@ -221,7 +222,7 @@ export async function updateMaterialStatus(id, status) {
         }
 
         // Если статус меняется на "used", устанавливаем дату использования
-        if (status === 'used') {
+        if (status === MATERIAL_STATUS.USED) {
             updateData.used_date = new Date();
         }
 
@@ -249,8 +250,8 @@ export async function deleteMaterial(id) {
 export async function getMaterialStats() {
     try {
         const total = await Material.count();
-        const available = await Material.count({ where: { status: 'available' } });
-        const used = await Material.count({ where: { status: 'used' } });
+        const available = await Material.count({ where: { status: MATERIAL_STATUS.AVAILABLE } });
+        const used = await Material.count({ where: { status: MATERIAL_STATUS.USED } });
         const pending_replace = await Material.count({ where: { status: 'pending_replace' } });
 
         return {
@@ -390,7 +391,7 @@ export async function uploadMaterialsFromFile(file, serviceId) {
                     materials.push({
                         service_id: serviceId,
                         contents: content,
-                        status: 'available',
+                        status: MATERIAL_STATUS.AVAILABLE,
                         source: 'file_upload',
                         added_date: new Date()
                     });
@@ -410,7 +411,7 @@ export async function uploadMaterialsFromFile(file, serviceId) {
                         materials.push({
                             service_id: serviceId,
                             contents: content,
-                            status: 'available',
+                            status: MATERIAL_STATUS.AVAILABLE,
                             source: 'file_upload',
                             added_date: new Date()
                         });
@@ -455,7 +456,7 @@ export async function addSingleMaterial(serviceId, contents, typeKey = null) {
         const materialData = {
             service_id: serviceId,
             contents: contents.trim(),
-            status: 'available',
+            status: MATERIAL_STATUS.AVAILABLE,
             source: 'manual_input',
             added_date: new Date()
         };
@@ -490,13 +491,13 @@ export async function getMaterialStatsByService(serviceId) {
         const available = await Material.count({
             where: {
                 service_id: serviceId,
-                status: 'available'
+                status: MATERIAL_STATUS.AVAILABLE
             }
         });
         const used = await Material.count({
             where: {
                 service_id: serviceId,
-                status: 'used'
+                status: MATERIAL_STATUS.USED
             }
         });
         const pending_replace = await Material.count({

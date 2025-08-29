@@ -1,4 +1,5 @@
 import express from 'express'
+import { MATERIAL_STATUS } from '../../../constants/statusConstants.js'
 import {
   addExecuter,
   checkExecuter,
@@ -219,10 +220,9 @@ executerRoute.get('/materials/:orderNumber', async (req, res) => {
     const materials = await Material.findAll({
       where: {
         order_number: orderNumber,
-        [Op.or]: [
-          { is_used: false },
-          { is_used: null }
-        ]
+        status: {
+          [Op.not]: 'заменен' // Исключаем замененные материалы
+        }
       },
       order: [['added_date', 'ASC']],
       limit: 1 // Возвращаем только один материал
@@ -295,7 +295,7 @@ executerRoute.post('/service-execution', async (req, res) => {
             where: {
               service_id: serviceId,
               reserved_for: executer.telegram_id,
-              status: 'available',
+              status: MATERIAL_STATUS.AVAILABLE,
               reserved_at: {
                 [Op.gt]: new Date(Date.now() - 10 * 60 * 1000) // Резервация не старше 10 минут
               }
@@ -317,8 +317,7 @@ executerRoute.post('/service-execution', async (req, res) => {
               [Op.and]: [
                 {
                   [Op.or]: [
-                    { status: 'available' },
-                    { status: 'ДОСТУПЕН' },
+                    { status: MATERIAL_STATUS.AVAILABLE },
                     { status: null },
                     { status: '' }
                   ]
@@ -349,13 +348,13 @@ executerRoute.post('/service-execution', async (req, res) => {
           console.log(`📋 Текущий номер заказа: ${assignedMaterial.order_number}`);
 
           // Проверим, что материал еще не использован
-          if (assignedMaterial.status === 'used' || assignedMaterial.order_number) {
+          if (assignedMaterial.status === MATERIAL_STATUS.USED || assignedMaterial.order_number) {
             console.warn(`⚠️ ПРЕДУПРЕЖДЕНИЕ: Материал ${assignedMaterial.id} уже имеет статус "${assignedMaterial.status}" или номер заказа "${assignedMaterial.order_number}"`);
           }
 
           // Назначаем материал к заказу
           await assignedMaterial.update({
-            status: 'used',
+            status: MATERIAL_STATUS.USED,
             order_number: orderNumber,
             executer_id: executerId,
             executer_name: executerName,
@@ -424,7 +423,7 @@ executerRoute.post('/assign-material-to-order', async (req, res) => {
     const availableMaterial = await Material.findOne({
       where: {
         service_id: serviceId,
-        status: 'available'
+        status: MATERIAL_STATUS.AVAILABLE
       },
       order: [['created_at', 'ASC']] // Берем самый старый материал
     });
@@ -442,7 +441,7 @@ executerRoute.post('/assign-material-to-order', async (req, res) => {
 
     // Назначаем материал к заказу
     await availableMaterial.update({
-      status: 'used',
+      status: MATERIAL_STATUS.USED,
       order_number: orderNumber,
       executer_id: executerId,
       executer_name: executerName
@@ -456,7 +455,7 @@ executerRoute.post('/assign-material-to-order', async (req, res) => {
       material: {
         id: availableMaterial.id,
         contents: availableMaterial.contents,
-        status: 'used'
+        status: MATERIAL_STATUS.USED
       }
     });
 
@@ -573,7 +572,7 @@ executerRoute.post('/cancel-order', async (req, res) => {
 
     // Возвращаем материалы в статус available
     await Material.update(
-      { status: 'available' },
+      { status: MATERIAL_STATUS.AVAILABLE },
       { where: { order_number: orderNumber } }
     );
 
