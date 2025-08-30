@@ -2083,15 +2083,39 @@ bot.catch((err, ctx) => {
 
 // ==================== ЗАПУСК БОТА ====================
 
-// Запуск бота
-bot.launch()
-  .then(() => {
+// Функция для очистки webhook'ов (на случай конфликтов)
+const clearWebhooks = async () => {
+  try {
+    console.log('🧹 Очищаем webhook\'ы перед запуском...');
+    await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+    console.log('✅ Webhook\'ы очищены');
+  } catch (error) {
+    console.warn('⚠️ Не удалось очистить webhook\'ы:', error.message);
+  }
+};
+
+// Запуск бота с предварительной очисткой
+const startBot = async () => {
+  try {
+    await clearWebhooks();
+
+    // Небольшая задержка для предотвращения конфликтов
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    await bot.launch();
+
     console.log('🤖✅ Бот для исполнителей запущен успешно!');
     console.log(`🔗 API URL: ${API_BASE_URL}`);
     console.log(`🎯 Режим: ${process.env.NODE_ENV || 'development'}`);
-  })
-  .catch((error) => {
+  } catch (error) {
     console.error('❌ Ошибка запуска бота:', error.message);
+
+    if (error.message.includes('409') && error.message.includes('Conflict')) {
+      console.error('🔄 Конфликт: другой экземпляр бота уже запущен');
+      console.error('💡 Завершите все процессы Node.js: taskkill /F /IM node.exe');
+      console.error('💡 Подождите 30 секунд и попробуйте снова');
+      process.exit(1);
+    }
 
     if (error.message.includes('401')) {
       console.error('💡 Проверьте правильность токена бота в .env файле');
@@ -2103,7 +2127,11 @@ bot.launch()
     }
 
     process.exit(1);
-  });
+  }
+};
+
+// Запускаем бот
+startBot();
 
 // Graceful shutdown
 process.once('SIGINT', () => {

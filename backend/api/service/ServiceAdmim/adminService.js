@@ -216,13 +216,13 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
 
         await sequelize.transaction(async (t) => {
             if (replacement.material_id && oldMaterialData) {
-                // Старый материал помечаем как замененный и убираем все привязки
+                // Старый материал возвращаем в пул доступных и убираем все привязки
                 await Material.update(
                     {
-                        status: MATERIAL_STATUS.REPLACED,
+                        status: MATERIAL_STATUS.AVAILABLE,
                         order_number: null,
                         executer_id: null,
-                        used_date: new Date() // Дата замены
+                        used_date: null // Обнуляем дату использования
                     },
                     {
                         where: { id: replacement.material_id },
@@ -230,7 +230,7 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
                     }
                 );
 
-                console.log(`🔄 Старый материал ID ${replacement.material_id} помечен как замененный`);
+                console.log(`🔄 Старый материал ID ${replacement.material_id} возвращен в пул доступных`);
 
                 // Новый материал получает все данные от старого и становится использованным
                 await Material.update(

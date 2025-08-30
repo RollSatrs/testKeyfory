@@ -46,6 +46,7 @@ export function KeysMaterialsTable({
 }) {
   const [materials, setMaterials] = useState([]);
   const [services, setServices] = useState([]);
+  const [replacements, setReplacements] = useState([]); // Добавляем состояние для замен
   const [editForm, setEditForm] = useState(false);
   const [replacementModalVisible, setReplacementModalVisible] = useState(false);
   const [selectedMaterial, setSelectedMaterial] = useState(null);
@@ -173,8 +174,25 @@ export function KeysMaterialsTable({
     try {
       const data = await apiFetch("/api/admin/materials/get");
       setMaterials(data);
+
+      // Также загружаем информацию о заменах
+      await fetchReplacements();
     } catch (error) {
       console.error("Ошибка загрузки материалов:", error);
+    }
+  }
+
+  async function fetchReplacements() {
+    try {
+      // Используем правильный API endpoint
+      const replacementsData = await apiFetch(
+        "/api/admin/material-replacements"
+      );
+      console.log("✅ Замены загружены:", replacementsData.length);
+      setReplacements(replacementsData || []);
+    } catch (error) {
+      console.warn("Не удалось загрузить замены, продолжаем без них:", error);
+      setReplacements([]);
     }
   }
 
@@ -314,6 +332,59 @@ export function KeysMaterialsTable({
     return service ? service.name : "Неизвестная услуга";
   };
 
+  // Функция для определения реального статуса материала для отображения
+  const getMaterialDisplayStatus = (material) => {
+    // Проверяем, есть ли завершенная замена для этого материала
+    const hasCompletedReplacement = replacements.some(
+      (replacement) =>
+        replacement.material_id === material.id &&
+        replacement.status === "completed"
+    );
+
+    // Если есть завершенная замена - показываем "Заменен"
+    if (hasCompletedReplacement) {
+      return {
+        text: "Заменен",
+        color: "orange",
+        originalStatus: material.status,
+      };
+    }
+
+    // Иначе показываем обычный статус
+    const materialStatus = material.status;
+
+    if (materialStatus === "used" || materialStatus === "ИСПОЛЬЗОВАН") {
+      return {
+        text: "Использован",
+        color: "red",
+        originalStatus: materialStatus,
+      };
+    } else if (
+      materialStatus === "available" ||
+      materialStatus === "ДОСТУПЕН" ||
+      materialStatus === "доступен" ||
+      !materialStatus
+    ) {
+      return {
+        text: "Доступен",
+        color: "green",
+        originalStatus: materialStatus,
+      };
+    } else if (materialStatus === "pending_replace") {
+      return {
+        text: "На замене",
+        color: "orange",
+        originalStatus: materialStatus,
+      };
+    } else {
+      return {
+        text: materialStatus,
+        color: "blue",
+        originalStatus: materialStatus,
+      };
+    }
+  };
+
   // Функция для перевода источника на русский
   const getSourceLabel = (source) => {
     const sourceLabels = {
@@ -389,28 +460,8 @@ export function KeysMaterialsTable({
       dataIndex: "status",
       key: "status",
       render: (materialStatus, record) => {
-        // Определяем статус материала
-        let statusText = "Неизвестен";
-        let statusColor = "default";
-
-        // Проверяем статус материала
-        if (materialStatus === "used" || materialStatus === "ИСПОЛЬЗОВАН") {
-          statusText = "Использован";
-          statusColor = "red";
-        } else if (
-          materialStatus === "available" ||
-          materialStatus === "ДОСТУПЕН" ||
-          !materialStatus
-        ) {
-          statusText = "Доступен";
-          statusColor = "green";
-        } else if (materialStatus === "pending_replace") {
-          statusText = "На замене";
-          statusColor = "orange";
-        } else {
-          statusText = materialStatus;
-          statusColor = "blue";
-        }
+        // Используем новую функцию для определения статуса
+        const displayStatus = getMaterialDisplayStatus(record);
 
         // Находим услугу для получения информации об исполнителях
         const service = services.find((s) => s.id === record.service_id);
@@ -450,15 +501,21 @@ export function KeysMaterialsTable({
           }
         }
 
-        // Tooltip с информацией об исполнителях
+        // Tooltip с информацией об исполнителях и замене
         const tooltipContent = (
           <div style={{ maxWidth: 300 }}>
             <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
-              � Материал: {statusText}
+              📦 Материал: {displayStatus.text}
             </div>
             <div style={{ marginBottom: "8px" }}>
               🏷️ Услуга: {service?.name || "Неизвестная услуга"}
             </div>
+            {displayStatus.text === "Заменен" && (
+              <div style={{ marginBottom: "8px", color: "#ff7f00" }}>
+                🔄 Статус в БД: "{displayStatus.originalStatus}" (после замены)
+                <br />✅ Материал заменен и снова доступен для использования
+              </div>
+            )}
             {executersList.length > 0 ? (
               <div>
                 <div style={{ fontWeight: "bold", marginBottom: "4px" }}>
@@ -482,9 +539,11 @@ export function KeysMaterialsTable({
         );
 
         return (
-          <Tag color={statusColor} style={{ fontSize: "12px" }}>
-            {statusText}
-          </Tag>
+          <Tooltip title={tooltipContent}>
+            <Tag color={displayStatus.color} style={{ fontSize: "12px" }}>
+              {displayStatus.text}
+            </Tag>
+          </Tooltip>
         );
       },
     },
