@@ -770,14 +770,23 @@ bot.action(/^view_completed_(.+)$/, async (ctx) => {
 const manageOrder = async (ctx, orderNumber) => {
   try {
     const session = userSessions[ctx.chat.id];
-    if (!session?.authenticated) return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    if (!session?.authenticated) {
+      return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    }
 
     console.log(`\n🎯 === УПРАВЛЕНИЕ ЗАКАЗОМ ===`);
     console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`👤 User ID: ${ctx.chat.id}, Executer ID: ${session.executerId}`);
 
-    // Получаем информацию о заказе через execution ID
-    const activeOrdersResponse = await fetchAsAxios('GET', `/api/executers-bot/active-executions/${session.executerId}`);
-    const activeOrdersList = Array.isArray(activeOrdersResponse.data) ? activeOrdersResponse.data : [];
+    // Получаем информацию о заказе через execution ID с дополнительной защитой от ошибок
+    let activeOrdersList = [];
+    try {
+      const activeOrdersResponse = await fetchAsAxios('GET', `/api/executers-bot/active-executions/${session.executerId}`);
+      activeOrdersList = Array.isArray(activeOrdersResponse.data) ? activeOrdersResponse.data : [];
+    } catch (activeOrdersError) {
+      console.error('❌ Ошибка получения активных заказов:', activeOrdersError.message);
+      // Продолжаем выполнение, попробуем другие способы
+    }
 
     // Находим заказ по номеру — сравниваем как строки
     let orderExecution = activeOrdersList.find(order => String(order.order_number) === String(orderNumber));
@@ -1440,11 +1449,26 @@ bot.action(/^manage_order_(.+)$/, async (ctx) => {
   try {
     await ctx.answerCbQuery();
     const orderNumber = ctx.match[1];
+    
+    console.log(`🎯 Обработка manage_order для заказа: ${orderNumber}`);
+    
     await manageOrder(ctx, orderNumber);
   } catch (error) {
     console.error('❌ Ошибка управления заказом:', error);
-    await ctx.answerCbQuery();
-    ctx.reply('❌ Ошибка при загрузке управления заказом');
+    
+    // Пытаемся ответить на callback query если еще не ответили
+    try {
+      await ctx.answerCbQuery();
+    } catch (cbError) {
+      console.warn('⚠️ Callback query уже отвечен или недоступен');
+    }
+    
+    // Пытаемся отправить сообщение об ошибке
+    try {
+      await ctx.reply('❌ Произошла ошибка при загрузке управления заказом. Попробуйте еще раз через /start');
+    } catch (replyError) {
+      console.error('❌ Не удалось отправить сообщение об ошибке:', replyError);
+    }
   }
 });
 
@@ -2141,8 +2165,19 @@ bot.action('cancel_input', async (ctx) => {
 
 // Обработка ошибок
 bot.catch((err, ctx) => {
-  console.error('❌ Ошибка в боте:', err);
-  ctx.reply('❌ Произошла внутренняя ошибка. Попробуйте позже.');
+  console.error('❌ Критическая ошибка в боте:', err);
+  console.error('📍 Context:', ctx?.update_id, ctx?.chat?.id, ctx?.from?.id);
+  
+  // Пытаемся отправить сообщение пользователю, если контекст доступен
+  if (ctx && ctx.reply) {
+    try {
+      ctx.reply('❌ Произошла внутренняя ошибка. Попробуйте команду /start для перезапуска.');
+    } catch (replyError) {
+      console.error('❌ Не удалось отправить сообщение об ошибке пользователю:', replyError);
+    }
+  }
+  
+  // Не останавливаем бот, даже если произошла ошибка
 });
 
 // ==================== ЗАПУСК БОТА ====================
@@ -2223,6 +2258,11 @@ export async function notifyMaterialReplacement({ telegramId, orderNumber, servi
       return false;
     }
 
+    if (!bot || !bot.telegram) {
+      console.error('❌ Бот не инициализирован для отправки уведомлений');
+      return false;
+    }
+
     let message = `🔄 *Замена материала обработана*\n\n`;
     message += `📋 Заказ: #${orderNumber}\n`;
     message += `🎯 Услуга: ${serviceName}\n\n`;
@@ -2246,20 +2286,41 @@ export async function notifyMaterialReplacement({ telegramId, orderNumber, servi
     message += `✅ _Замена выполнена администратором_\n`;
     message += `📝 _Вы можете продолжить выполнение заказа с новым материалом_`;
 
-    await bot.telegram.sendMessage(telegramId, message, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '📋 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
-        ]]
-      }
-    });
+    // Отправляем сообщение с повторными попытками
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      try {
+        await bot.telegram.sendMessage(telegramId, message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '📋 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+            ]]
+          }
+        });
 
-    console.log(`✅ Уведомление о замене отправлено пользователю ${telegramId}`);
-    return true;
+        console.log(`✅ Уведомление о замене отправлено пользователю ${telegramId} (попытка ${attempts + 1})`);
+        return true;
+
+      } catch (sendError) {
+        attempts++;
+        console.error(`❌ Ошибка отправки уведомления (попытка ${attempts}/${maxAttempts}):`, sendError.message || sendError);
+        
+        if (attempts < maxAttempts) {
+          // Ждем немного перед следующей попыткой
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+        } else {
+          console.error('❌ Все попытки отправки уведомления исчерпаны');
+        }
+      }
+    }
+
+    return false;
 
   } catch (error) {
-    console.error('❌ Ошибка отправки уведомления о замене материала:', error);
+    console.error('❌ Критическая ошибка в функции уведомления о замене материала:', error);
     return false;
   }
 }

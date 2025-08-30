@@ -313,7 +313,8 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
                 console.log(`📦 Новый материал для уведомления: ${newMaterialDescription} (статус: ${updatedNewMaterial?.status})`);
                 console.log(`👤 Назначен исполнителю: ${updatedNewMaterial?.executer_id}, заказ: ${updatedNewMaterial?.order_number}`);
 
-                await botModule.notifyMaterialReplacement({
+                // Отправляем уведомление с дополнительной защитой от ошибок
+                const notificationResult = await botModule.notifyMaterialReplacement({
                     telegramId: replacement.Executer.telegram_id,
                     orderNumber: replacement.ServiceExecution.order_number,
                     serviceName: replacement.ServiceExecution.Service.name,
@@ -322,13 +323,17 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
                     adminComment: adminComment
                 });
 
-                console.log(`✅ Уведомление о замене материала отправлено исполнителю ${replacement.Executer.telegram_id}`);
+                if (notificationResult) {
+                    console.log(`✅ Уведомление о замене материала отправлено исполнителю ${replacement.Executer.telegram_id}`);
+                } else {
+                    console.log(`⚠️ Уведомление не удалось отправить, но замена выполнена успешно`);
+                }
             } else {
                 console.log(`⚠️ Функция уведомления не найдена в боте`);
             }
         } catch (notifyError) {
-            console.error('❌ Ошибка отправки уведомления:', notifyError);
-            // Логируем детали для отладки
+            console.error('❌ Ошибка отправки уведомления (не критичная):', notifyError.message || notifyError);
+            // Логируем детали для отладки, но не прерываем выполнение
             console.log(`📨 Не удалось отправить уведомление исполнителю ${replacement.Executer.telegram_id}`);
             console.log(`📋 Заказ: #${replacement.ServiceExecution.order_number}`);
             console.log(`🎯 Услуга: ${replacement.ServiceExecution.Service.name}`);
@@ -337,6 +342,7 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
             if (adminComment) {
                 console.log(`💬 Комментарий: ${adminComment}`);
             }
+            // Не бросаем ошибку, чтобы не прервать основной процесс замены
         }
 
         return {
