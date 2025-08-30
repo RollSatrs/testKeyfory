@@ -19,7 +19,6 @@ import executerBotRoute from './route/RouteExecuter/executerBotRoute.js'
 import { authMiddleware, authExecuterMiddleware } from './middleware.js'
 import { sequelize } from '../database/databaseOn.js'
 import { checkInactiveExecuters } from './service/ServiceAdmim/adminExecuterService.js'
-import { initializeAdmin } from '../initAdmin.mjs'
 
 dotenv.config()
 const app = express()
@@ -81,8 +80,14 @@ const startServer = async () => {
     await sequelize.sync({ alter: true });
     console.log('✅ Схема базы данных синхронизирована');
 
-  // Инициализируем авто-админа из .env
-  await initializeAdmin();
+    // Проверяем существование админа
+    const { Admin } = await import('../database/dbTables.js');
+    const existingAdmin = await Admin.findOne({ where: { telegramId: '521649349' } });
+    if (existingAdmin) {
+      console.log('✅ Admin already exists for telegramId=521649349');
+    } else {
+      console.log('⚠️ Admin not found, please create one manually');
+    }
 
   // Запускаем сервер (слушаем на 0.0.0.0 чтобы принимать подключения с любых интерфейсов)
   app.listen(PORT, '0.0.0.0', () => {

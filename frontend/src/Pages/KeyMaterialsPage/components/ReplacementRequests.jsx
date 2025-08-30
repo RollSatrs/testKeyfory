@@ -11,12 +11,7 @@ import {
   Descriptions,
   Select,
 } from "antd";
-import {
-  EyeOutlined,
-  CheckOutlined,
-  CloseOutlined,
-  SwapOutlined,
-} from "@ant-design/icons";
+import { CheckOutlined, CloseOutlined, SwapOutlined } from "@ant-design/icons";
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -24,9 +19,6 @@ const { Option } = Select;
 const ReplacementRequests = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState(null);
-  const [adminResponse, setAdminResponse] = useState("");
   const [processing, setProcessing] = useState(false);
   const [availableMaterials, setAvailableMaterials] = useState([]);
   const [selectedNewMaterial, setSelectedNewMaterial] = useState(null);
@@ -37,6 +29,8 @@ const ReplacementRequests = () => {
     executerId: null,
     serviceId: null,
   });
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [adminResponse, setAdminResponse] = useState("");
 
   // Загрузка запросов на замену
   const fetchReplacementRequests = async () => {
@@ -158,7 +152,6 @@ const ReplacementRequests = () => {
       if (response.ok) {
         message.success("Материал успешно заменен");
         setReplaceModalVisible(false);
-        setModalVisible(false);
         setAdminResponse("");
         setSelectedNewMaterial(null);
         fetchReplacementRequests(); // Перезагрузка списка
@@ -242,7 +235,6 @@ const ReplacementRequests = () => {
         message.success(
           `Запрос ${decision === "approved" ? "одобрен" : "отклонён"}`
         );
-        setModalVisible(false);
         setAdminResponse("");
         fetchReplacementRequests(); // Перезагрузка списка заявок
 
@@ -261,12 +253,6 @@ const ReplacementRequests = () => {
     } finally {
       setProcessing(false);
     }
-  };
-
-  // Показать детали запроса
-  const showRequestDetails = (request) => {
-    setSelectedRequest(request);
-    setModalVisible(true);
   };
 
   // Статус тэги
@@ -367,17 +353,9 @@ const ReplacementRequests = () => {
       key: "actions",
       render: (_, record) => (
         <Space>
-          <Button
-            type="primary"
-            icon={<EyeOutlined />}
-            size="small"
-            onClick={() => showRequestDetails(record)}
-          >
-            Подробнее
-          </Button>
           {record.status === "pending" && (
             <Button
-              type="default"
+              type="primary"
               icon={<SwapOutlined />}
               size="small"
               onClick={() => showReplaceModal(record)}
@@ -405,118 +383,6 @@ const ReplacementRequests = () => {
             `${range[0]}-${range[1]} из ${total} записей`,
         }}
       />
-
-      <Modal
-        title="Детали запроса на замену"
-        open={modalVisible}
-        onCancel={() => {
-          setModalVisible(false);
-          setAdminResponse("");
-        }}
-        footer={
-          selectedRequest?.status === "pending"
-            ? [
-                <Button key="cancel" onClick={() => setModalVisible(false)}>
-                  Отмена
-                </Button>,
-                <Button
-                  key="reject"
-                  danger
-                  icon={<CloseOutlined />}
-                  loading={processing}
-                  onClick={() => processRequest(selectedRequest.id, "rejected")}
-                >
-                  Отклонить
-                </Button>,
-                <Button
-                  key="approve"
-                  type="primary"
-                  icon={<CheckOutlined />}
-                  loading={processing}
-                  onClick={() => processRequest(selectedRequest.id, "approved")}
-                >
-                  Одобрить
-                </Button>,
-              ]
-            : [
-                <Button
-                  key="close"
-                  type="primary"
-                  onClick={() => setModalVisible(false)}
-                >
-                  Закрыть
-                </Button>,
-              ]
-        }
-        width={700}
-      >
-        {selectedRequest && (
-          <div>
-            <Descriptions bordered column={1} size="small">
-              <Descriptions.Item label="ID запроса">
-                {selectedRequest.id}
-              </Descriptions.Item>
-              <Descriptions.Item label="Заказ">
-                #{selectedRequest.Order?.id}
-              </Descriptions.Item>
-              <Descriptions.Item label="Услуга">
-                {selectedRequest.Order?.Service?.name}
-              </Descriptions.Item>
-              <Descriptions.Item label="Исполнитель">
-                {selectedRequest.Executer?.name}
-              </Descriptions.Item>
-              <Descriptions.Item label="Telegram ID">
-                {selectedRequest.Executer?.telegram_id}
-              </Descriptions.Item>
-              <Descriptions.Item label="Статус">
-                {getStatusTag(selectedRequest.status)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Дата создания">
-                {new Date(selectedRequest.created_at).toLocaleString("ru-RU")}
-              </Descriptions.Item>
-              <Descriptions.Item label="Причина замены">
-                <div style={{ whiteSpace: "pre-wrap" }}>
-                  {selectedRequest.reason}
-                </div>
-              </Descriptions.Item>
-              {selectedRequest.admin_response && (
-                <Descriptions.Item label="Ответ администратора">
-                  <div style={{ whiteSpace: "pre-wrap" }}>
-                    {selectedRequest.admin_response}
-                  </div>
-                </Descriptions.Item>
-              )}
-              {selectedRequest.processed_at && (
-                <Descriptions.Item label="Дата обработки">
-                  {new Date(selectedRequest.processed_at).toLocaleString(
-                    "ru-RU"
-                  )}
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-
-            {selectedRequest.status === "pending" && (
-              <div style={{ marginTop: 16 }}>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: 8,
-                    fontWeight: "bold",
-                  }}
-                >
-                  Ответ администратора (необязательно):
-                </label>
-                <TextArea
-                  rows={4}
-                  value={adminResponse}
-                  onChange={(e) => setAdminResponse(e.target.value)}
-                  placeholder="Введите комментарий к решению..."
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
 
       <Modal
         title="Замена материала"

@@ -269,17 +269,9 @@ const ReplacementRequestsTable = () => {
       fixed: "right",
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="primary"
-            icon={<EyeOutlined />}
-            size="small"
-            onClick={() => showRequestDetails(record)}
-          >
-            Подробнее
-          </Button>
           {record.status === "pending" && (
             <Button
-              type="default"
+              type="primary"
               icon={<SwapOutlined />}
               size="small"
               onClick={() => showReplaceModal(record)}
