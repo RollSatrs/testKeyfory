@@ -318,8 +318,7 @@ bot.start(async (ctx) => {
       username: ctx.from.username || null
     });
 
-  [{ text: '📋 Активные услуги' }, { text: '📊 Статистика' }],
-    console.log(`📋 Активные услуги: ${telegramId}`);
+    console.log(`� Telegram ID: ${telegramId}`);
     console.log(`👋 Имя: ${firstName}`);
 
     // Авторизация исполнителя
@@ -406,7 +405,7 @@ const getMainMenu = () => {
     reply_markup: {
     keyboard: [
   [{ text: '🛠️ Мои услуги' }],
-  [{ text: '� Активные услуги' }, { text: '📊 Статистика' }],
+  [{ text: '📋 Активные услуги' }, { text: '📊 Статистика' }],
   [{ text: '📚 История заказов' }]
     ],
       resize_keyboard: true,

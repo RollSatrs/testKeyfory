@@ -450,22 +450,193 @@ export function KeysMaterialsTable({
   };
 
   const headers = [
-    { label: "Название услуги", key: "service_name" },
+    { label: "Услуга", key: "service_name" },
     { label: "Содержимое", key: "contents" },
-    { label: "Статус", key: "status" },
-    { label: "Номер заказа", key: "order_number" },
-    { label: "Исполнитель", key: "executer_name" },
-    { label: "Источник", key: "source" },
+    { label: "Статус", key: "status_display" },
+    { label: "Номера заказов", key: "order_numbers_display" },
+    { label: "Исполнители", key: "executers_display" },
+    { label: "Источник", key: "source_display" },
   ];
 
-  // Преобразуем данные для экспорта
-  // Do not show "Доступен" в экспорте; экспортируем реальные поля или пустые строки
-  const exportData = filteredMaterials.map((m) => ({
-    ...m,
-    service_name: getServiceName(m.service_id),
-    order_number: m.order_number || "",
-    executer_name: getExecuterName(m.executer_id),
-  }));
+  // Функция для получения отображаемых номеров заказов для экспорта
+  const getOrderNumbersForExport = (record) => {
+    const activeOrders = Array.isArray(record.active_orders)
+      ? record.active_orders
+      : [];
+    const orderNumbers = Array.isArray(record.order_numbers)
+      ? record.order_numbers
+      : [];
+
+    const orders = [];
+
+    // Process active orders
+    for (const o of activeOrders) {
+      if (!o) continue;
+      if (typeof o === "string" || typeof o === "number") {
+        orders.push(o);
+      } else {
+        orders.push(o.order_number || o.order || o.id);
+      }
+    }
+
+    // Process order numbers if no active orders
+    if (orders.length === 0) {
+      for (const n of orderNumbers) {
+        if (!n) continue;
+        if (typeof n === "object") {
+          orders.push(n.order_number || n.order || n.id);
+        } else {
+          orders.push(n);
+        }
+      }
+    }
+
+    // Fallback to single order from record
+    if (orders.length === 0 && record.order_number) {
+      orders.push(record.order_number);
+    }
+
+    return orders.length > 0 ? orders.join(", ") : "Не указан";
+  };
+
+  // Функция для получения отображаемых исполнителей для экспорта
+  const getExecutersForExport = (record) => {
+    const activeOrders = Array.isArray(record.active_orders)
+      ? record.active_orders
+      : [];
+    const orderNumbers = Array.isArray(record.order_numbers)
+      ? record.order_numbers
+      : [];
+
+    const FIXED_EXECUTER_NAMES = ["кцукцук", "Роллан Сарсембаев", "Rollan"];
+
+    const normalizeExecutor = (obj) => {
+      if (!obj) return { name: null };
+
+      const name =
+        obj.executer_name ||
+        (obj.executer && obj.executer.name) ||
+        obj.name ||
+        null;
+
+      if (name) {
+        const normalized = name.toString().trim().toLowerCase();
+        const fixedMatch = FIXED_EXECUTER_NAMES.find(
+          (fn) => fn.toString().trim().toLowerCase() === normalized
+        );
+        if (fixedMatch) {
+          return { name: fixedMatch };
+        }
+      }
+
+      return { name: name || null };
+    };
+
+    const orders = [];
+
+    // Process active orders
+    for (const o of activeOrders) {
+      if (!o) continue;
+      if (typeof o === "string" || typeof o === "number") {
+        orders.push({ order_number: o, executer_name: null });
+      } else {
+        const { name } = normalizeExecutor(o);
+        orders.push({
+          order_number: o.order_number || o.order || o.id,
+          executer_name: name,
+        });
+      }
+    }
+
+    // Process order numbers if no active orders
+    if (orders.length === 0) {
+      for (const n of orderNumbers) {
+        if (!n) continue;
+        if (typeof n === "object") {
+          const { name } = normalizeExecutor(n);
+          orders.push({
+            ...n,
+            executer_name: name || n.executer_name,
+          });
+        } else {
+          const { name } = normalizeExecutor(record);
+          orders.push({
+            order_number: n,
+            executer_name: name,
+          });
+        }
+      }
+    }
+
+    // Fallback to single order from record
+    if (orders.length === 0 && record.order_number) {
+      const { name } = normalizeExecutor(record);
+      orders.push({
+        order_number: record.order_number,
+        executer_name: name,
+      });
+    }
+
+    // Extract unique executors
+    const uniqueExecuters = [];
+    const executerNames = new Set();
+
+    for (const order of orders) {
+      if (order.executer_name && !executerNames.has(order.executer_name)) {
+        executerNames.add(order.executer_name);
+        uniqueExecuters.push(order.executer_name);
+      }
+    }
+
+    // If no executors from orders, check direct assignment
+    if (uniqueExecuters.length === 0) {
+      // Direct assignment through executer_id
+      if (record.executer_id && record.executer_name) {
+        return record.executer_name;
+      }
+
+      // Direct assignment through assignedExecuter
+      if (record.assignedExecuter) {
+        return record.assignedExecuter.name || "Неизвестный исполнитель";
+      }
+
+      // ServiceAccess assignment (for non-consumable services only)
+      const svc = services.find((s) => s.id === record.service_id);
+      const assignedExecuters = svc?.assigned_executers || [];
+
+      // For consumable services, don't show auto-assigned executors
+      if (svc && svc.is_consumable) {
+        return "Не назначены";
+      }
+
+      if (assignedExecuters.length > 0) {
+        return assignedExecuters
+          .map(
+            (exec) =>
+              exec.executer_name || exec.name || "Неизвестный исполнитель"
+          )
+          .join(", ");
+      }
+
+      return "Не назначены";
+    }
+
+    return uniqueExecuters.join(", ");
+  };
+
+  // Преобразуем данные для экспорта с правильной обработкой всех полей
+  const exportData = filteredMaterials.map((m) => {
+    const displayStatus = getMaterialDisplayStatus(m);
+
+    return {
+      service_name: getServiceName(m.service_id),
+      contents: m.contents || "",
+      status_display: displayStatus.text,
+      order_numbers_display: getOrderNumbersForExport(m),
+      executers_display: getExecutersForExport(m),
+      source_display: getSourceLabel(m.source),
+    };
+  });
 
   const columns = [
     {
@@ -1079,9 +1250,13 @@ export function KeysMaterialsTable({
           <CSVLink
             headers={headers}
             data={exportData}
-            filename="materials_export.csv"
+            filename={`materials_export_${
+              new Date().toISOString().split("T")[0]
+            }.csv`}
             separator=";"
             style={{ textDecoration: "none" }}
+            uFEFF={true}
+            enclosingCharacter={'"'}
           >
             <Button
               type="primary"

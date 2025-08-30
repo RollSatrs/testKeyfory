@@ -14,7 +14,7 @@ export function SystemLogs() {
   const [executors, setExecutors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
-    user_type: "",
+    executor_id: "",
     action: "",
     search: "",
   });
@@ -49,7 +49,7 @@ export function SystemLogs() {
       const params = new URLSearchParams({
         limit: pagination.limit,
         offset: (pagination.page - 1) * pagination.limit,
-        ...(filters.user_type && { user_type: filters.user_type }),
+        ...(filters.executor_id && { executor_id: filters.executor_id }),
         ...(filters.action && { action: filters.action }),
       });
 
@@ -72,51 +72,80 @@ export function SystemLogs() {
   const exportLogs = async () => {
     try {
       const params = new URLSearchParams({
-        limit: 1000,
+        limit: 5000, // Увеличиваем лимит для экспорта
         offset: 0,
-        ...(filters.user_type && { user_type: filters.user_type }),
+        ...(filters.executor_id && { executor_id: filters.executor_id }),
         ...(filters.action && { action: filters.action }),
       });
 
       const data = await apiFetch(`/api/admin/executers/logs?${params}`);
 
-      // Создаем CSV
+      // Функция для определения исполнителя (такая же логика как в таблице)
+      const getExecutorInfo = (log) => {
+        if (log.user_type === "admin") {
+          return "Админ";
+        } else if (log.Executer) {
+          const name = log.Executer.name || "Без имени";
+          const tgId = log.Executer.telegram_id;
+          return `${name} (${tgId})`;
+        } else if (log.telegram_id) {
+          // Ищем исполнителя в списке по telegram_id
+          const foundExecutor = executors.find(
+            (exec) => exec.telegram_id == log.telegram_id
+          );
+
+          if (foundExecutor) {
+            const name = foundExecutor.name || "Без имени";
+            return `${name} (${log.telegram_id})`;
+          } else {
+            return `Исполнитель (${log.telegram_id})`;
+          }
+        }
+        return "Неизвестно";
+      };
+
+      // Создаем CSV с правильной структурой (4 колонки как в таблице)
       const csvContent = [
-        [
-          "Дата",
-          "Пользователь",
-          "Тип",
-          "Действие",
-          "Описание",
-          "Заказ",
-          "Услуга",
-        ],
-        ...data.rows.map((log) => [
-          new Date(log.created_at).toLocaleString(),
-          log.user_type === "executer" && log.Executer
-            ? `${log.Executer.name || "Без имени"} (ID: ${log.user_id}, TG: ${
-                log.Executer.telegram_id
-              })`
-            : `#${log.user_id}`,
-          log.user_type === "admin" ? "Админ" : "Исполнитель",
-          log.action,
-          log.description,
-          log.order_id || "",
-          log.Order?.Service?.name || "",
-        ]),
+        ["Дата и время", "Исполнитель", "Действие", "Описание"],
+        ...data.rows
+          .filter(
+            (log) =>
+              !filters.search ||
+              log.description
+                .toLowerCase()
+                .includes(filters.search.toLowerCase())
+          )
+          .map((log) => [
+            new Date(log.created_at).toLocaleString(),
+            getExecutorInfo(log),
+            getActionText(log.action),
+            log.description || "",
+          ]),
       ]
-        .map((row) => row.map((cell) => `"${cell}"`).join(","))
+        .map((row) =>
+          row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+        )
         .join("\n");
 
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      // Добавляем BOM для правильного отображения русских символов
+      const BOM = "\uFEFF";
+      const blob = new Blob([BOM + csvContent], {
+        type: "text/csv;charset=utf-8;",
+      });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
       link.download = `system_logs_${
         new Date().toISOString().split("T")[0]
       }.csv`;
       link.click();
+
+      // Очищаем URL после загрузки
+      setTimeout(() => {
+        URL.revokeObjectURL(link.href);
+      }, 1000);
     } catch (error) {
       console.error("Ошибка экспорта логов:", error);
+      alert("Ошибка при экспорте данных. Проверьте консоль для деталей.");
     }
   };
 
@@ -136,12 +165,29 @@ export function SystemLogs() {
   const getActionText = (action) => {
     const actions = {
       login: "Вход в систему",
+      logout: "Выход из системы",
+      view_orders: "Просмотр заказов",
+      create_order: "Создание заказа",
+      update_order: "Обновление заказа",
+      view_materials: "Просмотр материалов",
+      use_material: "Использование материала",
+      request_replacement: "Запрос замены",
+      bot_start: "Запуск бота",
+      bot_menu_main: "Главное меню",
+      bot_menu_orders: "Меню заказов",
+      bot_menu_materials: "Меню материалов",
+      bot_button_click: "Нажатие кнопки",
+      bot_navigation: "Навигация в боте",
+      bot_view_order_details: "Просмотр деталей заказа",
+      bot_accept_order: "Принятие заказа",
+      bot_complete_order: "Завершение заказа",
       view_order: "Просмотр заказа",
       get_materials: "Получение материалов",
       complete_order: "Завершение заказа",
-      request_replacement: "Запрос замены",
-      create_order: "Создание заказа",
       update_rights: "Обновление прав",
+      start_service_execution: "Начало выполнения услуги",
+      view_available_services: "Просмотр доступных услуг",
+      menu_navigation: "Навигация по меню",
     };
     return actions[action] || action;
   };
@@ -164,16 +210,21 @@ export function SystemLogs() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Тип пользователя
+              Исполнитель
             </label>
             <select
-              value={filters.user_type}
-              onChange={(e) => handleFilterChange("user_type", e.target.value)}
+              value={filters.executor_id}
+              onChange={(e) =>
+                handleFilterChange("executor_id", e.target.value)
+              }
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">Все</option>
-              <option value="admin">Администраторы</option>
-              <option value="executer">Исполнители</option>
+              <option value="">Все исполнители</option>
+              {executors.map((executor) => (
+                <option key={executor.id} value={executor.id}>
+                  {executor.name || "Без имени"} ({executor.telegram_id})
+                </option>
+              ))}
             </select>
           </div>
 
@@ -188,10 +239,14 @@ export function SystemLogs() {
             >
               <option value="">Все действия</option>
               <option value="login">Вход в систему</option>
+              <option value="bot_start">Запуск бота</option>
+              <option value="bot_navigation">Навигация в боте</option>
+              <option value="bot_button_click">Нажатие кнопки</option>
+              <option value="start_service_execution">
+                Начало выполнения услуги
+              </option>
               <option value="complete_order">Завершение заказа</option>
               <option value="request_replacement">Запрос замены</option>
-              <option value="create_order">Создание заказа</option>
-              <option value="update_rights">Обновление прав</option>
             </select>
           </div>
 
