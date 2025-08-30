@@ -208,6 +208,7 @@ const ReplacementRequestsTable = () => {
       pending: { color: "orange", text: "Ожидает" },
       approved: { color: "green", text: "Одобрен" },
       rejected: { color: "red", text: "Отклонён" },
+      completed: { color: "blue", text: "Выполнен" },
     };
 
     const statusInfo = statusMap[status] || { color: "default", text: status };

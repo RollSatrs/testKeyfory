@@ -475,6 +475,31 @@ adminRoute.post('/auto-replace-material', async (req, res) => {
       }, { transaction: t });
     });
 
+    // Отправляем уведомление исполнителю через бот
+    try {
+      // Получаем данные исполнителя
+      const executer = await Executer.findByPk(executerId);
+
+      if (executer && executer.telegram_id) {
+        const botModule = await import('../../../../bot/executerBot.js');
+
+        if (botModule.notifyMaterialReplacement) {
+          await botModule.notifyMaterialReplacement({
+            telegramId: executer.telegram_id,
+            orderNumber: orderNumber,
+            serviceName: execution.Service?.name || 'Неизвестная услуга',
+            oldMaterial: `${currentMaterial.type_key || 'Материал'} - ${currentMaterial.contents || 'Содержимое'}`,
+            newMaterial: `${newMaterial.type_key || 'Материал'} - ${newMaterial.contents || 'Содержимое'}`,
+            adminComment: 'Автоматическая замена согласно настройкам услуги'
+          });
+
+          console.log(`✅ Уведомление об автоматической замене отправлено исполнителю ${executer.telegram_id}`);
+        }
+      }
+    } catch (notifyError) {
+      console.error('❌ Ошибка отправки уведомления об автоматической замене:', notifyError);
+    }
+
     res.json({
       success: true,
       message: 'Материал автоматически заменен',

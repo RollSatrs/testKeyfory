@@ -238,10 +238,15 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
             { where: { id: newMaterialId } }
         );
 
+        // Формируем описание нового материала
+        const newMaterialDescription = newMaterial.type_key
+            ? `${newMaterial.type_key} - ${newMaterial.contents}`
+            : newMaterial.contents || 'Новый материал';
+
         // Обновляем заявку
         await replacement.update({
             status: 'completed',
-            admin_response: adminComment || `Материал заменен. Новый материал: ${newMaterial.type_key} - ${newMaterial.contents}`,
+            admin_response: adminComment || `Материал заменен. Новый материал: ${newMaterialDescription}`,
             processed_at: new Date()
         });
 
@@ -251,12 +256,23 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
             const botModule = await import('../../../../bot/executerBot.js');
 
             if (botModule.notifyMaterialReplacement) {
+                // Формируем корректные описания материалов
+                const oldMaterialDescription = replacement.Material
+                    ? (replacement.Material.type_key
+                        ? `${replacement.Material.type_key} - ${replacement.Material.contents}`
+                        : replacement.Material.contents || 'Старый материал')
+                    : null;
+
+                const newMaterialDescription = newMaterial.type_key
+                    ? `${newMaterial.type_key} - ${newMaterial.contents}`
+                    : newMaterial.contents || 'Новый материал';
+
                 await botModule.notifyMaterialReplacement({
                     telegramId: replacement.Executer.telegram_id,
-                    orderId: replacement.ServiceExecution.order_number,
+                    orderNumber: replacement.ServiceExecution.order_number,
                     serviceName: replacement.ServiceExecution.Service.name,
-                    oldMaterial: replacement.Material ? `${replacement.Material.type_key} - ${replacement.Material.contents}` : 'Не указан',
-                    newMaterial: `${newMaterial.type_key} - ${newMaterial.contents}`,
+                    oldMaterial: oldMaterialDescription,
+                    newMaterial: newMaterialDescription,
                     adminComment: adminComment
                 });
 
@@ -265,11 +281,11 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
                 console.log(`⚠️ Функция уведомления не найдена в боте`);
             }
         } catch (notifyError) {
-            console.error('Ошибка отправки уведомления:', notifyError);
-            // Логируем детали для админа даже если уведомление не отправилось
-            console.log(`📨 Не удалось отправить уведомление исполнителю ${replacement.Executer.telegram_id} о замене материала`);
-            console.log(`📋 Заказ: #${replacement.order_id}`);
-            console.log(`🛠 Услуга: ${replacement.Order.Service.name}`);
+            console.error('❌ Ошибка отправки уведомления:', notifyError);
+            // Логируем детали для отладки
+            console.log(`📨 Не удалось отправить уведомление исполнителю ${replacement.Executer.telegram_id}`);
+            console.log(`📋 Заказ: #${replacement.ServiceExecution.order_number}`);
+            console.log(`🎯 Услуга: ${replacement.ServiceExecution.Service.name}`);
             console.log(`❌ Старый материал: ${replacement.Material ? `${replacement.Material.type_key} - ${replacement.Material.contents}` : 'Не указан'}`);
             console.log(`✅ Новый материал: ${newMaterial.type_key} - ${newMaterial.contents}`);
             if (adminComment) {

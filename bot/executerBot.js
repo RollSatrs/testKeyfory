@@ -2118,4 +2118,58 @@ process.once('SIGTERM', () => {
   process.exit(0);
 });
 
+// Функция для отправки уведомления о замене материала
+export async function notifyMaterialReplacement({ telegramId, orderNumber, serviceName, oldMaterial, newMaterial, adminComment }) {
+  try {
+    console.log(`📨 === ОТПРАВКА УВЕДОМЛЕНИЯ О ЗАМЕНЕ ===`);
+    console.log(`👤 Telegram ID: ${telegramId}`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`🎯 Service: ${serviceName}`);
+
+    if (!telegramId) {
+      console.error('❌ Telegram ID не указан для отправки уведомления');
+      return false;
+    }
+
+    let message = `🔄 *Замена материала обработана*\n\n`;
+    message += `📋 Заказ: #${orderNumber}\n`;
+    message += `🎯 Услуга: ${serviceName}\n\n`;
+
+    if (oldMaterial) {
+      message += `❌ *Заменен материал:*\n`;
+      message += `\`${oldMaterial}\`\n`;
+      message += `_Статус: Заменен_\n\n`;
+    }
+
+    message += `✅ *Новый материал:*\n`;
+    message += `\`${newMaterial}\`\n`;
+    message += `_Статус: Назначен вам_\n\n`;
+
+    if (adminComment) {
+      message += `💬 *Комментарий администратора:*\n`;
+      message += `_${adminComment}_\n\n`;
+    }
+
+    message += `_Материал выше можно скопировать_\n\n`;
+    message += `✅ _Замена выполнена администратором_\n`;
+    message += `📝 _Вы можете продолжить выполнение заказа с новым материалом_`;
+
+    await bot.telegram.sendMessage(telegramId, message, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '📋 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+        ]]
+      }
+    });
+
+    console.log(`✅ Уведомление о замене отправлено пользователю ${telegramId}`);
+    return true;
+
+  } catch (error) {
+    console.error('❌ Ошибка отправки уведомления о замене материала:', error);
+    return false;
+  }
+}
+
 console.log('🤖 Бот для исполнителей готов к работе!');
