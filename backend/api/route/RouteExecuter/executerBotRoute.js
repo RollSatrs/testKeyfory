@@ -1826,4 +1826,48 @@ router.post('/request-replacement', async (req, res) => {
   }
 });
 
+// GET /api/executers-bot/replacement-settings/:serviceId - Получить настройки замены для услуги
+router.get('/replacement-settings/:serviceId', async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+
+    console.log(`\n⚙️ === API: НАСТРОЙКИ ЗАМЕНЫ ===`);
+    console.log(`🛠️ Service ID: ${serviceId}`);
+
+    // Получаем услугу с настройками замены
+    const service = await Services.findByPk(serviceId, {
+      attributes: ['id', 'name', 'replacement_type']
+    });
+
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        message: 'Услуга не найдена'
+      });
+    }
+
+    // Возвращаем настройки замены (по умолчанию "manual")
+    const replacementType = service.replacement_type || 'manual';
+
+    console.log(`⚙️ Replacement Type: ${replacementType}`);
+
+    res.json({
+      success: true,
+      data: {
+        serviceId: service.id,
+        serviceName: service.name,
+        replacementType: replacementType
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка получения настроек замены:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка сервера',
+      error: error.message
+    });
+  }
+});
+
 export default router;

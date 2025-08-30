@@ -1723,7 +1723,7 @@ bot.action(/^replace_materials_(.+)$/, async (ctx) => {
     console.log(`🎯 Service ID: ${serviceId}`);
 
     // Проверяем тип замены для данной услуги
-    const replacementTypeResponse = await fetchAsAxios('GET', `/api/admin/service-replacement-type/${serviceId}`);
+    const replacementTypeResponse = await fetchAsAxios('GET', `/api/executers-bot/replacement-settings/${serviceId}`);
 
     if (!replacementTypeResponse.data.success) {
       console.log('⚠️ Не удалось получить тип замены, используем ручной режим');
@@ -1731,8 +1731,8 @@ bot.action(/^replace_materials_(.+)$/, async (ctx) => {
       return await handleManualReplacement(ctx, orderNumber, session);
     }
 
-    const replacementType = replacementTypeResponse.data.data.replacementType;
-    console.log(`🔄 Тип замены для услуги "${replacementTypeResponse.data.data.serviceName}": ${replacementType}`);
+    const replacementType = replacementTypeResponse.data.data.replacement_type;
+    console.log(`🔄 Тип замены для услуги "${replacementTypeResponse.data.data.name}": ${replacementType}`);
 
     if (replacementType === 'auto') {
       // Автоматическая замена
