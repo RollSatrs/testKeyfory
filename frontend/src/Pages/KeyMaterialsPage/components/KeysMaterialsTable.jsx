@@ -334,6 +334,15 @@ export function KeysMaterialsTable({
 
   // Функция для определения реального статуса материала для отображения
   const getMaterialDisplayStatus = (material) => {
+    // Если материал имеет статус "заменен" напрямую в БД
+    if (material.status === "заменен") {
+      return {
+        text: "Заменен",
+        color: "orange",
+        originalStatus: material.status,
+      };
+    }
+
     // Проверяем, есть ли завершенная замена для этого материала
     const hasCompletedReplacement = replacements.some(
       (replacement) =>

@@ -1455,10 +1455,21 @@ async function handleAutoReplacement(ctx, orderNumber, session) {
   try {
     console.log(`🤖 Выполняем автоматическую замену для заказа ${orderNumber}`);
 
-    // Вызываем API для автоматической замены материала
-    const replacementResponse = await fetchAsAxios('POST', '/api/admin/auto-replace-material', {
+    // Сначала получаем материалы для заказа
+    const materialsResponse = await fetchAsAxios('GET', `/api/executers/materials/${orderNumber}`, null, { executerId: session.executerId });
+
+    if (!materialsResponse.data.success || materialsResponse.data.data.length === 0) {
+      return ctx.reply('❌ Не удалось найти материалы для замены');
+    }
+
+    const materialToReplace = materialsResponse.data.data[0];
+
+    // Вызываем API для автоматической замены через наш исправленный endpoint
+    const replacementResponse = await fetchAsAxios('POST', '/api/executers-bot/request-replacement', {
       orderNumber: orderNumber,
-      executerId: session.executerId
+      materialId: materialToReplace.id,
+      telegramId: session.telegramId,
+      reason: 'Автоматическая замена материала'
     });
 
     if (!replacementResponse || !replacementResponse.data || !replacementResponse.data.success) {
@@ -1481,32 +1492,48 @@ async function handleAutoReplacement(ctx, orderNumber, session) {
       );
     }
 
-    const { oldMaterial, newMaterial } = replacementResponse.data.data;
+    // Проверяем, была ли выполнена автоматическая замена
+    if (replacementResponse.data.request && replacementResponse.data.request.autoReplaced) {
+      const { oldMaterial, newMaterial } = replacementResponse.data.request;
 
-    let message = `🤖 *Материал автоматически заменен для заказа #${orderNumber}*\n\n`;
+      let message = `✅ *Материал автоматически заменен для заказа #${orderNumber}*\n\n`;
 
-    message += `❌ *Заменен материал:*\n`;
-    message += `\`${oldMaterial.contents || 'Материал'}\`\n`;
-    message += `_Статус: Использован_\n\n`;
+      message += `❌ *Заменен материал:*\n`;
+      message += `\`${oldMaterial.contents || 'Материал'}\`\n`;
+      message += `_Статус: ${oldMaterial.status}_\n\n`;
 
-    message += `✅ *Новый материал:*\n`;
-    message += `\`${newMaterial.contents || 'Материал'}\`\n`;
-    message += `_Статус: Назначен вам_\n\n`;
+      message += `✅ *Новый материал:*\n`;
+      message += `\`${newMaterial.contents || 'Материал'}\`\n`;
+      message += `_Статус: ${newMaterial.status}_\n\n`;
 
-    message += `_Материал выше можно скопировать_\n\n`;
-    message += `🔄 _Замена выполнена автоматически согласно настройкам услуги_\n`;
-    message += `📝 _Запись о замене сохранена в системе_`;
+      message += `_Материал выше можно скопировать_\n\n`;
+      message += `🔄 _Замена выполнена автоматически согласно настройкам услуги_\n`;
+      message += `📝 _Запись о замене сохранена в системе_`;
 
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
-        ]]
-      }
-    });
-
-    console.log(`✅ Автоматическая замена выполнена: ${oldMaterial.id} → ${newMaterial.id}`);
+      await ctx.reply(message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+          ]]
+        }
+      });
+    } else {
+      // Если автоматическая замена не сработала, показываем сообщение о ручной замене
+      await ctx.reply(
+        '⏳ *Запрос на замену отправлен администратору*\n\n' +
+        'Автоматическая замена недоступна в данный момент.\n' +
+        'Ваш запрос обработает администратор.',
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+            ]]
+          }
+        }
+      );
+    }
 
   } catch (error) {
     console.error('❌ Ошибка автоматической замены:', error);
@@ -1627,6 +1654,7 @@ bot.action(/^reason_custom_(.+)$/, async (ctx) => {
 // Функция для отправки запроса на замену
 async function sendReplacementRequest(ctx, orderNumber, reason) {
   try {
+    const session = userSessions[ctx.chat.id];
     console.log(`📤 Отправляем запрос на замену для заказа ${orderNumber} с причиной: ${reason}`);
 
     // Получаем информацию о заказе
@@ -1639,35 +1667,78 @@ async function sendReplacementRequest(ctx, orderNumber, reason) {
 
     const execution = executionResponse.data.data;
 
-    // Отправляем запрос на замену материала админу
+    // Получаем материалы для заказа, чтобы найти ID материала для замены
+    const materialsResponse = await fetchAsAxios('GET', `/api/executers/materials/${orderNumber}`, null, { executerId: session.executerId });
+
+    if (!materialsResponse.data.success || materialsResponse.data.data.length === 0) {
+      return ctx.reply('❌ Не удалось найти материалы для замены');
+    }
+
+    const materialToReplace = materialsResponse.data.data[0]; // Берем первый материал
+
+    // Отправляем запрос на замену через новый эндпоинт, который поддерживает автозамену
     const replacementData = {
       orderNumber: orderNumber,
+      materialId: materialToReplace.id,
+      telegramId: session.telegramId,
       reason: reason
     };
 
     console.log(`📤 Отправляем данные запроса на замену:`, replacementData);
 
-    const replacementResponse = await fetchAsAxios('POST', '/api/admin/material-replacements', replacementData);
+    const replacementResponse = await fetchAsAxios('POST', '/api/executers-bot/request-replacement', replacementData);
 
     if (replacementResponse && replacementResponse.data && replacementResponse.data.success) {
-      let message = `✅ *Запрос на замену отправлен*\n\n`;
-      message += `📋 Заказ: #${orderNumber}\n`;
-      message += `🎯 Услуга: ${execution.Service?.name || 'Неизвестная услуга'}\n`;
-      message += `❓ Причина: ${reason}\n`;
-      message += `🕐 Дата: ${new Date().toLocaleString('ru-RU')}\n\n`;
-      message += `⏳ Ожидайте ответа администратора.\n`;
-      message += `📱 Вы получите уведомление, когда замена будет обработана.`;
+      const responseData = replacementResponse.data;
 
-      await ctx.reply(message, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
-          ]]
+      // Проверяем, была ли выполнена автоматическая замена
+      if (responseData.request && responseData.request.autoReplaced) {
+        // Автоматическая замена выполнена
+        let message = `✅ *Материал автоматически заменен*\n\n`;
+        message += `📋 Заказ: #${orderNumber}\n`;
+        message += `🎯 Услуга: ${execution.Service?.name || 'Неизвестная услуга'}\n`;
+        message += `❓ Причина: ${reason}\n`;
+        message += `🕐 Дата: ${new Date().toLocaleString('ru-RU')}\n\n`;
+
+        if (responseData.request.oldMaterial && responseData.request.newMaterial) {
+          message += `📦 *Замена выполнена:*\n`;
+          message += `❌ Старый материал: ${responseData.request.oldMaterial.contents} → статус "заменен"\n`;
+          message += `✅ Новый материал: ${responseData.request.newMaterial.contents} → статус "использован"\n\n`;
         }
-      });
 
-      console.log(`✅ Запрос на ручную замену создан для заказа ${orderNumber} с причиной: ${reason}`);
+        message += `🚀 Замена выполнена автоматически! Можете продолжать работу с новым материалом.`;
+
+        await ctx.reply(message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+            ]]
+          }
+        });
+
+        console.log(`✅ Автоматическая замена выполнена для заказа ${orderNumber}`);
+      } else {
+        // Ручная замена - ожидание админа
+        let message = `✅ *Запрос на замену отправлен*\n\n`;
+        message += `📋 Заказ: #${orderNumber}\n`;
+        message += `🎯 Услуга: ${execution.Service?.name || 'Неизвестная услуга'}\n`;
+        message += `❓ Причина: ${reason}\n`;
+        message += `🕐 Дата: ${new Date().toLocaleString('ru-RU')}\n\n`;
+        message += `⏳ Ожидайте ответа администратора.\n`;
+        message += `📱 Вы получите уведомление, когда замена будет обработана.`;
+
+        await ctx.reply(message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
+            ]]
+          }
+        });
+
+        console.log(`✅ Запрос на ручную замену создан для заказа ${orderNumber} с причиной: ${reason}`);
+      }
     } else {
       console.error('❌ Ошибка создания запроса на замену:', replacementResponse?.data || 'Response is null');
       await ctx.reply(
@@ -1722,19 +1793,12 @@ bot.action(/^replace_materials_(.+)$/, async (ctx) => {
     const serviceId = execution.service_id;
     console.log(`🎯 Service ID: ${serviceId}`);
 
-    // Проверяем тип замены для данной услуги
-    const replacementTypeResponse = await fetchAsAxios('GET', `/api/executers-bot/replacement-settings/${serviceId}`);
+    // Получаем тип замены из данных execution
+    const replacementType = execution.Service?.replacement_type;
+    const serviceName = execution.Service?.name;
+    console.log(`🔄 Тип замены для услуги "${serviceName}": ${replacementType}`);
 
-    if (!replacementTypeResponse.data.success) {
-      console.log('⚠️ Не удалось получить тип замены, используем ручной режим');
-      // Если не удалось получить тип замены, используем ручной режим
-      return await handleManualReplacement(ctx, orderNumber, session);
-    }
-
-    const replacementType = replacementTypeResponse.data.data.replacement_type;
-    console.log(`🔄 Тип замены для услуги "${replacementTypeResponse.data.data.name}": ${replacementType}`);
-
-    if (replacementType === 'auto') {
+    if (replacementType === 'auto' || replacementType === 'automatic') {
       // Автоматическая замена
       return await handleAutoReplacement(ctx, orderNumber, session);
     } else {

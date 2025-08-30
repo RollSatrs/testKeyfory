@@ -675,7 +675,7 @@ router.get('/execution-by-order/:orderNumber', async (req, res) => {
         {
           model: Services,
           as: 'Service',
-          attributes: ['id', 'name', 'price', 'status'],
+          attributes: ['id', 'name', 'price', 'status', 'replacement_type'],
           required: false
         },
         {
@@ -1772,6 +1772,7 @@ router.post('/request-replacement', async (req, res) => {
     const replacementData = {
       executer_id: executer.id,
       material_id: materialId,
+      service_execution_id: execution.id,
       reason: reason,
       status: 'pending'
     };
@@ -1808,6 +1809,137 @@ router.post('/request-replacement', async (req, res) => {
     const replacementRequest = await MaterialReplacement.create(replacementData);
 
     console.log(`✅ Запрос на замену создан с ID: ${replacementRequest.id}`);
+
+    // Проверяем настройки автоматической замены для услуги
+    const service = await Services.findByPk(execution.service_id, {
+      attributes: ['id', 'name', 'replacement_type']
+    });
+
+    if (service && (service.replacement_type === 'auto' || service.replacement_type === 'automatic')) {
+      console.log(`🔄 Услуга "${service.name}" настроена на автоматическую замену, выполняем замену...`);
+
+      try {
+        // Импортируем adminRoute для использования auto-replace-material
+        const { default: adminRoute } = await import('../../route/RouteAdmin/adminRoute.js');
+
+        // Создаем фальшивый объект запроса для auto-replace-material
+        const fakeReq = {
+          body: {
+            currentMaterialId: materialId,
+            executerId: executer.id,
+            serviceId: execution.service_id
+          }
+        };
+
+        const fakeRes = {
+          json: (data) => {
+            console.log('✅ Автоматическая замена выполнена:', data);
+          },
+          status: (code) => ({
+            json: (data) => {
+              console.log(`❌ Ошибка автоматической замены (${code}):`, data);
+            }
+          })
+        };
+
+        // Находим доступный материал для замены
+        const availableMaterials = await Material.findAll({
+          where: {
+            service_id: execution.service_id,
+            status: MATERIAL_STATUS.AVAILABLE
+          },
+          limit: 1
+        });
+
+        if (availableMaterials.length === 0) {
+          console.log('❌ Нет доступных материалов для автоматической замены');
+          return res.json({
+            success: true,
+            message: 'Запрос на замену отправлен (автоматическая замена недоступна - нет материалов)',
+            request: {
+              id: replacementRequest.id,
+              status: replacementRequest.status
+            }
+          });
+        }
+
+        // Выполняем автоматическую замену напрямую
+        const { sequelize } = await import('../../../database/databaseOn.js');
+
+        await sequelize.transaction(async (t) => {
+          // Получаем старый материал
+          const currentMaterial = await Material.findByPk(materialId, { transaction: t });
+          const newMaterial = availableMaterials[0];
+
+          // Переносим данные со старого материала на новый
+          await Material.update(
+            {
+              status: MATERIAL_STATUS.USED,
+              executer_id: currentMaterial.executer_id,
+              order_number: currentMaterial.order_number,
+              used_date: new Date()
+            },
+            {
+              where: { id: newMaterial.id },
+              transaction: t
+            }
+          );
+
+          // Старый материал получает статус "заменен"
+          await Material.update(
+            {
+              status: MATERIAL_STATUS.REPLACED,
+              executer_id: null,
+              order_number: null,
+              used_date: null
+            },
+            {
+              where: { id: materialId },
+              transaction: t
+            }
+          );
+
+          // Обновляем статус запроса на замену
+          await MaterialReplacement.update(
+            {
+              status: 'completed',
+              admin_response: 'Автоматическая замена выполнена системой',
+              processed_at: new Date()
+            },
+            {
+              where: { id: replacementRequest.id },
+              transaction: t
+            }
+          );
+
+          console.log(`✅ Автоматическая замена выполнена: ${currentMaterial.id} → ${newMaterial.id}`);
+        });
+
+        return res.json({
+          success: true,
+          message: 'Материал автоматически заменен',
+          request: {
+            id: replacementRequest.id,
+            status: 'completed',
+            autoReplaced: true,
+            oldMaterial: {
+              id: materialId,
+              contents: material.contents,
+              status: MATERIAL_STATUS.REPLACED
+            },
+            newMaterial: {
+              id: availableMaterials[0].id,
+              contents: availableMaterials[0].contents,
+              status: MATERIAL_STATUS.USED
+            }
+          }
+        });
+
+      } catch (autoError) {
+        console.error('❌ Ошибка автоматической замены:', autoError);
+        // Продолжаем с обычным запросом на замену
+      }
+    }
 
     res.json({
       success: true,
