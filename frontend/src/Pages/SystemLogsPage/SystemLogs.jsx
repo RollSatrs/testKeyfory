@@ -11,6 +11,7 @@ import { apiFetch } from "../../lib/api";
 
 export function SystemLogs() {
   const [logs, setLogs] = useState([]);
+  const [executors, setExecutors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     user_type: "",
@@ -22,6 +23,21 @@ export function SystemLogs() {
     limit: 50,
     total: 0,
   });
+
+  // Загрузка исполнителей
+  useEffect(() => {
+    async function fetchExecutors() {
+      try {
+        console.log("👥 [DEBUG] Загружаем исполнителей...");
+        const data = await apiFetch("/api/admin/executers/get");
+        console.log("👥 [DEBUG] Ответ API исполнителей:", data);
+        setExecutors(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("❌ [DEBUG] Ошибка загрузки исполнителей:", error);
+      }
+    }
+    fetchExecutors();
+  }, []);
 
   useEffect(() => {
     fetchLogs();
@@ -217,7 +233,7 @@ export function SystemLogs() {
                   Дата и время
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Пользователь
+                  Исполнитель
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Действие
@@ -225,15 +241,12 @@ export function SystemLogs() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Описание
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Заказ
-                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center">
+                  <td colSpan="4" className="px-6 py-12 text-center">
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     </div>
@@ -242,7 +255,7 @@ export function SystemLogs() {
               ) : logs.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="5"
+                    colSpan="4"
                     className="px-6 py-12 text-center text-gray-500"
                   >
                     Логи не найдены
@@ -257,70 +270,70 @@ export function SystemLogs() {
                         .toLowerCase()
                         .includes(filters.search.toLowerCase())
                   )
-                  .map((log) => (
-                    <tr key={log.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(log.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              log.user_type === "admin"
-                                ? "bg-purple-100 text-purple-800"
-                                : "bg-blue-100 text-blue-800"
-                            }`}
-                          >
-                            {log.user_type === "admin"
-                              ? "Админ"
-                              : "Исполнитель"}
-                          </span>
-                          <div className="text-sm">
-                            {log.user_type === "executer" && log.Executer ? (
-                              <div>
-                                <div className="font-medium text-gray-900">
-                                  {log.Executer.name || "Без имени"}
-                                </div>
-                                <div className="text-gray-500 text-xs">
-                                  ID: {log.user_id} | TG:{" "}
-                                  {log.Executer.telegram_id}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-gray-600">
-                                #{log.user_id}
-                              </span>
-                            )}
+                  .map((log) => {
+                    console.log("🔍 [DEBUG] Обрабатываем лог:", log);
+
+                    // Определяем исполнителя
+                    let executerInfo = "Неизвестно";
+
+                    if (log.user_type === "admin") {
+                      executerInfo = "Админ";
+                    } else if (log.Executer) {
+                      const name = log.Executer.name || "Без имени";
+                      const tgId = log.Executer.telegram_id;
+                      executerInfo = `${name} (${tgId})`;
+                      console.log(
+                        "✅ [DEBUG] Найден через Executer связь:",
+                        executerInfo
+                      );
+                    } else if (log.telegram_id) {
+                      // Ищем исполнителя в списке по telegram_id
+                      const foundExecutor = executors.find(
+                        (exec) => exec.telegram_id == log.telegram_id
+                      );
+
+                      if (foundExecutor) {
+                        const name = foundExecutor.name || "Без имени";
+                        executerInfo = `${name} (${log.telegram_id})`;
+                        console.log(
+                          "✅ [DEBUG] Найден через поиск:",
+                          executerInfo
+                        );
+                      } else {
+                        executerInfo = `Исполнитель (${log.telegram_id})`;
+                        console.log(
+                          "⚠️ [DEBUG] Не найден исполнитель для telegram_id:",
+                          log.telegram_id
+                        );
+                        console.log(
+                          "📋 [DEBUG] Доступные исполнители:",
+                          executors
+                        );
+                      }
+                    }
+
+                    return (
+                      <tr key={log.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(log.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {executerInfo}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            {getActionIcon(log.action)}
+                            <span className="text-sm font-medium">
+                              {getActionText(log.action)}
+                            </span>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          {getActionIcon(log.action)}
-                          <span className="text-sm font-medium">
-                            {getActionText(log.action)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        {log.description}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {log.order_id ? (
-                          <div className="text-sm">
-                            <div className="font-medium">#{log.order_id}</div>
-                            {log.Order?.Service?.name && (
-                              <div className="text-gray-500">
-                                {log.Order.Service.name}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          {log.description}
+                        </td>
+                      </tr>
+                    );
+                  })
               )}
             </tbody>
           </table>

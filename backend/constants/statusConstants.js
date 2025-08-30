@@ -58,7 +58,25 @@ export const LOG_ACTION_TYPES = {
   UPDATE_ORDER: 'update_order',
   VIEW_MATERIALS: 'view_materials',
   USE_MATERIAL: 'use_material',
-  REQUEST_REPLACEMENT: 'request_replacement'
+  REQUEST_REPLACEMENT: 'request_replacement',
+
+  // Новые типы действий для бота
+  BOT_START: 'bot_start',
+  BOT_MENU_MAIN: 'bot_menu_main',
+  BOT_MENU_ORDERS: 'bot_menu_orders',
+  BOT_MENU_MATERIALS: 'bot_menu_materials',
+  BOT_MENU_PROFILE: 'bot_menu_profile',
+  BOT_VIEW_ORDER_DETAILS: 'bot_view_order_details',
+  BOT_ACCEPT_ORDER: 'bot_accept_order',
+  BOT_COMPLETE_ORDER: 'bot_complete_order',
+  BOT_CANCEL_ORDER: 'bot_cancel_order',
+  BOT_VIEW_MATERIAL_DETAILS: 'bot_view_material_details',
+  BOT_USE_MATERIAL: 'bot_use_material',
+  BOT_REQUEST_MATERIAL_REPLACEMENT: 'bot_request_material_replacement',
+  BOT_UPDATE_PROFILE: 'bot_update_profile',
+  BOT_BUTTON_CLICK: 'bot_button_click',
+  BOT_NAVIGATION: 'bot_navigation',
+  BOT_ERROR: 'bot_error'
 };
 
 // Типы пользователей

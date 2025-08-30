@@ -269,12 +269,54 @@ const filterVisibleServices = (services, executerId = null, executerName = null)
 // (ранее использовался процесс.env, теперь включён постоянно по требованию пользователя)
 const DEBUG_BOT_SERVICES = true;
 
-// Команда /start
+// ==================== ФУНКЦИЯ ЛОГИРОВАНИЯ ====================
+
+// Функция для логирования действий пользователя в боте
+async function logUserAction(telegramId, action, description, additionalData = {}) {
+  try {
+    const logData = {
+      user_id: null, // Будет заполнено на backend по telegram_id
+      user_type: 'executer',
+      action: action,
+      description: description,
+      telegram_id: telegramId,
+      additional_data: JSON.stringify({
+        timestamp: new Date().toISOString(),
+        ...additionalData
+      })
+    };
+
+    await fetchAsAxios('POST', '/api/executers/log-action', logData);
+    console.log(`📋 [LOG] ${telegramId}: ${action} - ${description}`);
+  } catch (error) {
+    console.error('❌ Ошибка записи лога:', error);
+  }
+}
+
+// Хелперы для упрощения логирования
+const logBotAction = (telegramId, action, description, data = {}) =>
+  logUserAction(telegramId, action, description, data);
+
+const logNavigation = (telegramId, from, to) =>
+  logBotAction(telegramId, 'bot_navigation', `Переход: ${from} → ${to}`, { from, to });
+
+const logButtonClick = (telegramId, buttonText, context = '') =>
+  logBotAction(telegramId, 'bot_button_click', `Нажата кнопка: "${buttonText}"${context ? ` в ${context}` : ''}`, { buttonText, context });
+
+// ==================== КОМАНДЫ БОТА ====================
+
 // Команда /start
 bot.start(async (ctx) => {
   try {
     const telegramId = ctx.from.id;
     const firstName = ctx.from.first_name || 'Пользователь';
+
+    // Логируем запуск бота
+    await logBotAction(telegramId, 'bot_start', `Пользователь ${firstName} запустил бота`, {
+      firstName,
+      userId: ctx.from.id,
+      username: ctx.from.username || null
+    });
 
   [{ text: '📋 Активные услуги' }, { text: '📊 Статистика' }],
     console.log(`📋 Активные услуги: ${telegramId}`);
@@ -318,6 +360,13 @@ bot.start(async (ctx) => {
           ...getMainMenu()
         }
       );
+
+      // Логируем показ главного меню
+      await logBotAction(telegramId, 'bot_menu_main', 'Показано главное меню', {
+        executerId: executerData.id,
+        executerName: executerData.name,
+        balance: balanceToShow || 0
+      });
 
       await logActivity(executerData.id, 'login', 'Вход в систему');
     } else {
@@ -1031,12 +1080,20 @@ const showMaterialsText = async (ctx, orderNumber) => {
 bot.on('text', async (ctx) => {
   const text = ctx.message.text;
   const chatId = ctx.chat.id;
+  const telegramId = ctx.from.id;
 
   // Проверка авторизации
   const session = userSessions[chatId];
   if (!session?.authenticated) {
     return ctx.reply('❌ Необходима авторизация. Нажмите /start');
   }
+
+  // Логируем текстовое сообщение
+  await logBotAction(telegramId, 'bot_button_click', `Нажата кнопка: "${text}"`, {
+    messageText: text,
+    chatId: chatId,
+    executerId: session.executerId
+  });
 
   console.log(`\n💬 === ТЕКСТОВОЕ СООБЩЕНИЕ ===`);
   console.log(`👤 User: ${ctx.from.first_name} (${ctx.from.id})`);
@@ -1049,21 +1106,25 @@ bot.on('text', async (ctx) => {
   try {
     const lower = normalized.toLowerCase();
     if (/активн/i.test(lower) && /услуг/i.test(lower)) {
+      await logNavigation(telegramId, 'главное меню', 'активные услуги');
       await showActiveServices(ctx);
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Активные услуги" (fuzzy)');
       return;
     }
     if (/выполнен|история|завершен/i.test(lower) && /услуг|заказ/i.test(lower)) {
+      await logNavigation(telegramId, 'главное меню', 'история заказов');
       await showCompletedServices(ctx);
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "История заказов" (fuzzy)');
       return;
     }
     if (/статист/i.test(lower)) {
+      await logNavigation(telegramId, 'главное меню', 'статистика');
       await showStatistics(ctx);
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Статистика" (fuzzy)');
       return;
     }
     if (/мои услуг/i.test(lower) || (/мои/.test(lower) && /услуг/i.test(lower))) {
+      await logNavigation(telegramId, 'главное меню', 'мои услуги');
       await showMyServices(ctx);
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Мои услуги" (fuzzy)');
       return;
@@ -1358,11 +1419,18 @@ bot.action(/^select_service_(\d+)$/, async (ctx) => {
 
     const serviceId = ctx.match[1];
     const chatId = ctx.chat.id;
+    const telegramId = ctx.from.id;
     const session = userSessions[chatId];
 
     if (!session?.authenticated) {
       return ctx.reply('❌ Необходима авторизация. Нажмите /start');
     }
+
+    // Логируем выбор услуги
+    await logBotAction(telegramId, 'bot_view_order_details', `Выбрана услуга для просмотра`, {
+      serviceId: serviceId,
+      executerId: session.executerId
+    });
 
     console.log(`\n🛠️ === ВЫБОР УСЛУГИ ===`);
     console.log(`🛠️ Service ID: ${serviceId}`);

@@ -135,6 +135,8 @@ export const Log = sequelize.define('Log', {
   user_type: { type: DataTypes.STRING }, // 'admin' или 'executer'
   action: { type: DataTypes.STRING }, // тип действия
   description: { type: DataTypes.TEXT }, // описание действия
+  telegram_id: { type: DataTypes.STRING, allowNull: true }, // Telegram ID для прямого доступа
+  additional_data: { type: DataTypes.TEXT, allowNull: true }, // Дополнительные данные в JSON
   order_id: { type: DataTypes.INTEGER, allowNull: true }, // ID заказа (если применимо)
   service_id: { type: DataTypes.INTEGER, allowNull: true }, // ID услуги (если применимо)
   created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }

@@ -208,11 +208,12 @@ export async function updateExecuterRights(executerId, rights) {
 // Получить все логи
 export async function getAllLogs(options = {}) {
     try {
-        const { limit = 100, offset = 0, user_type, action } = options;
+        const { limit = 100, offset = 0, user_type, action, executor_id } = options;
 
         const whereClause = {};
         if (user_type) whereClause.user_type = user_type;
         if (action) whereClause.action = action;
+        if (executor_id) whereClause.user_id = executor_id;
 
         const logs = await Log.findAndCountAll({
             where: whereClause,

@@ -1,4 +1,4 @@
-import express from 'express'
+﻿import express from 'express'
 import { MATERIAL_STATUS } from '../../../constants/statusConstants.js'
 import {
   addExecuter,
@@ -642,3 +642,48 @@ executerRoute.post('/log', async (req, res) => {
     res.status(500).json({ success: false });
   }
 });
+
+// Логирование действий из бота
+executerRoute.post('/log-action', async (req, res) => {
+  try {
+    const { telegram_id, user_type, action, description, additional_data } = req.body;
+
+    // Найдем исполнителя по telegram_id
+    let user_id = null;
+    try {
+      const { getExecuterByTelegramId } = await import('../../service/ServiceAdmim/adminExecuterService.js');
+      const executer = await getExecuterByTelegramId(telegram_id);
+      if (executer) {
+        user_id = executer.id;
+        console.log(`✅ Найден исполнитель: ID=${user_id}, TG=${telegram_id}`);
+      } else {
+        console.warn(`⚠️ Исполнитель не найден для telegram_id ${telegram_id}`);
+      }
+    } catch (error) {
+      console.error(`❌ Ошибка поиска исполнителя с telegram_id ${telegram_id}:`, error);
+    }
+
+    // Создаем запись в логах через admin service
+    const logData = {
+      user_id,
+      user_type: user_type || 'executer',
+      action,
+      description,
+      telegram_id, // Сохраняем telegram_id для резерва
+      additional_data
+    };
+
+    // Используем admin service для создания лога
+    const { createLog } = await import('../../service/ServiceAdmim/adminExecuterService.js');
+    const newLog = await createLog(logData);
+
+    console.log('📝 Лог создан:', { id: newLog.id, user_id, telegram_id, action, description });
+
+    res.json({ success: true, log_id: newLog.id });
+  } catch (error) {
+    console.error('❌ Ошибка создания лога:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+export default executerRoute;

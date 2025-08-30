@@ -78,7 +78,7 @@ export function AuthForm() {
       const data = await res.json();
       if (res.ok && data.token) {
         localStorage.setItem("admin_token", data.token);
-        navigate("/overview");
+        navigate("/services");
       } else {
         setError(data.error || "Ошибка авторизации");
       }

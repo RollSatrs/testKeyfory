@@ -56,8 +56,8 @@ executerRoute.put('/executer-rights/:executerId', async (req, res) => {
 // GET /logs - получить все логи
 executerRoute.get('/logs', async (req, res) => {
     try {
-        const { limit = 100, offset = 0, user_type, action } = req.query;
-        const logs = await getAllLogs({ limit, offset, user_type, action });
+        const { limit = 100, offset = 0, user_type, action, executor_id } = req.query;
+        const logs = await getAllLogs({ limit, offset, user_type, action, executor_id });
         res.json(logs);
     } catch (error) {
         console.error('Error fetching logs:', error);
