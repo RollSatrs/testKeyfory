@@ -201,7 +201,7 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
             throw new Error('Новый материал не найден');
         }
 
-        if (newMaterial.status !== 'доступен') {
+        if (newMaterial.status !== MATERIAL_STATUS.AVAILABLE) {
             throw new Error('Выбранный материал недоступен');
         }
 
@@ -211,32 +211,60 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
             oldMaterialData = await Material.findByPk(replacement.material_id);
         }
 
-        // Обновляем статусы материалов
-        if (replacement.material_id) {
-            // Старый материал помечаем как замененный и убираем все привязки
-            await Material.update(
-                {
-                    status: 'заменен',
-                    order_number: null,
-                    executer_id: null,
-                    service_execution_id: null,
-                    used_date: null
-                },
-                { where: { id: replacement.material_id } }
-            );
-        }
+        // Выполняем замену в транзакции для целостности данных
+        const { sequelize } = await import('../../../database/databaseOn.js');
 
-        // Новый материал помечаем как использованный и переносим все привязки
-        await Material.update(
-            {
-                status: 'использован',
-                order_number: oldMaterialData?.order_number || null,
-                executer_id: oldMaterialData?.executer_id || null,
-                service_execution_id: replacement.service_execution_id,
-                used_date: new Date()
-            },
-            { where: { id: newMaterialId } }
-        );
+        await sequelize.transaction(async (t) => {
+            if (replacement.material_id && oldMaterialData) {
+                // Старый материал помечаем как замененный и убираем все привязки
+                await Material.update(
+                    {
+                        status: MATERIAL_STATUS.REPLACED,
+                        order_number: null,
+                        executer_id: null,
+                        used_date: new Date() // Дата замены
+                    },
+                    {
+                        where: { id: replacement.material_id },
+                        transaction: t
+                    }
+                );
+
+                console.log(`🔄 Старый материал ID ${replacement.material_id} помечен как замененный`);
+
+                // Новый материал получает все данные от старого и становится использованным
+                await Material.update(
+                    {
+                        status: MATERIAL_STATUS.USED,
+                        order_number: oldMaterialData.order_number,
+                        executer_id: oldMaterialData.executer_id,
+                        used_date: new Date()
+                    },
+                    {
+                        where: { id: newMaterialId },
+                        transaction: t
+                    }
+                );
+
+                console.log(`✅ Новый материал ID ${newMaterialId} назначен исполнителю ${oldMaterialData.executer_id} на заказ ${oldMaterialData.order_number}`);
+            } else {
+                // Если нет старого материала, просто назначаем новый
+                await Material.update(
+                    {
+                        status: MATERIAL_STATUS.USED,
+                        order_number: replacement.ServiceExecution?.order_number || null,
+                        executer_id: replacement.executer_id,
+                        used_date: new Date()
+                    },
+                    {
+                        where: { id: newMaterialId },
+                        transaction: t
+                    }
+                );
+
+                console.log(`✅ Новый материал ID ${newMaterialId} назначен исполнителю ${replacement.executer_id}`);
+            }
+        });
 
         // Формируем описание нового материала
         const newMaterialDescription = newMaterial.type_key
@@ -256,16 +284,34 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
             const botModule = await import('../../../../bot/executerBot.js');
 
             if (botModule.notifyMaterialReplacement) {
-                // Формируем корректные описания материалов
-                const oldMaterialDescription = replacement.Material
-                    ? (replacement.Material.type_key
-                        ? `${replacement.Material.type_key} - ${replacement.Material.contents}`
-                        : replacement.Material.contents || 'Старый материал')
-                    : null;
+                // Получаем актуальные данные нового материала после обновления
+                const updatedNewMaterial = await Material.findByPk(newMaterialId, {
+                    attributes: ['id', 'type_key', 'contents', 'status', 'order_number', 'executer_id']
+                });
 
-                const newMaterialDescription = newMaterial.type_key
-                    ? `${newMaterial.type_key} - ${newMaterial.contents}`
-                    : newMaterial.contents || 'Новый материал';
+                // Получаем актуальные данные старого материала после обновления статуса
+                let oldMaterialDescription = null;
+                if (replacement.material_id) {
+                    const updatedOldMaterial = await Material.findByPk(replacement.material_id, {
+                        attributes: ['id', 'type_key', 'contents', 'status']
+                    });
+
+                    if (updatedOldMaterial) {
+                        oldMaterialDescription = updatedOldMaterial.type_key
+                            ? `${updatedOldMaterial.type_key} - ${updatedOldMaterial.contents}`
+                            : updatedOldMaterial.contents || 'Старый материал';
+
+                        console.log(`📦 Старый материал для уведомления: ${oldMaterialDescription} (статус: ${updatedOldMaterial.status})`);
+                    }
+                }
+
+                // Используем актуальные данные нового материала
+                const newMaterialDescription = updatedNewMaterial?.type_key
+                    ? `${updatedNewMaterial.type_key} - ${updatedNewMaterial.contents}`
+                    : updatedNewMaterial?.contents || 'Новый материал';
+
+                console.log(`📦 Новый материал для уведомления: ${newMaterialDescription} (статус: ${updatedNewMaterial?.status})`);
+                console.log(`👤 Назначен исполнителю: ${updatedNewMaterial?.executer_id}, заказ: ${updatedNewMaterial?.order_number}`);
 
                 await botModule.notifyMaterialReplacement({
                     telegramId: replacement.Executer.telegram_id,

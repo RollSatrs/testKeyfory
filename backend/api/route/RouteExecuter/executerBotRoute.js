@@ -246,14 +246,16 @@ router.get('/order-materials/:orderNumber', async (req, res) => {
       }
 
       // Сначала получаем уже назначенные материалы для этого заказа
+      // ИСКЛЮЧАЕМ замененные материалы - показываем только активные (использованные)
       const assignedMaterials = await Material.findAll({
         where: {
           service_id: execution.service_id,
           order_number: orderNumber,  // Материалы, уже назначенные к этому заказу
-          executer_id: executer.id    // Назначенные этому исполнителю
+          executer_id: executer.id,   // Назначенные этому исполнителю
+          status: MATERIAL_STATUS.USED  // ТОЛЬКО использованные (не замененные!)
         },
         attributes: ['id', 'contents', 'status', 'type_key', 'service_id', 'order_number', 'executer_id'],
-        order: [['used_date', 'ASC']],  // По дате использования
+        order: [['used_date', 'DESC']],  // Самые новые сначала (после замены)
       });
 
       console.log(`📦 Найдено назначенных материалов для заказа ${orderNumber}: ${assignedMaterials.length}`);

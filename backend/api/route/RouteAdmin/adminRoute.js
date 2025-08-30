@@ -447,19 +447,18 @@ adminRoute.post('/auto-replace-material', async (req, res) => {
     const { sequelize } = await import('../../../database/databaseOn.js');
 
     await sequelize.transaction(async (t) => {
-      // Если материал еще не использован, помечаем его как использованный
-      if (currentMaterial.status !== MATERIAL_STATUS.USED) {
-        await currentMaterial.update({
-          status: MATERIAL_STATUS.USED,
-          used_date: new Date()
-        }, { transaction: t });
-      }
+      // Старый материал помечаем как замененный
+      await currentMaterial.update({
+        status: MATERIAL_STATUS.REPLACED,
+        used_date: new Date()
+      }, { transaction: t });
 
-      // Назначаем новый материал исполнителю
+      // Новый материал назначаем исполнителю как использованный
       await newMaterial.update({
-        status: 'assigned',
+        status: MATERIAL_STATUS.USED,
         executer_id: executerId,
-        reserved_at: new Date()
+        order_number: orderNumber,
+        used_date: new Date()
       }, { transaction: t });
 
       // Создаем запись о замене
