@@ -1449,20 +1449,20 @@ bot.action(/^manage_order_(.+)$/, async (ctx) => {
   try {
     await ctx.answerCbQuery();
     const orderNumber = ctx.match[1];
-    
+
     console.log(`🎯 Обработка manage_order для заказа: ${orderNumber}`);
-    
+
     await manageOrder(ctx, orderNumber);
   } catch (error) {
     console.error('❌ Ошибка управления заказом:', error);
-    
+
     // Пытаемся ответить на callback query если еще не ответили
     try {
       await ctx.answerCbQuery();
     } catch (cbError) {
       console.warn('⚠️ Callback query уже отвечен или недоступен');
     }
-    
+
     // Пытаемся отправить сообщение об ошибке
     try {
       await ctx.reply('❌ Произошла ошибка при загрузке управления заказом. Попробуйте еще раз через /start');
@@ -2167,7 +2167,7 @@ bot.action('cancel_input', async (ctx) => {
 bot.catch((err, ctx) => {
   console.error('❌ Критическая ошибка в боте:', err);
   console.error('📍 Context:', ctx?.update_id, ctx?.chat?.id, ctx?.from?.id);
-  
+
   // Пытаемся отправить сообщение пользователю, если контекст доступен
   if (ctx && ctx.reply) {
     try {
@@ -2176,7 +2176,7 @@ bot.catch((err, ctx) => {
       console.error('❌ Не удалось отправить сообщение об ошибке пользователю:', replyError);
     }
   }
-  
+
   // Не останавливаем бот, даже если произошла ошибка
 });
 
@@ -2289,7 +2289,7 @@ export async function notifyMaterialReplacement({ telegramId, orderNumber, servi
     // Отправляем сообщение с повторными попытками
     let attempts = 0;
     const maxAttempts = 3;
-    
+
     while (attempts < maxAttempts) {
       try {
         await bot.telegram.sendMessage(telegramId, message, {
@@ -2307,7 +2307,7 @@ export async function notifyMaterialReplacement({ telegramId, orderNumber, servi
       } catch (sendError) {
         attempts++;
         console.error(`❌ Ошибка отправки уведомления (попытка ${attempts}/${maxAttempts}):`, sendError.message || sendError);
-        
+
         if (attempts < maxAttempts) {
           // Ждем немного перед следующей попыткой
           await new Promise(resolve => setTimeout(resolve, 1000 * attempts));

@@ -43,6 +43,8 @@ export function KeysMaterialsTable({
   onChange,
   search = "",
   statusFilter = "",
+  serviceFilter = "",
+  executerFilter = "",
 }) {
   const [materials, setMaterials] = useState([]);
   const [services, setServices] = useState([]);
@@ -316,20 +318,44 @@ export function KeysMaterialsTable({
     const matchesSearch = m.contents
       ?.toLowerCase()
       .includes(search.toLowerCase());
-    // If statusFilter is provided, support filtering by 'available' meaning not used and not bound to order
+
+    // Фильтр по статусу с поддержкой новых статусов
+    let matchesStatus = true;
     if (statusFilter) {
       if (statusFilter === "available") {
-        return matchesSearch && m.status !== "used" && !m.order_number;
+        // Старая логика для совместимости
+        matchesStatus = m.status !== "использован" && !m.order_number;
+      } else {
+        matchesStatus = m.status === statusFilter;
       }
-      return matchesSearch && m.status === statusFilter;
     }
-    return matchesSearch;
+
+    // Фильтр по услуге
+    let matchesService = true;
+    if (serviceFilter) {
+      matchesService = m.service_id == serviceFilter;
+    }
+
+    // Фильтр по исполнителю
+    let matchesExecuter = true;
+    if (executerFilter) {
+      matchesExecuter = m.executer_id == executerFilter;
+    }
+
+    return matchesSearch && matchesStatus && matchesService && matchesExecuter;
   });
   console.log(filteredMaterials);
 
   const getServiceName = (serviceId) => {
     const service = services.find((s) => s.id === serviceId);
     return service ? service.name : "Неизвестная услуга";
+  };
+
+  const getExecuterName = (executerId) => {
+    const executer = executers.find((e) => e.id === executerId);
+    return executer
+      ? executer.name || `ID: ${executer.telegram_id}`
+      : "Не назначен";
   };
 
   // Функция для определения реального статуса материала для отображения
@@ -433,12 +459,12 @@ export function KeysMaterialsTable({
   ];
 
   // Преобразуем данные для экспорта
-  // Do not show "Доступен" in export; export real fields or empty strings
+  // Do not show "Доступен" в экспорте; экспортируем реальные поля или пустые строки
   const exportData = filteredMaterials.map((m) => ({
     ...m,
     service_name: getServiceName(m.service_id),
     order_number: m.order_number || "",
-    executer_name: m.executer_name || "",
+    executer_name: getExecuterName(m.executer_id),
   }));
 
   const columns = [
@@ -976,6 +1002,16 @@ export function KeysMaterialsTable({
       render: (source) => getSourceLabel(source),
     },
     {
+      title: "Исполнитель",
+      dataIndex: "executer_id",
+      key: "executer_id",
+      render: (executerId) => (
+        <Tag color={executerId ? "blue" : "default"}>
+          {getExecuterName(executerId)}
+        </Tag>
+      ),
+    },
+    {
       title: "Действия",
       key: "actions",
       width: 180,
@@ -1070,6 +1106,7 @@ export function KeysMaterialsTable({
         pagination={{ pageSize: 10 }}
         bordered
         style={{ marginTop: 8 }}
+        scroll={{ x: 1200 }}
       />
       <Modal
         open={editForm}

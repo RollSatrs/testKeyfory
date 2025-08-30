@@ -130,7 +130,7 @@ export async function getAllExecuters() {
             // Получаем материалы исполнителя
             const materials = await Material.findAll({
                 where: { executer_id: executer.id },
-                attributes: ['id', 'type_key', 'status', 'contents']
+                attributes: ['id', 'type', 'status', 'quantity_available']
             });
 
             console.log(`👤 Исполнитель ${executer.id}: ServiceAccess: ${accessServices.length}, Direct: ${directServices.length}, Total: ${uniqueServices.length}, Materials: ${materials.length}`);
