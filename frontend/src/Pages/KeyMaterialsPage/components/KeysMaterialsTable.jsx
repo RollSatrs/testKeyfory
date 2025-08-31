@@ -1173,16 +1173,6 @@ export function KeysMaterialsTable({
       render: (source) => getSourceLabel(source),
     },
     {
-      title: "Исполнитель",
-      dataIndex: "executer_id",
-      key: "executer_id",
-      render: (executerId) => (
-        <Tag color={executerId ? "blue" : "default"}>
-          {getExecuterName(executerId)}
-        </Tag>
-      ),
-    },
-    {
       title: "Действия",
       key: "actions",
       width: 180,
