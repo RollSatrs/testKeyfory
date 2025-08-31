@@ -188,9 +188,18 @@ export async function updateMaterial(id, data) {
             throw new Error('Material not found');
         }
 
+        // Обрабатываем service_ids (массив) и преобразуем в service_id (одиночное значение)
+        if (data.service_ids && Array.isArray(data.service_ids)) {
+            // Пока что берем первую услугу из массива, в будущем можно расширить до множественных связей
+            if (data.service_ids.length > 0) {
+                data.service_id = data.service_ids[0];
+            }
+            delete data.service_ids; // Удаляем service_ids из данных для обновления
+        }
+
         // Если передан executer_id, получаем имя исполнителя
         if (data.executer_id) {
-            const { Executer } = await import('../../database/dbTables.js');
+            const { Executer } = await import('../../../database/dbTables.js');
             const executer = await Executer.findByPk(data.executer_id);
             if (executer) {
                 data.executer_name = executer.name;

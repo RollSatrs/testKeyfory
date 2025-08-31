@@ -55,11 +55,7 @@ export function KeysMaterialsTable({
   const [replacementMaterials, setReplacementMaterials] = useState([]);
   const [form, setForm] = useState({
     id: null,
-    service_id: "",
     contents: "",
-    status: "",
-    executer_id: null,
-    order_number: "",
   });
 
   const [executers, setExecuters] = useState([]);
@@ -237,11 +233,7 @@ export function KeysMaterialsTable({
   function openEditModal(material) {
     setForm({
       id: material.id,
-      service_id: material.service_id,
       contents: material.contents,
-      status: material.status,
-      executer_id: material.executer_id || null,
-      order_number: material.order_number || "",
     });
     setEditForm(true);
   }
@@ -255,11 +247,7 @@ export function KeysMaterialsTable({
       await apiFetch(`/api/admin/materials/update/${form.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          service_id: form.service_id,
           contents: form.contents,
-          status: form.status,
-          executer_id: form.executer_id,
-          order_number: form.order_number,
         }),
       });
       setEditForm(false);
@@ -1280,67 +1268,20 @@ export function KeysMaterialsTable({
         onOk={handleEditSubmit}
         okText="Сохранить"
         cancelText="Отмена"
+        width={500}
       >
-        <Select
-          name="service_id"
-          value={form.service_id || undefined}
-          onChange={(value) => handleChange("service_id", value)}
-          placeholder="Привязать к услуге"
-          className="w-full"
-          style={{ marginBottom: 16 }}
-        >
-          {services.map((service) => (
-            <Select.Option key={service.id} value={service.id}>
-              {service.name}
-            </Select.Option>
-          ))}
-        </Select>
-
-        <Input
-          name="contents"
-          value={form.contents}
-          onChange={(e) => handleChange("contents", e.target.value)}
-          placeholder="Содержимое (ключ, код и т.п.)"
-          style={{ marginBottom: 16 }}
-        />
-
-        <Select
-          name="status"
-          value={form.status || undefined}
-          onChange={(value) => handleChange("status", value)}
-          placeholder="Статус материала"
-          className="w-full"
-          style={{ marginBottom: 16 }}
-        >
-          <Select.Option value="available">Доступен</Select.Option>
-          <Select.Option value="used">Использован</Select.Option>
-          <Select.Option value="pending_replace">На замене</Select.Option>
-        </Select>
-
-        <Input
-          name="order_number"
-          value={form.order_number}
-          onChange={(e) => handleChange("order_number", e.target.value)}
-          placeholder="Номер заказа"
-          style={{ marginBottom: 16 }}
-        />
-
-        <Select
-          name="executer_id"
-          value={form.executer_id || undefined}
-          onChange={(value) => handleChange("executer_id", value)}
-          placeholder="Выберите исполнителя"
-          className="w-full"
-          style={{ marginBottom: 8 }}
-          allowClear
-        >
-          {executers.map((executer) => (
-            <Select.Option key={executer.id} value={executer.id}>
-              {executer.name || `ID: ${executer.id}`}
-              {executer.telegram_id && ` (${executer.telegram_id})`}
-            </Select.Option>
-          ))}
-        </Select>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "block", marginBottom: 8, fontWeight: 500 }}>
+            Содержимое материала:
+          </label>
+          <Input.TextArea
+            rows={4}
+            value={form.contents}
+            onChange={(e) => handleChange("contents", e.target.value)}
+            placeholder="Введите содержимое (ключ, код, пароль и т.п.)"
+            style={{ marginBottom: 16 }}
+          />
+        </div>
       </Modal>
 
       {/* Модальное окно замены материала */}

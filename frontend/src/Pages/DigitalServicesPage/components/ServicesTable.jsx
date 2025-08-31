@@ -592,59 +592,73 @@ export function ServicesTable({
       key: "executers",
       width: 200,
       render: (_, record) => {
-        // Проверяем прямое назначение через executer_id
+        // Собираем всех исполнителей в один массив
+        const allExecuters = [];
+
+        // Добавляем прямо назначенного исполнителя
         const directExecuter = record.assignedExecuter;
-
-        // Проверяем назначение через ServiceAccess (старая система)
-        const assignedExecuters = record.assigned_executers || [];
-
-        // Если есть прямое назначение
         if (directExecuter) {
+          allExecuters.push({
+            name: directExecuter.name || `ID: ${directExecuter.id}`,
+            status: directExecuter.status,
+            telegram_id: directExecuter.telegram_id,
+            source: "direct",
+          });
+        }
+
+        // Добавляем исполнителей из ServiceAccess
+        const assignedExecuters = record.assigned_executers || [];
+        assignedExecuters.forEach((executer) => {
+          // Проверяем, чтобы не добавлять дубликаты
+          const isDuplicate = allExecuters.some(
+            (ex) =>
+              ex.name === executer.executer_name ||
+              (ex.telegram_id &&
+                executer.telegram_id &&
+                ex.telegram_id === executer.telegram_id)
+          );
+
+          if (!isDuplicate) {
+            allExecuters.push({
+              name: executer.executer_name,
+              status: executer.status,
+              telegram_id: executer.telegram_id,
+              source: "service_access",
+            });
+          }
+        });
+
+        // Если никого не назначено
+        if (allExecuters.length === 0) {
+          return <Tag color="default">Не назначены</Tag>;
+        }
+
+        // Если один исполнитель
+        if (allExecuters.length === 1) {
+          const executer = allExecuters[0];
           return (
-            <Tag
-              color={directExecuter.status === "active" ? "green" : "orange"}
-            >
-              {directExecuter.name || `ID: ${directExecuter.id}`}
-              {directExecuter.telegram_id && ` (${directExecuter.telegram_id})`}
+            <Tag color={executer.status === "active" ? "green" : "orange"}>
+              {executer.name}
+              {executer.telegram_id && ` (${executer.telegram_id})`}
             </Tag>
           );
         }
 
-        // Если есть назначения через ServiceAccess
-        if (assignedExecuters.length > 0) {
-          if (assignedExecuters.length === 1) {
-            const executer = assignedExecuters[0];
-            return (
-              <Tag color={executer.status === "active" ? "green" : "orange"}>
-                {executer.executer_name}
+        // Если несколько исполнителей - показываем всех
+        return (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+            {allExecuters.map((executer, index) => (
+              <Tag
+                key={index}
+                color={executer.status === "active" ? "green" : "orange"}
+                style={{ margin: "2px" }}
+              >
+                {executer.name}
+                {executer.telegram_id && ` (${executer.telegram_id})`}
               </Tag>
-            );
-          }
-
-          return (
-            <Tooltip
-              title={
-                <div>
-                  {assignedExecuters.map((executer, index) => (
-                    <div key={index}>• {executer.executer_name}</div>
-                  ))}
-                </div>
-              }
-            >
-              <Tag color="blue">
-                {assignedExecuters.length} исполнител
-                {assignedExecuters.length === 1
-                  ? "ь"
-                  : assignedExecuters.length < 5
-                  ? "я"
-                  : "ей"}
-              </Tag>
-            </Tooltip>
-          );
-        }
-
-        // Если никого не назначено
-        return <Tag color="default">Не назначены</Tag>;
+            ))}
+          </div>
+        );
       },
     },
     {
