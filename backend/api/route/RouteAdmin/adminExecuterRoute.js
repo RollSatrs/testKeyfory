@@ -146,6 +146,18 @@ executerRoute.put('/update/:id', async (req, res) => {
     }
 });
 
+// PUT /executers/:id/status - обновить статус исполнителя
+executerRoute.put('/:id/status', async (req, res) => {
+    try {
+        const { status } = req.body;
+        const updatedExecuter = await updateExecuter(req.params.id, { status });
+        res.json(updatedExecuter);
+    } catch (error) {
+        console.error('Error updating executer status:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
 // PUT /executers/rating/:id - обновить рейтинг исполнителя
 executerRoute.put('/rating/:id', async (req, res) => {
     try {

@@ -1,4 +1,4 @@
-import { Telegraf, Markup, session } from 'telegraf';
+﻿import { Telegraf, Markup, session } from 'telegraf';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -406,7 +406,7 @@ const getMainMenu = () => {
     keyboard: [
   [{ text: '🛠️ Мои услуги' }],
   [{ text: '📋 Активные услуги' }, { text: '📊 Статистика' }],
-  [{ text: '📚 История заказов' }]
+  [{ text: '📚 История заказов' }, { text: '✅ Выполненные услуги' }]
     ],
       resize_keyboard: true,
       one_time_keyboard: false
@@ -800,6 +800,74 @@ const showCompletedServices = async (ctx) => {
   }
 };
 
+// Показать только выполненные услуги (без отмененных)
+const showCompletedOrders = async (ctx) => {
+  try {
+    const session = userSessions[ctx.chat.id];
+    if (!session?.authenticated) {
+      return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    }
+
+    const response = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
+    const allOrders = response.data || [];
+
+    // Фильтруем только выполненные заказы (исключаем отмененные)
+    const completedOrders = Array.isArray(allOrders) ?
+      allOrders.filter(order => order.status === 'completed') : [];
+
+    // Получаем общий заработок (только с завершенных заказов)
+    let balanceToShow = 0;
+    try {
+      balanceToShow = await calculateTotalEarnings(session.executerId);
+    } catch (statsErr) {
+      console.warn('Не удалось рассчитать заработок для выполненных услуг:', statsErr.message);
+      balanceToShow = session.balance || 0;
+    }
+
+    if (completedOrders.length === 0) {
+      return ctx.reply(`✅ *Выполненные услуги:*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n❌ У вас пока нет выполненных услуг`, { parse_mode: 'Markdown', ...getMainMenu() });
+    }
+
+    // Строим блок для каждой выполненной услуги
+    const parts = [];
+    parts.push(`✅ *Выполненные услуги*\n\n💰 Общий заработок: ${balanceToShow}₽`);
+    parts.push(`📊 Количество выполненных услуг: ${completedOrders.length}`);
+
+    completedOrders.forEach((order) => {
+      const serviceName = order.Service?.name || order.service_name || order.name || 'Услуга';
+      const priceRaw = order.price ?? order.Service?.price ?? null;
+      const standardPrice = order.Service?.price ?? order.standard_price ?? priceRaw;
+      const completedAt = order.completed_at ? new Date(order.completed_at).toLocaleString() : '—';
+      const orderNumber = order.order_number || '—';
+
+      const block = [];
+      block.push('✅ Выполненная услуга');
+      block.push('');
+      block.push(`🎵 ${serviceName}`);
+      block.push(`💰 Заработано: ${formatPrice(priceRaw)}`);
+      if (standardPrice !== priceRaw) {
+        block.push(`📊 Стандартная цена: ${formatPrice(standardPrice)}`);
+      }
+      block.push(`📅 Выполнено: ${completedAt}`);
+      block.push(`🔢 Номер заказа: ${orderNumber}`);
+      parts.push(block.join('\n'));
+    });
+
+    const finalMessage = parts.join('\n\n');
+
+    await ctx.reply(finalMessage, {
+      parse_mode: 'Markdown',
+      ...getMainMenu()
+    });
+
+    await logActivity(session.executerId, 'view_completed_orders', 'Просмотр выполненных услуг');
+
+  } catch (error) {
+    console.error('❌ Ошибка получения выполненных услуг:', error);
+    ctx.reply('❌ Ошибка при получении выполненных услуг');
+  }
+};
+
 // Обработчик просмотра материалов выполненного заказа
 bot.action(/^view_completed_(.+)$/, async (ctx) => {
   try {
@@ -1029,24 +1097,9 @@ const showMaterialsText = async (ctx, orderNumber) => {
         message += `📦 Количество: ${assignedMaterial.quantity} ${assignedMaterial.unit}\n`;
       }
 
-      // КРИТИЧЕСКИ ВАЖНО: Помечаем материал как использованный, чтобы другие исполнители его не получили
-      try {
-        console.log(`🔒 Помечаем материал ${assignedMaterial.id} как использованный для исполнителя ${session.executerId}`);
-        const markUsedResponse = await fetchAsAxios('POST', `/api/executers/materials/${assignedMaterial.id}/mark-used`, {
-          executerId: session.executerId,
-          orderNumber: orderNumber,
-          reason: 'Материал выдан исполнителю'
-        });
-
-        if (markUsedResponse.ok) {
-          console.log(`✅ Материал ${assignedMaterial.id} успешно помечен как использованный`);
-        } else {
-          console.error(`❌ Ошибка пометки материала ${assignedMaterial.id} как использованного:`, markUsedResponse.data);
-        }
-      } catch (markError) {
-        console.error(`❌ Критическая ошибка при пометке материала как использованного:`, markError);
-        // Продолжаем работу, но логируем ошибку для отслеживания
-      }
+      // Материал назначен на заказ, но НЕ удаляется сразу
+      // Удаление произойдет только при успешном завершении заказа
+      console.log(`📋 Материал ${assignedMaterial.id} назначен на заказ ${orderNumber}, будет удален при завершении`);
     }
 
     // Формируем кнопки управления заказом
@@ -1192,6 +1245,11 @@ bot.on('text', async (ctx) => {
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "История заказов"');
       break;
 
+    case '✅ Выполненные услуги':
+      await showCompletedOrders(ctx);
+      await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Выполненные услуги"');
+      break;
+
     default:
       ctx.reply(
         '❓ Неизвестная команда.\n\n' +
@@ -1219,7 +1277,52 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
     console.log(`\n📝 === ВВОД НОМЕРА ЗАКАЗА ===`);
     console.log(`📋 Order Number: ${orderNumber}`);
     console.log(`🛠️ Service ID: ${waitingData.serviceId}`);
-    console.log(`🔑 Reserved Material: ${waitingData.reservedMaterial?.id || 'Нет'}`);
+    console.log(`� Executer ID: ${session.executerId}`);
+    console.log(`�🔑 Reserved Material: ${waitingData.reservedMaterial?.id || 'Нет'}`);
+
+    // 🚨 АКТИВИРУЕМ УСЛУГУ (включает проверку лимитов)
+    try {
+      console.log(`🔍 Активируем услугу для исполнителя...`);
+      const activationResponse = await fetchAsAxios('POST', `/api/executers-bot/active-services/activate-service`, {
+        telegram_id: ctx.from.id.toString(),
+        service_id: waitingData.serviceId,
+        order_number: orderNumber
+      });
+
+      if (!activationResponse || !activationResponse.data) {
+        console.log(`❌ API активации услуг недоступно или вернуло пустой ответ`);
+
+        const errorMessage = `🚫 *Система лимитов временно недоступна!*\n\n` +
+          `⏳ Попробуйте создать заказ позже или обратитесь к администратору.`;
+
+        // Очищаем состояние ожидания
+        delete waitingStates.orderNumber[chatId];
+
+        await ctx.reply(errorMessage, { parse_mode: 'Markdown' });
+        await logActivity(session.executerId, 'api_error', `API активации услуг недоступно при создании заказа #${orderNumber}`);
+        return;
+      }
+
+      if (!activationResponse.data.success) {
+        console.log(`❌ Не удалось активировать услугу: ${activationResponse.data.error}`);
+
+        const limitMessage = `🚫 *Лимит заказов превышен!*\n\n` +
+          `📊 ${activationResponse.data.limits.current_active}/${activationResponse.data.limits.max_limit || '∞'} активных услуг\n\n` +
+          `⏳ Для получения новых заказов завершите текущие активные заказы или обратитесь к администратору для увеличения лимита.`;
+
+        // Очищаем состояние ожидания
+        delete waitingStates.orderNumber[chatId];
+
+        await ctx.reply(limitMessage, { parse_mode: 'Markdown' });
+        await logActivity(session.executerId, 'limit_exceeded', `Превышен лимит при попытке создать заказ #${orderNumber}. ${activationResponse.data.error}`);
+        return;
+      }
+
+      console.log(`✅ Услуга успешно активирована: ${activationResponse.data.message}`);
+    } catch (limitError) {
+      console.warn('⚠️ Ошибка проверки лимитов:', limitError.message);
+      // Если проверка лимитов недоступна, продолжаем (для совместимости)
+    }
 
     // Если есть зарезервированный материал, сначала используем его
     let materialSuccessfullyUsed = false;

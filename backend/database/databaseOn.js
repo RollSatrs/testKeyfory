@@ -4,7 +4,13 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
-// Try several possible .env locations: backend/.env, repo root .env, process.cwd()/.env
+// Принудительно очищаем кэш переменных окружения
+delete process.env.DB_NAME;
+delete process.env.DB_USER;
+delete process.env.DB_PASSWORD;
+delete process.env.DB_HOST;
+delete process.env.DB_PORT;
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -20,28 +26,33 @@ const repoEnv = path.join(repoRoot, '.env')
 const cwdEnv = path.join(process.cwd(), '.env')
 
 let selectedEnv = null
-if (fs.existsSync(backendEnv)) {
-    selectedEnv = backendEnv
-} else if (fs.existsSync(repoEnv)) {
-    selectedEnv = repoEnv
-} else if (fs.existsSync(cwdEnv)) {
-    selectedEnv = cwdEnv
+const envPaths = [backendEnv, repoEnv, cwdEnv];
+
+console.log('🔍 [databaseOn.js] Поиск .env файлов:')
+for (const envPath of envPaths) {
+    console.log(`  Проверяю: ${envPath} - ${fs.existsSync(envPath) ? '✅ НАЙДЕН' : '❌ НЕ НАЙДЕН'}`)
+    if (fs.existsSync(envPath) && !selectedEnv) {
+        selectedEnv = envPath;
+    }
 }
 
 if (selectedEnv) {
-    console.log(`📄 [databaseOn.js] Загружаю .env из: ${selectedEnv}`)
-    dotenv.config({ path: selectedEnv })
+    console.log(`📄 [databaseOn.js] Принудительно загружаю .env из: ${selectedEnv}`)
+    // Принудительная перезагрузка с override: true
+    dotenv.config({ path: selectedEnv, override: true })
 } else {
-    console.warn('⚠️ [databaseOn.js] .env файл не найден в ожидаемых путях; переменные окружения могут быть неопределены')
+    console.warn('⚠️ [databaseOn.js] .env файл не найден в ожидаемых путях!')
+    // Попробуем загрузить стандартный .env
+    dotenv.config({ override: true });
 }
 
 // Проверяем загрузку переменных
-console.log('🔍 [databaseOn.js] Проверка переменных окружения:')
-console.log(`  DB_NAME: ${process.env.DB_NAME}`)
-console.log(`  DB_USER: ${process.env.DB_USER}`)
+console.log('🔍 [databaseOn.js] Проверка переменных окружения ПОСЛЕ загрузки:')
+console.log(`  DB_NAME: ${process.env.DB_NAME || 'undefined'}`)
+console.log(`  DB_USER: ${process.env.DB_USER || 'undefined'}`)
 console.log(`  DB_PASSWORD: ${process.env.DB_PASSWORD ? '***скрыт***' : 'НЕ ЗАГРУЖЕН'}`)
-console.log(`  DB_HOST: ${process.env.DB_HOST}`)
-console.log(`  DB_PORT: ${process.env.DB_PORT}`)
+console.log(`  DB_HOST: ${process.env.DB_HOST || 'undefined'}`)
+console.log(`  DB_PORT: ${process.env.DB_PORT || 'undefined'}`)
 
 export const sequelize = new Sequelize(
     process.env.DB_NAME,

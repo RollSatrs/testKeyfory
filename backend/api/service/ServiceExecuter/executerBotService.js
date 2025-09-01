@@ -335,11 +335,16 @@ class ExecuterBotService {
         status: ORDER_STATUS.AWAITING_PAYMENT
       });
 
-      // Обновляем все материалы заказа как использованные
-      await Material.update(
-        { status: MATERIAL_STATUS.USED, used_date: new Date() },
-        { where: { order_id: orderId, status: MATERIAL_STATUS.IN_USE } }
-      );
+      // Удаляем все расходные материалы заказа после использования
+      const materialsToDelete = await Material.findAll({
+        where: { order_id: orderId, status: MATERIAL_STATUS.IN_USE }
+      });
+
+      await Material.destroy({
+        where: { order_id: orderId, status: MATERIAL_STATUS.IN_USE }
+      });
+
+      console.log(`🗑️ Удалено ${materialsToDelete.length} расходных материалов после завершения заказа ${orderId}`);
 
       return order;
     } catch (error) {

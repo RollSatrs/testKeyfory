@@ -8,6 +8,8 @@ import { sercesRoute } from './route/RouteAdmin/adminServicesRoute.js'
 import { materialRoute } from './route/RouteAdmin/adminMaterialRoute.js'
 import { orderRoute } from './route/RouteAdmin/adminOrderRoute.js'
 import { executerRoute as adminExecuterRoute } from './route/RouteAdmin/adminExecuterRoute.js'
+import adminExecuterLimitsRoute from './route/RouteAdmin/adminExecuterLimitsRoute.js'
+import adminActiveServicesRoute from './route/RouteAdmin/adminActiveServicesRoute.js'
 import adminPricingRoute from './route/RouteAdmin/adminPricingRoute.js'
 import adminEarningsRoute from './route/RouteAdmin/adminEarningsRoute.js'
 import adminServiceExecutionsRoute from './route/RouteAdmin/adminServiceExecutionsRoute.js'
@@ -16,6 +18,7 @@ import { executerOrderRoute } from './route/RouteExecuter/executerOrderRoute.js'
 import { executerMaterialRoute } from './route/RouteExecuter/executerMaterialRoute.js'
 import { executerServicesRoute } from './route/RouteExecuter/executerServicesRoute.js'
 import executerBotRoute from './route/RouteExecuter/executerBotRoute.js'
+import executerBotActiveServicesRoute from './route/RouteExecuter/executerBotActiveServicesRoute.js'
 import { authMiddleware, authExecuterMiddleware } from './middleware.js'
 import { sequelize } from '../database/databaseOn.js'
 import { checkInactiveExecuters } from './service/ServiceAdmim/adminExecuterService.js'
@@ -43,6 +46,7 @@ app.use(express.json())
 // Публичные роуты (НЕ требуют токен)
 app.use('/api/admin', adminRoute)
 app.use('/api/executers-bot', executerBotRoute) // новые маршруты для бота исполнителей - ПЕРВЫМИ!
+app.use('/api/executers-bot/active-services', executerBotActiveServicesRoute) // маршруты для системы активных услуг
 app.use('/api/executers', executerRoute) // маршруты исполнителей (регистрация, вход, профиль)
 
 // Защищённые роуты для исполнителей (ТРЕБУЮТ токен исполнителя)
@@ -55,6 +59,8 @@ app.use('/api/admin/services', authMiddleware, sercesRoute)
 app.use('/api/admin/materials', authMiddleware, materialRoute)
 app.use('/api/admin/orders', authMiddleware, orderRoute)
 app.use('/api/admin/executers', authMiddleware, adminExecuterRoute)
+app.use('/api/admin/executer-limits', authMiddleware, adminExecuterLimitsRoute)
+app.use('/api/admin/active-services', authMiddleware, adminActiveServicesRoute)
 app.use('/api/admin/pricing', authMiddleware, adminPricingRoute)
 app.use('/api/admin/earnings', authMiddleware, adminEarningsRoute)
 app.use('/api/admin/service-executions', authMiddleware, adminServiceExecutionsRoute)

@@ -534,10 +534,7 @@ router.post('/use-material', async (req, res) => {
       started_at: new Date()
     });
 
-    // Обновляем статус материала на 'used'
-    await material.update({ status: MATERIAL_STATUS.USED });
-
-    // Создаем запись MaterialReplacement для связи
+    // Создаем запись MaterialReplacement для статистики перед удалением
     await MaterialReplacement.create({
       material_id,
       service_execution_id: serviceExecution.id,
@@ -546,6 +543,10 @@ router.post('/use-material', async (req, res) => {
       status: 'completed',
       replaced_at: new Date()
     });
+
+    // Удаляем материал после использования (вместо обновления статуса)
+    await material.destroy();
+    console.log(`🗑️ Расходный материал ${material.id} удален после использования в заказе ${order_number}`);
 
     // Получаем информацию об услуге
     const service = await Services.findByPk(service_id);
@@ -765,6 +766,19 @@ router.put('/complete-execution/:executionId', async (req, res) => {
 
     console.log(`✅ Заказ ${execution.order_number} завершен`);
 
+    // Завершаем активную услугу в системе лимитов
+    try {
+      const executer = await Executer.findByPk(executerId);
+      if (executer) {
+        const ActiveServicesService = await import('../../service/ServiceAdmim/adminActiveServicesService.js');
+        await ActiveServicesService.completeService(executerId, execution.order_number);
+        console.log(`✅ Активная услуга для заказа ${execution.order_number} завершена в системе лимитов`);
+      }
+    } catch (activeServiceError) {
+      console.warn(`⚠️ Не удалось завершить активную услугу для заказа ${execution.order_number}:`, activeServiceError.message);
+      // Не прерываем выполнение, так как основной заказ уже завершен
+    }
+
     res.json({
       message: 'Заказ успешно завершен',
       order_number: execution.order_number,
@@ -816,6 +830,54 @@ router.get('/used-materials/:serviceId/:executerId', async (req, res) => {
     console.error('❌ Ошибка при получении используемых материалов:', error);
     res.status(500).json({
       message: 'Ошибка при получении используемых материалов',
+      error: error.message
+    });
+  }
+});
+
+// DELETE /api/executers-bot/materials/:materialId - Удалить использованный материал
+router.delete('/materials/:materialId', async (req, res) => {
+  try {
+    const { materialId } = req.params;
+    const { executerId, orderNumber, reason } = req.body;
+
+    console.log(`\n🗑️ === API: УДАЛЕНИЕ МАТЕРИАЛА ===`);
+    console.log(`📋 Material ID: ${materialId}`);
+    console.log(`👤 Executer ID: ${executerId}`);
+    console.log(`📦 Order Number: ${orderNumber}`);
+    console.log(`📝 Reason: ${reason}`);
+
+    // Находим материал
+    const material = await Material.findByPk(materialId);
+    if (!material) {
+      return res.status(404).json({ message: 'Материал не найден' });
+    }
+
+    // Проверяем, что материал назначен на этот заказ
+    if (material.order_number !== orderNumber) {
+      return res.status(400).json({
+        message: 'Материал не назначен на указанный заказ',
+        assigned_order: material.order_number,
+        requested_order: orderNumber
+      });
+    }
+
+    // Удаляем материал
+    await material.destroy();
+
+    console.log(`✅ Материал ${materialId} успешно удален`);
+
+    res.json({
+      success: true,
+      message: 'Материал успешно удален после использования',
+      material_id: materialId,
+      order_number: orderNumber
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка при удалении материала:', error);
+    res.status(500).json({
+      message: 'Ошибка при удалении материала',
       error: error.message
     });
   }
@@ -2000,6 +2062,398 @@ router.get('/replacement-settings/:serviceId', async (req, res) => {
       success: false,
       message: 'Ошибка сервера',
       error: error.message
+    });
+  }
+});
+
+// GET /api/executers-bot/test-limits/:telegramId - Тестовый endpoint для проверки лимитов
+router.get('/test-limits/:telegramId', async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+
+    console.log(`\n🧪 === ТЕСТ API: ПРОВЕРКА ЛИМИТОВ ===`);
+    console.log(`👤 Telegram ID: ${telegramId}`);
+
+    // Находим исполнителя
+    const executer = await Executer.findOne({
+      where: { telegram_id: telegramId }
+    });
+
+    if (!executer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Исполнитель не найден'
+      });
+    }
+
+    // Получаем информацию об активных услугах через новый сервис
+    try {
+      const ActiveServicesService = await import('../../service/ServiceAdmim/adminActiveServicesService.js');
+      const canActivate = await ActiveServicesService.canExecuterActivateService(executer.id);
+      const activeServices = await ActiveServicesService.getExecuterActiveServices(executer.id);
+
+      console.log(`📊 Текущие лимиты: ${canActivate.currentActive}/${canActivate.limit || '∞'}`);
+      console.log(`✅ Может активировать: ${canActivate.allowed}`);
+      console.log(`📋 Активных услуг: ${activeServices.length}`);
+
+      const response = {
+        success: true,
+        executer: {
+          id: executer.id,
+          name: executer.name,
+          telegram_id: executer.telegram_id,
+          status: executer.status
+        },
+        limits: {
+          current_active: canActivate.currentActive,
+          max_limit: canActivate.limit,
+          can_activate: canActivate.allowed,
+          remaining: canActivate.remaining || 0,
+          reason: canActivate.reason
+        },
+        active_services: activeServices.map(service => ({
+          id: service.id,
+          service_id: service.service_id,
+          service_name: service.Service?.name || 'Неизвестная услуга',
+          order_number: service.order_number,
+          activated_at: service.activated_at,
+          status: service.status
+        }))
+      };
+
+      console.log(`📊 Ответ API:`, JSON.stringify(response.limits, null, 2));
+
+      res.json(response);
+
+    } catch (serviceError) {
+      console.error('❌ Ошибка сервиса активных услуг:', serviceError);
+      res.status(500).json({
+        success: false,
+        error: 'Ошибка получения информации об активных услугах',
+        details: serviceError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка тестового API:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка сервера',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/executers-bot/test-activate - Тестовый endpoint для активации услуги
+router.post('/test-activate', async (req, res) => {
+  try {
+    const { telegram_id, service_id, order_number } = req.body;
+
+    console.log(`\n🧪 === ТЕСТ API: АКТИВАЦИЯ УСЛУГИ ===`);
+    console.log(`👤 Telegram ID: ${telegram_id}`);
+    console.log(`🛠️ Service ID: ${service_id}`);
+    console.log(`📋 Order Number: ${order_number}`);
+
+    if (!telegram_id || !service_id || !order_number) {
+      return res.status(400).json({
+        success: false,
+        error: 'Необходимо указать telegram_id, service_id и order_number'
+      });
+    }
+
+    // Находим исполнителя
+    const executer = await Executer.findOne({
+      where: { telegram_id }
+    });
+
+    if (!executer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Исполнитель не найден'
+      });
+    }
+
+    // Пробуем активировать услугу
+    try {
+      const ActiveServicesService = await import('../../service/ServiceAdmim/adminActiveServicesService.js');
+      const result = await ActiveServicesService.activateService(
+        executer.id,
+        parseInt(service_id),
+        order_number.toString()
+      );
+
+      if (!result.success) {
+        console.log(`❌ Активация не удалась: ${result.error}`);
+        return res.status(400).json({
+          success: false,
+          error: result.error,
+          limits: {
+            current_active: result.currentActive,
+            max_limit: result.limit
+          }
+        });
+      }
+
+      console.log(`✅ Услуга активирована: ${result.currentActive}/${result.limit || '∞'}`);
+
+      res.json({
+        success: true,
+        message: `Услуга активирована! Активных услуг: ${result.currentActive}${result.limit ? `/${result.limit}` : '/∞'}`,
+        limits: {
+          current_active: result.currentActive,
+          max_limit: result.limit
+        },
+        active_service: {
+          id: result.activeService.id,
+          service_name: result.activeService.Service?.name,
+          order_number: result.activeService.order_number,
+          activated_at: result.activeService.activated_at
+        }
+      });
+
+    } catch (serviceError) {
+      console.error('❌ Ошибка активации услуги:', serviceError);
+      res.status(500).json({
+        success: false,
+        error: 'Ошибка активации услуги',
+        details: serviceError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка тестового API активации:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка сервера',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/executers-bot/bot-complete-order - Завершить заказ через бот
+router.post('/bot-complete-order', async (req, res) => {
+  try {
+    const { orderNumber, telegramId } = req.body;
+
+    console.log(`\n✅ === API: ЗАВЕРШЕНИЕ ЗАКАЗА ЧЕРЕЗ БОТ ===`);
+    console.log(`📋 Order Number: ${orderNumber}`);
+    console.log(`👤 Telegram ID: ${telegramId}`);
+
+    // Находим исполнителя по telegram_id
+    const executer = await Executer.findOne({
+      where: { telegram_id: telegramId }
+    });
+
+    if (!executer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Исполнитель не найден'
+      });
+    }
+
+    // Находим выполнение заказа
+    const execution = await ServiceExecution.findOne({
+      where: {
+        order_number: orderNumber,
+        executer_id: executer.id
+      },
+      include: [{
+        model: Services,
+        as: 'Service',
+        attributes: ['name', 'price']
+      }]
+    });
+
+    if (!execution) {
+      return res.status(404).json({
+        success: false,
+        message: 'Заказ не найден'
+      });
+    }
+
+    if (execution.status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Заказ уже завершен'
+      });
+    }
+
+    // Вычисляем цену и завершаем заказ
+    let individualPrice = 0;
+    try {
+      const serviceAccess = await ServiceAccess.findOne({
+        where: {
+          executer_id: executer.id,
+          service_id: execution.service_id,
+          status: 'active'
+        }
+      });
+
+      const accessPrice = serviceAccess && Number.isFinite(Number(serviceAccess.price)) ? Number(serviceAccess.price) : undefined;
+      individualPrice = Number.isFinite(accessPrice) ? accessPrice : (Number.isFinite(execution.Service?.price) ? Number(execution.Service.price) : 0);
+    } catch (priceError) {
+      console.warn('⚠️ Ошибка при получении индивидуальной цены, ставлю 0:', priceError.message);
+    }
+
+    // Завершаем заказ
+    await execution.update({
+      status: 'completed',
+      completed_at: new Date(),
+      price: individualPrice
+    });
+
+    // Завершаем активную услугу в системе лимитов
+    try {
+      const ActiveServicesService = await import('../../service/ServiceAdmim/adminActiveServicesService.js');
+      await ActiveServicesService.completeService(executer.id, orderNumber);
+      console.log(`✅ Активная услуга для заказа ${orderNumber} завершена в системе лимитов`);
+    } catch (activeServiceError) {
+      console.warn(`⚠️ Не удалось завершить активную услугу для заказа ${orderNumber}:`, activeServiceError.message);
+    }
+
+    // ТЕПЕРЬ удаляем все материалы, назначенные на этот заказ
+    try {
+      console.log(`🗑️ Удаляем материалы для завершенного заказа ${orderNumber}`);
+      const materialsToDelete = await Material.findAll({
+        where: {
+          order_number: orderNumber,
+          executer_id: executer.id
+        }
+      });
+
+      if (materialsToDelete.length > 0) {
+        for (const material of materialsToDelete) {
+          await material.destroy();
+          console.log(`✅ Удален материал ${material.id}: ${material.contents}`);
+        }
+        console.log(`✅ Удалено ${materialsToDelete.length} материалов для заказа ${orderNumber}`);
+      } else {
+        console.log(`ℹ️ Нет материалов для удаления по заказу ${orderNumber}`);
+      }
+    } catch (materialError) {
+      console.warn(`⚠️ Ошибка при удалении материалов для заказа ${orderNumber}:`, materialError.message);
+      // Не прерываем выполнение - заказ уже завершен
+    }
+
+    console.log(`✅ Заказ ${orderNumber} завершен через бот`);
+
+    res.json({
+      success: true,
+      message: 'Заказ успешно завершен',
+      price: individualPrice,
+      serviceName: execution.Service?.name || 'Услуга'
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка при завершении заказа через бот:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Ошибка при завершении заказа',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/executers-bot/debug-services - Диагностика дублированных услуг
+router.get('/debug-services', async (req, res) => {
+  try {
+    console.log(`\n🔍 === ДИАГНОСТИКА УСЛУГ ===`);
+
+    // Получаем все услуги с подсчетом дублей
+    const services = await Services.findAll({
+      attributes: ['id', 'name', 'category', 'price', 'status', 'executer_id', 'created_at'],
+      include: [
+        {
+          model: ServiceAccess,
+          as: 'ServiceAccesses',
+          include: [
+            {
+              model: Executer,
+              attributes: ['id', 'name', 'telegram_id']
+            }
+          ]
+        }
+      ],
+      order: [['name', 'ASC'], ['created_at', 'ASC']]
+    });
+
+    // Группируем по названию для поиска дублей
+    const servicesByName = {};
+    services.forEach(service => {
+      if (!servicesByName[service.name]) {
+        servicesByName[service.name] = [];
+      }
+      servicesByName[service.name].push(service);
+    });
+
+    // Находим дублированные услуги
+    const duplicates = {};
+    const unique = {};
+
+    Object.keys(servicesByName).forEach(name => {
+      if (servicesByName[name].length > 1) {
+        duplicates[name] = servicesByName[name];
+        console.log(`🚨 ДУБЛЬ: "${name}" - ${servicesByName[name].length} записей`);
+        servicesByName[name].forEach((service, index) => {
+          console.log(`  ${index + 1}. ID: ${service.id}, Executer ID: ${service.executer_id}, Создана: ${service.created_at}`);
+          console.log(`     ServiceAccesses: ${service.ServiceAccesses?.length || 0} записей`);
+          service.ServiceAccesses?.forEach(access => {
+            console.log(`       - Executer: ${access.Executer?.name} (ID: ${access.executer_id})`);
+          });
+        });
+      } else {
+        unique[name] = servicesByName[name][0];
+      }
+    });
+
+    const duplicateCount = Object.keys(duplicates).length;
+    const uniqueCount = Object.keys(unique).length;
+
+    console.log(`📊 Статистика:`);
+    console.log(`   - Уникальных услуг: ${uniqueCount}`);
+    console.log(`   - Дублированных названий: ${duplicateCount}`);
+    console.log(`   - Общее количество записей: ${services.length}`);
+
+    res.json({
+      success: true,
+      statistics: {
+        total_services: services.length,
+        unique_names: uniqueCount,
+        duplicate_names: duplicateCount,
+        duplicate_records: services.length - uniqueCount
+      },
+      duplicates: Object.keys(duplicates).map(name => ({
+        service_name: name,
+        count: duplicates[name].length,
+        services: duplicates[name].map(s => ({
+          id: s.id,
+          executer_id: s.executer_id,
+          created_at: s.created_at,
+          status: s.status,
+          price: s.price,
+          assigned_executers: s.ServiceAccesses?.map(sa => ({
+            executer_id: sa.executer_id,
+            executer_name: sa.Executer?.name
+          })) || []
+        }))
+      })),
+      unique_services: Object.keys(unique).map(name => ({
+        service_name: name,
+        id: unique[name].id,
+        executer_id: unique[name].executer_id,
+        assigned_executers: unique[name].ServiceAccesses?.map(sa => ({
+          executer_id: sa.executer_id,
+          executer_name: sa.Executer?.name
+        })) || []
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка диагностики услуг:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка диагностики услуг',
+      details: error.message
     });
   }
 });

@@ -15,18 +15,14 @@ import {
 import { apiFetch } from "../../../lib/api";
 import { useNavigate } from "react-router-dom";
 
-export function ExecutorsTable({
-  onChanged,
-  setExecutors,
-  executors,
-  refresh,
-}) {
+export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
   const [loading, setLoading] = useState(false);
   const [editForm, setEditForm] = useState(false);
   const [form, setForm] = useState({
     id: null,
     name: "",
     telegram_id: "",
+    active_services_limit: null,
   });
 
   // Получение данных из API
@@ -35,11 +31,16 @@ export function ExecutorsTable({
     try {
       const data = await apiFetch("/api/admin/executers/get");
 
-      // Получаем только информацию об активных заказах для логики удаления
-      const executorsWithOrderInfo = await Promise.all(
+      // Получаем информацию об активных услугах для каждого исполнителя
+      const executorsWithActiveServices = await Promise.all(
         (Array.isArray(data) ? data : []).map(async (executor) => {
           try {
-            // Получаем только количество активных заказов для проверки возможности удаления
+            // Получаем количество активных услуг
+            const activeServicesData = await apiFetch(
+              `/api/admin/active-services/executer/${executor.id}/active/count`
+            );
+
+            // Получаем количество активных заказов для логики удаления
             const ordersData = await apiFetch(
               `/api/admin/executers/orders/${executor.id}`
             );
@@ -53,6 +54,7 @@ export function ExecutorsTable({
             return {
               ...executor,
               activeOrders: activeOrders || 0,
+              activeServicesCount: activeServicesData?.count || 0,
             };
           } catch (error) {
             // Если 401 — перенаправим на логин
@@ -62,19 +64,20 @@ export function ExecutorsTable({
               } catch {}
             }
             console.warn(
-              `Не удалось получить заказы для исполнителя ${executor.id}:`,
+              `Не удалось получить данные для исполнителя ${executor.id}:`,
               error
             );
-          }
 
-          return {
-            ...executor,
-            activeOrders: 0,
-          };
+            return {
+              ...executor,
+              activeOrders: 0,
+              activeServicesCount: 0,
+            };
+          }
         })
       );
 
-      setExecutors(executorsWithOrderInfo);
+      setExecutors(executorsWithActiveServices);
     } catch (e) {
       message.error("Ошибка при загрузке исполнителей");
       console.error("Fetch error:", e);
@@ -98,6 +101,7 @@ export function ExecutorsTable({
       id: executor.id,
       name: executor.name,
       telegram_id: executor.telegram_id,
+      active_services_limit: executor.active_services_limit,
     });
     setEditForm(true);
   }
@@ -248,6 +252,34 @@ export function ExecutorsTable({
       },
     },
     {
+      title: "Ограничения",
+      key: "limits",
+      width: 120,
+      render: (_, record) => {
+        const current = record.activeServicesCount || 0;
+        const limit = record.active_services_limit;
+        const display = limit === null ? `${current}/∞` : `${current}/${limit}`;
+
+        const isNearLimit = limit !== null && current >= limit * 0.8;
+        const isAtLimit = limit !== null && current >= limit;
+
+        return (
+          <span
+            style={{
+              color: isAtLimit
+                ? "#ff4d4f"
+                : isNearLimit
+                ? "#faad14"
+                : "#52c41a",
+              fontWeight: "bold",
+            }}
+          >
+            {display}
+          </span>
+        );
+      },
+    },
+    {
       title: "Действия",
       key: "actions",
       render: (_, record) => (
@@ -338,7 +370,7 @@ export function ExecutorsTable({
             id: null,
             name: "",
             telegram_id: "",
-            rating: 1,
+            active_services_limit: null,
           });
         }}
         onOk={handleEditSubmit}
@@ -358,6 +390,21 @@ export function ExecutorsTable({
           onChange={(e) => handleChange("telegram_id", e.target.value)}
           placeholder="Telegram ID"
           style={{ marginBottom: 16 }}
+        />
+        <Input
+          name="active_services_limit"
+          type="number"
+          min="0"
+          value={form.active_services_limit || ""}
+          onChange={(e) =>
+            handleChange(
+              "active_services_limit",
+              e.target.value ? parseInt(e.target.value) : null
+            )
+          }
+          placeholder="Лимит активных услуг (пусто = без ограничений)"
+          style={{ marginBottom: 16 }}
+          addonAfter="услуг"
         />
         {/* orders input removed */}
         {/* rating removed */}

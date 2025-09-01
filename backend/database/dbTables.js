@@ -121,9 +121,10 @@ export const Executer = sequelize.define('Executer', {
   name: { type: DataTypes.STRING, allowNull: true }, // имя исполнителя
   telegram_id: { type: DataTypes.STRING, unique: true, allowNull: false },
   rating: { type: DataTypes.FLOAT, defaultValue: 0 },
-  status: { type: DataTypes.STRING, defaultValue: 'inactive' },
+  status: { type: DataTypes.STRING, defaultValue: 'active' }, // active, blocked, inactive
   balance: { type: DataTypes.FLOAT, defaultValue: 0 }, // баланс исполнителя
   access_rights: { type: DataTypes.JSON }, // права доступа к услугам
+  active_services_limit: { type: DataTypes.INTEGER, allowNull: true }, // лимит активных услуг (null = без лимита)
   last_activity: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }, // последняя активность
   create_date_executer: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'executers', timestamps: false });
@@ -289,3 +290,84 @@ ServiceExecution.belongsTo(Executer, {foreignKey: 'executer_id', as: 'Executer'}
 // Связи для MaterialReplacement с ServiceExecution
 ServiceExecution.hasMany(MaterialReplacement, {foreignKey: 'service_execution_id', as: 'MaterialReplacements'});
 MaterialReplacement.belongsTo(ServiceExecution, {foreignKey: 'service_execution_id', as: 'ServiceExecution'});
+
+// Лимиты исполнителей
+export const ExecuterLimits = sequelize.define('ExecuterLimits', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  executer_id: { type: DataTypes.INTEGER, references: { model: 'executers', key: 'id' }, allowNull: false },
+  service_id: { type: DataTypes.INTEGER, references: { model: 'services', key: 'id' }, allowNull: true }, // null = общий лимит
+  max_limit: { type: DataTypes.INTEGER, allowNull: true }, // null = без лимита (∞)
+  current_active: { type: DataTypes.INTEGER, defaultValue: 0 }, // количество активных заказов
+  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, { tableName: 'executer_limits', timestamps: false });
+
+// Связи для ExecuterLimits
+Executer.hasMany(ExecuterLimits, {foreignKey: 'executer_id', as: 'Limits'});
+ExecuterLimits.belongsTo(Executer, {foreignKey: 'executer_id', as: 'Executer'});
+
+Services.hasMany(ExecuterLimits, {foreignKey: 'service_id', as: 'ExecuterLimits'});
+ExecuterLimits.belongsTo(Services, {foreignKey: 'service_id', as: 'Service'});
+
+// Запросы на увеличение лимитов
+export const LimitApprovalRequest = sequelize.define('LimitApprovalRequest', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  executer_id: { type: DataTypes.INTEGER, references: { model: 'executers', key: 'id' }, allowNull: false },
+  service_id: { type: DataTypes.INTEGER, references: { model: 'services', key: 'id' }, allowNull: true },
+  current_limit: { type: DataTypes.INTEGER, allowNull: true }, // текущий лимит
+  requested_limit: { type: DataTypes.INTEGER, allowNull: false }, // запрашиваемый лимит
+  reason: { type: DataTypes.TEXT, allowNull: true }, // причина запроса
+  status: { type: DataTypes.STRING, defaultValue: 'pending' }, // pending, approved, rejected
+  admin_id: { type: DataTypes.INTEGER, references: { model: 'admins', key: 'id' }, allowNull: true },
+  admin_response: { type: DataTypes.TEXT, allowNull: true }, // ответ администратора
+  processed_at: { type: DataTypes.DATE, allowNull: true },
+  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, { tableName: 'limit_approval_requests', timestamps: false });
+
+// Связи для LimitApprovalRequest
+Executer.hasMany(LimitApprovalRequest, {foreignKey: 'executer_id', as: 'LimitRequests'});
+LimitApprovalRequest.belongsTo(Executer, {foreignKey: 'executer_id', as: 'Executer'});
+
+Services.hasMany(LimitApprovalRequest, {foreignKey: 'service_id', as: 'LimitRequests'});
+LimitApprovalRequest.belongsTo(Services, {foreignKey: 'service_id', as: 'Service'});
+
+Admin.hasMany(LimitApprovalRequest, {foreignKey: 'admin_id', as: 'ProcessedLimitRequests'});
+LimitApprovalRequest.belongsTo(Admin, {foreignKey: 'admin_id', as: 'ProcessedBy'});
+
+// Активные услуги исполнителей
+export const ExecuterActiveServices = sequelize.define('ExecuterActiveServices', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  executer_id: { type: DataTypes.INTEGER, references: { model: 'executers', key: 'id' }, allowNull: false },
+  service_id: { type: DataTypes.INTEGER, references: { model: 'services', key: 'id' }, allowNull: false },
+  order_number: { type: DataTypes.STRING, allowNull: false },
+  activated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  status: { type: DataTypes.STRING, defaultValue: 'active' }, // active, completed, cancelled
+  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, {
+  tableName: 'executer_active_services',
+  timestamps: false,
+  indexes: [
+    {
+      unique: true,
+      fields: ['executer_id', 'order_number']
+    }
+  ]
+});
+
+// Связи для ExecuterActiveServices
+Executer.hasMany(ExecuterActiveServices, {foreignKey: 'executer_id', as: 'ActiveServices'});
+ExecuterActiveServices.belongsTo(Executer, {foreignKey: 'executer_id', as: 'Executer'});
+
+Services.hasMany(ExecuterActiveServices, {foreignKey: 'service_id', as: 'ActiveExecuters'});
+ExecuterActiveServices.belongsTo(Services, {foreignKey: 'service_id', as: 'Service'});
+
+// Системные настройки
+export const SystemConfig = sequelize.define('SystemConfig', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  config_key: { type: DataTypes.STRING, unique: true, allowNull: false },
+  config_value: { type: DataTypes.TEXT, allowNull: true },
+  description: { type: DataTypes.TEXT, allowNull: true },
+  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, { tableName: 'system_config', timestamps: false });

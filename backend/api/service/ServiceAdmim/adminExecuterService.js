@@ -307,13 +307,33 @@ export async function addExecuter(data) {
             throw new Error('Исполнитель с таким Telegram ID уже существует');
         }
 
-        const newExecuter = await Executer.create({
-            name,
-            telegram_id,
-            rating,
-            status: 'inactive' // новые исполнители неактивны до первого действия
+        // Используем транзакцию для создания исполнителя и его ограничений
+        const { sequelize } = await import('../../../database/databaseOn.js');
+        const { ExecuterLimits } = await import('../../../database/dbTables.js');
+
+        const result = await sequelize.transaction(async (t) => {
+            // Создаем исполнителя
+            const newExecuter = await Executer.create({
+                name,
+                telegram_id,
+                rating,
+                status: 'inactive' // новые исполнители неактивны до первого действия
+            }, { transaction: t });
+
+            // Автоматически создаем общий лимит (без ограничений) для нового исполнителя
+            await ExecuterLimits.create({
+                executer_id: newExecuter.id,
+                service_id: null, // общий лимит
+                max_limit: null, // без ограничений (∞)
+                current_active: 0
+            }, { transaction: t });
+
+            console.log(`✅ Создан исполнитель ${newExecuter.id} с автоматическим общим лимитом`);
+
+            return newExecuter;
         });
-        return newExecuter;
+
+        return result;
     } catch (error) {
         throw new Error(`Error creating executer: ${error.message}`);
     }

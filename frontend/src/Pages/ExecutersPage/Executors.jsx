@@ -1,6 +1,6 @@
 import { ExecutorsHeader } from "./components/ExecutorsHeader";
 import { ExecutorsStats } from "./components/ExecutorsStats";
-import { ExecutorsTable } from "./components/ExecutorsTable";
+import { ExecuterTable } from "./components/ExecuterTable";
 import { ExecutorsSearch } from "./components/ExecutorsSearch";
 import { useState, useMemo } from "react";
 
@@ -67,7 +67,7 @@ export function Executors() {
         materialFilter={materialFilter}
         setMaterialFilter={setMaterialFilter}
       />
-      <ExecutorsTable
+      <ExecuterTable
         onChanged={() => setRefresh((r) => !r)}
         setExecutors={setExecutors}
         executors={filteredExecutors}

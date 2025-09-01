@@ -11,6 +11,11 @@ const menu = [
   { path: "/services", label: "Цифровые услуги", icon: <MdKey size={20} /> },
   { path: "/users", label: "Исполнители", icon: <MdPeople size={20} /> },
   {
+    path: "/pricing",
+    label: "Ценообразование",
+    icon: <FaMoneyBillAlt size={20} />,
+  },
+  {
     path: "/materials",
     label: "Расходные материалы",
     icon: <FaBoxOpen size={20} />,
@@ -19,11 +24,6 @@ const menu = [
     path: "/material-replacement",
     label: "Замена материалов",
     icon: <FaExchangeAlt size={20} />,
-  },
-  {
-    path: "/executer-pricing",
-    label: "Ценообразование",
-    icon: <FaMoneyBillAlt size={20} />,
   },
   { path: "/logs", label: "Логи системы", icon: <FaFileAlt size={20} /> },
 ];

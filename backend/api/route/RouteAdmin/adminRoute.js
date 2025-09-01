@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import { Admin } from '../../../database/dbTables.js'
+import adminExecuterLimitsRoute from './adminExecuterLimitsRoute.js'
 
 export const adminRoute = express.Router()
 
@@ -550,3 +551,6 @@ adminRoute.delete('/material-replacements/:id', authMiddleware, async (req, res)
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
+
+// Подключаем роуты для управления лимитами исполнителей
+adminRoute.use('/executer-limits', adminExecuterLimitsRoute);
