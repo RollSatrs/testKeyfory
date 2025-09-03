@@ -2725,8 +2725,7 @@ export const notifyServiceAssigned = async (telegramId, executerName, services, 
     }
 
     message += `\n🚀 Теперь вы можете выполнять эти услуги через бота!\n\n`;
-    message += `▶️ Используйте команду /start для работы с новыми услугами\n\n`;
-    message += `💼 _Назначено администратором: ${adminName || 'Админ'}_`;
+    message += `▶️ Используйте команду /start для работы с новыми услугами`;
 
     // Отправляем сообщение с повторными попытками
     let attempts = 0;
@@ -2904,6 +2903,28 @@ bot.action('start_work', async (ctx) => {
   }
 });
 
+// Обработчик кнопки "Активные услуги" из уведомлений
+bot.action('active_services', async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    // Проверяем авторизацию
+    const session = userSessions[ctx.chat.id];
+    if (!session?.authenticated) {
+      await ctx.reply('❌ Сначала авторизуйтесь через команду /start');
+      return;
+    }
+
+    // Показываем активные услуги
+    await showActiveServices(ctx);
+
+  } catch (error) {
+    console.error('❌ Ошибка обработки кнопки "Активные услуги":', error);
+    await ctx.answerCbQuery();
+    await ctx.reply('❌ Ошибка при получении активных услуг');
+  }
+});
+
 // Функция уведомления о блокировке исполнителя
 export const notifyExecuterBlocked = async (telegramId, executerName, adminName, reason) => {
   try {
@@ -3003,6 +3024,63 @@ export const notifyExecuterUnblocked = async (telegramId, executerName, adminNam
 
   } catch (error) {
     console.error('❌ Критическая ошибка в функции уведомления о разблокировке исполнителя:', error);
+    return false;
+  }
+};
+
+// Функция уведомления об редактировании материала
+export const notifyMaterialEdited = async (telegramId, executerName, materialInfo, adminName) => {
+  try {
+    console.log(`📝 Отправляем уведомление о редактировании материала исполнителю: ${telegramId}`);
+
+    let message = `📝 *Материал отредактирован*\n\n`;
+    message += `👋 ${executerName}, администратор внес изменения в материал:\n\n`;
+    message += `🏷️ *Услуга:* ${materialInfo.serviceName || 'Не указана'}\n`;
+    message += `📦 *Содержимое:* ${materialInfo.contents || 'Не указано'}\n`;
+    message += `📊 *Статус:* ${materialInfo.status || 'Не указан'}\n`;
+    if (materialInfo.orderNumber) {
+      message += `🔢 *Заказ:* ${materialInfo.orderNumber}\n`;
+    }
+    message += `👤 *Администратор:* ${adminName}\n\n`;
+    message += `⚡ Изменения вступили в силу немедленно.\n`;
+    message += `📋 Проверьте актуальные материалы в разделе "Активные услуги".`;
+
+    // Отправляем сообщение с повторными попытками
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        await bot.telegram.sendMessage(telegramId, message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '📋 Активные услуги', callback_data: 'active_services' },
+              { text: '🏠 Главное меню', callback_data: 'main_menu' }
+            ]]
+          }
+        });
+
+        console.log(`✅ Уведомление об редактировании материала отправлено пользователю ${telegramId} (попытка ${attempts + 1})`);
+        return true;
+
+      } catch (sendError) {
+        attempts++;
+        console.error(`❌ Ошибка отправки уведомления об редактировании материала (попытка ${attempts}/${maxAttempts}):`, sendError.message || sendError);
+
+        if (attempts < maxAttempts) {
+          // Ждем немного перед следующей попыткой
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+        } else {
+          console.error('❌ Все попытки отправки уведомления об редактировании материала исчерпаны');
+        }
+      }
+    }
+
+    return false;
+
+  } catch (error) {
+    console.error('❌ Критическая ошибка в функции уведомления об редактировании материала:', error);
     return false;
   }
 };

@@ -2866,4 +2866,67 @@ router.get('/executer/telegram/:telegramId', async (req, res) => {
   }
 });
 
+// POST /api/executers-bot/notify-material-edited - Уведомить исполнителя о редактировании материала
+router.post('/notify-material-edited', async (req, res) => {
+  try {
+    const { telegram_id, executer_name, material_info, admin_name } = req.body;
+
+    if (!telegram_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'telegram_id обязателен'
+      });
+    }
+
+    if (!material_info) {
+      return res.status(400).json({
+        success: false,
+        error: 'material_info обязателен'
+      });
+    }
+
+    console.log(`📝 Запрос на уведомление о редактировании материала исполнителю: ${telegram_id}, материал: ${material_info.contents}`);
+
+    try {
+      // Импортируем функцию уведомления из бота
+      const { notifyMaterialEdited } = await import('../../../../bot/executerBot.js');
+
+      // Отправляем уведомление
+      const success = await notifyMaterialEdited(
+        telegram_id,
+        executer_name || 'Исполнитель',
+        material_info,
+        admin_name || 'Администратор'
+      );
+
+      if (success) {
+        res.json({
+          success: true,
+          message: 'Уведомление о редактировании материала успешно отправлено'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: 'Не удалось отправить уведомление о редактировании материала'
+        });
+      }
+    } catch (importError) {
+      console.error('❌ Ошибка импорта функции уведомления о редактировании материала:', importError);
+      res.status(500).json({
+        success: false,
+        error: 'Сервис уведомлений недоступен',
+        details: importError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка отправки уведомления о редактировании материала:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутренняя ошибка сервера',
+      details: error.message
+    });
+  }
+});
+
 export default router;

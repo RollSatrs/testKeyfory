@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import csv from 'csv-parser';
 import * as XLSX from 'xlsx';
-import { Sequelize } from 'sequelize';
+import { Sequelize, Op } from 'sequelize';
 import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
 
 export async function getAllMaterials() {
@@ -183,10 +183,22 @@ export async function addMaterial(data) {
 
 export async function updateMaterial(id, data) {
     try {
-        const material = await Material.findByPk(id);
+        const material = await Material.findByPk(id, {
+            include: [
+                {
+                    model: Services,
+                    as: 'Service'
+                }
+            ]
+        });
+
         if (!material) {
             throw new Error('Material not found');
         }
+
+        // Сохраняем старые данные для сравнения
+        const oldContents = material.contents;
+        const oldStatus = material.status;
 
         // Обрабатываем service_ids (массив) и преобразуем в service_id (одиночное значение)
         if (data.service_ids && Array.isArray(data.service_ids)) {
@@ -210,6 +222,17 @@ export async function updateMaterial(id, data) {
         }
 
         const updatedMaterial = await material.update(data);
+
+        // Проверяем, изменились ли значимые поля материала
+        const hasSignificantChanges =
+            (data.contents && data.contents !== oldContents) ||
+            (data.status && data.status !== oldStatus);
+
+        if (hasSignificantChanges) {
+            // Отправляем уведомления исполнителям, связанным с этим материалом
+            await sendMaterialEditNotifications(updatedMaterial);
+        }
+
         return updatedMaterial;
     } catch (error) {
         throw new Error(`Error updating material: ${error.message}`);
@@ -556,5 +579,125 @@ export async function getMaterialStatsByService(serviceId) {
         };
     } catch (error) {
         throw new Error(`Error fetching material stats by service: ${error.message}`);
+    }
+}
+
+// Функция отправки уведомлений исполнителям о редактировании материала
+async function sendMaterialEditNotifications(material) {
+    try {
+        const { ServiceExecution, Executer, Services } = await import('../../../database/dbTables.js');
+
+        // Получаем исполнителей, которые связаны с этим материалом
+        let executersToNotify = new Set();
+
+        // 1. Исполнитель, непосредственно назначенный на материал
+        if (material.executer_id) {
+            executersToNotify.add(material.executer_id);
+        }
+
+        // 2. Исполнители, у которых есть активные заказы с этим материалом
+        if (material.order_number) {
+            const executions = await ServiceExecution.findAll({
+                where: {
+                    order_number: material.order_number,
+                    status: {
+                        [Op.in]: ['pending', 'in_progress']
+                    }
+                },
+                include: [
+                    {
+                        model: Executer,
+                        as: 'Executer'
+                    }
+                ]
+            });
+
+            executions.forEach(execution => {
+                if (execution.Executer) {
+                    executersToNotify.add(execution.Executer.id);
+                }
+            });
+        }
+
+        // 3. Исполнители, назначенные на услугу этого материала
+        if (material.service_id) {
+            const { ServiceAccess } = await import('../../../database/dbTables.js');
+            const serviceAccesses = await ServiceAccess.findAll({
+                where: {
+                    service_id: material.service_id
+                },
+                include: [
+                    {
+                        model: Executer,
+                        as: 'Executer'
+                    }
+                ]
+            });
+
+            serviceAccesses.forEach(access => {
+                if (access.Executer) {
+                    executersToNotify.add(access.Executer.id);
+                }
+            });
+        }
+
+        // Получаем информацию об услуге для уведомления
+        let serviceName = 'Неизвестная услуга';
+        if (material.service_id) {
+            const service = await Services.findByPk(material.service_id);
+            if (service) {
+                serviceName = service.name;
+            }
+        }
+
+        // Отправляем уведомления каждому исполнителю
+        const notificationPromises = Array.from(executersToNotify).map(async (executerId) => {
+            try {
+                const executer = await Executer.findByPk(executerId);
+                if (!executer || !executer.telegram_id) {
+                    console.warn(`Исполнитель ${executerId} не найден или у него нет telegram_id`);
+                    return;
+                }
+
+                // Подготавливаем информацию о материале
+                const materialInfo = {
+                    serviceName: serviceName,
+                    contents: material.contents || 'Не указано',
+                    status: material.status || 'Не указан',
+                    orderNumber: material.order_number || null
+                };
+
+                // Отправляем POST запрос к боту
+                const response = await fetch('http://localhost:3000/api/executers-bot/notify-material-edited', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        telegram_id: executer.telegram_id,
+                        executer_name: executer.name || `Исполнитель ${executer.id}`,
+                        material_info: materialInfo,
+                        admin_name: 'Администратор'
+                    })
+                });
+
+                if (response.ok) {
+                    console.log(`✅ Уведомление о редактировании материала отправлено исполнителю ${executer.name} (${executer.telegram_id})`);
+                } else {
+                    console.warn(`⚠️ Не удалось отправить уведомление исполнителю ${executer.name}: ${response.status}`);
+                }
+
+            } catch (error) {
+                console.error(`❌ Ошибка отправки уведомления исполнителю ${executerId}:`, error.message);
+            }
+        });
+
+        // Ждем завершения всех уведомлений (не блокируем основной процесс в случае ошибки)
+        await Promise.allSettled(notificationPromises);
+
+        console.log(`📝 Отправлены уведомления о редактировании материала ${executersToNotify.size} исполнителям`);
+
+    } catch (error) {
+        console.error('❌ Ошибка отправки уведомлений о редактировании материала:', error.message);
     }
 }

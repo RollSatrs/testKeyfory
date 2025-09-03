@@ -466,6 +466,26 @@ export async function assignExecutersToService(serviceId, executerIds) {
 
                     if (executer?.telegram_id) {
                         try {
+                            // Получаем индивидуальную цену для этого исполнителя
+                            const serviceAccess = await ServiceAccess.findOne({
+                                where: {
+                                    service_id: service.id,
+                                    executer_id: executerId
+                                }
+                            });
+
+                            // Используем индивидуальную цену, если она установлена, иначе стандартную
+                            const individualPrice = (serviceAccess && serviceAccess.price !== null && serviceAccess.price !== undefined)
+                                ? serviceAccess.price
+                                : service.price;
+
+                            const serviceInfoForExecuter = {
+                                id: service.id,
+                                name: service.name,
+                                category: service.category,
+                                price: individualPrice
+                            };
+
                             const notificationResponse = await fetch(`${API_BASE_URL}/api/executers-bot/notify-service-assigned`, {
                                 method: 'POST',
                                 headers: {
@@ -474,13 +494,13 @@ export async function assignExecutersToService(serviceId, executerIds) {
                                 body: JSON.stringify({
                                     telegram_id: executer.telegram_id,
                                     executer_name: executer.name || 'Исполнитель',
-                                    services: [serviceInfo],
+                                    services: [serviceInfoForExecuter],
                                     admin_name: 'Администратор'
                                 })
                             });
 
                             if (notificationResponse.ok) {
-                                console.log(`✅ Уведомление о назначении услуги "${service.name}" отправлено исполнителю ${executer.name} (ID: ${executerId})`);
+                                console.log(`✅ Уведомление о назначении услуги "${service.name}" отправлено исполнителю ${executer.name} (ID: ${executerId}), цена: ${individualPrice}₽`);
                             } else {
                                 console.warn(`⚠️ Не удалось отправить уведомление исполнителю ${executerId}: ${notificationResponse.status}`);
                             }
