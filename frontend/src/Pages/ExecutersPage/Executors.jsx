@@ -54,7 +54,7 @@ export function Executors() {
   // Например, в ExecutorsSearch добавить кнопку "Все рейтинги" или allowClear для Rate
 
   return (
-    <>
+    <div className="p-6 bg-gray-50 min-h-screen">
       <ExecutorsHeader onAdd={() => setRefresh((r) => !r)} />
       <ExecutorsStats refresh={refresh} />
       <ExecutorsSearch
@@ -67,12 +67,14 @@ export function Executors() {
         materialFilter={materialFilter}
         setMaterialFilter={setMaterialFilter}
       />
-      <ExecuterTable
-        onChanged={() => setRefresh((r) => !r)}
-        setExecutors={setExecutors}
-        executors={filteredExecutors}
-        refresh={refresh}
-      />
-    </>
+      <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+        <ExecuterTable
+          onChanged={() => setRefresh((r) => !r)}
+          setExecutors={setExecutors}
+          executors={filteredExecutors}
+          refresh={refresh}
+        />
+      </div>
+    </div>
   );
 }

@@ -68,8 +68,15 @@ export async function createLog(logData) {
 
 export async function getAllExecuters() {
     try {
+        console.log(`👥 Запрос всех исполнителей из базы данных...`);
+
         const executers = await Executer.findAll({
             order: [['create_date_executer', 'DESC']] // исправлено поле
+        });
+
+        console.log(`📊 Найдено исполнителей в БД: ${executers.length}`);
+        executers.forEach(exec => {
+            console.log(`  - Исполнитель ${exec.id}: статус=${exec.status}, имя=${exec.name}`);
         });
 
         const result = [];
@@ -142,8 +149,10 @@ export async function getAllExecuters() {
             });
         }
 
+        console.log(`✅ Возвращаем ${result.length} исполнителей с полной информацией`);
         return result;
     } catch (error) {
+        console.error(`❌ Ошибка получения всех исполнителей:`, error);
         throw new Error(`Error fetching executers: ${error.message}`);
     }
 }
@@ -183,6 +192,24 @@ export async function getExecuterRights(executerId) {
 // Обновить права исполнителя
 export async function updateExecuterRights(executerId, rights) {
     try {
+        // Получаем исполнителя для уведомлений
+        const executer = await Executer.findByPk(executerId, {
+            attributes: ['id', 'name', 'telegram_id']
+        });
+
+        if (!executer) {
+            throw new Error('Исполнитель не найден');
+        }
+
+        // Получаем текущие права для сравнения
+        const oldRights = await ServiceAccess.findAll({
+            where: { executer_id: executerId },
+            include: [{
+                model: Services,
+                attributes: ['id', 'name', 'category', 'price']
+            }]
+        });
+
         // Удаляем существующие права
         await ServiceAccess.destroy({
             where: { executer_id: executerId }
@@ -198,6 +225,59 @@ export async function updateExecuterRights(executerId, rights) {
         }));
 
         await ServiceAccess.bulkCreate(newRights);
+
+        // Определяем новые назначенные услуги (has_access = true)
+        const newAssignedServices = rights.filter(right => right.has_access);
+        const oldAssignedIds = new Set(oldRights.filter(r => r.has_access).map(r => r.service_id));
+        const actuallyNewServices = newAssignedServices.filter(right => !oldAssignedIds.has(right.service_id));
+
+        // Отправляем уведомление только если есть новые назначенные услуги
+        if (actuallyNewServices.length > 0 && executer.telegram_id) {
+            try {
+                const fetch = (await import('node-fetch')).default;
+                const API_BASE_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+
+                // Получаем полную информацию о новых услугах
+                const newServicesInfo = [];
+                for (const right of actuallyNewServices) {
+                    const service = await Services.findByPk(right.service_id, {
+                        attributes: ['id', 'name', 'category', 'price']
+                    });
+                    if (service) {
+                        newServicesInfo.push({
+                            id: service.id,
+                            name: service.name,
+                            category: service.category,
+                            price: service.price
+                        });
+                    }
+                }
+
+                if (newServicesInfo.length > 0) {
+                    const notificationResponse = await fetch(`${API_BASE_URL}/api/executers-bot/notify-service-assigned`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            telegram_id: executer.telegram_id,
+                            executer_name: executer.name || 'Исполнитель',
+                            services: newServicesInfo,
+                            admin_name: 'Администратор'
+                        })
+                    });
+
+                    if (notificationResponse.ok) {
+                        console.log(`📢 Уведомление об обновлении прав отправлено исполнителю ${executer.name} (ID: ${executerId}), новых услуг: ${newServicesInfo.length}`);
+                    } else {
+                        console.warn(`⚠️ Не удалось отправить уведомление об обновлении прав исполнителю ${executerId}: ${notificationResponse.status}`);
+                    }
+                }
+            } catch (notifyError) {
+                console.error('❌ Ошибка отправки уведомления об обновлении прав:', notifyError.message);
+                // Не прерываем процесс обновления прав, если уведомление не отправилось
+            }
+        }
 
         return { success: true, message: 'Права обновлены' };
     } catch (error) {
@@ -278,8 +358,14 @@ export async function getExecuterOrders(executerId) {
 
 export async function getExecuterByTelegramId(telegramId) {
     try {
+        // Преобразуем telegramId в число, чтобы избежать ошибки типов
+        const numericTelegramId = parseInt(telegramId);
+        if (isNaN(numericTelegramId)) {
+            throw new Error(`Invalid telegram ID: ${telegramId}`);
+        }
+
         const executer = await Executer.findOne({
-            where: { telegram_id: telegramId }
+            where: { telegram_id: numericTelegramId }
         });
         return executer;
     } catch (error) {
@@ -333,6 +419,33 @@ export async function addExecuter(data) {
             return newExecuter;
         });
 
+        // После успешного создания отправляем уведомление в бот
+        try {
+            const fetch = (await import('node-fetch')).default;
+            const API_BASE_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+
+            const notificationResponse = await fetch(`${API_BASE_URL}/api/executers-bot/notify-executer-added`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    telegram_id: result.telegram_id,
+                    executer_name: result.name || 'Исполнитель',
+                    admin_name: 'Администратор'
+                })
+            });
+
+            if (notificationResponse.ok) {
+                console.log(`📢 Уведомление о добавлении исполнителя ${result.id} отправлено в бот`);
+            } else {
+                console.warn(`⚠️ Не удалось отправить уведомление исполнителю ${result.id}: ${notificationResponse.status}`);
+            }
+        } catch (notifyError) {
+            console.error('❌ Ошибка отправки уведомления в бот:', notifyError.message);
+            // Не прерываем процесс создания исполнителя, если уведомление не отправилось
+        }
+
         return result;
     } catch (error) {
         throw new Error(`Error creating executer: ${error.message}`);
@@ -341,22 +454,96 @@ export async function addExecuter(data) {
 
 export async function updateExecuter(id, data) {
     try {
+        console.log(`🔄 Начинаем обновление исполнителя ${id} с данными:`, data);
+
         const executer = await Executer.findByPk(id);
         if (!executer) {
             throw new Error('Executer not found');
         }
 
-        // Исключаем статус из данных для обновления (статус управляется автоматически)
-        const { status, ...allowedData } = data;
+        console.log(`📋 Исполнитель ${id} найден, текущий статус: ${executer.status}`);
 
-        const updatedExecuter = await executer.update(allowedData);
+        // Запоминаем старый статус для сравнения
+        const oldStatus = executer.status;
+        const newStatus = data.status;
+
+        // Обновляем исполнителя (теперь включаем статус)
+        const updatedExecuter = await executer.update(data);
+        console.log(`✅ Исполнитель ${id} обновлен, новый статус: ${updatedExecuter.status}`);
+
+        // Проверяем, что изменения действительно сохранились
+        const verifyExecuter = await Executer.findByPk(id);
+        console.log(`🔍 Проверка сохранения: исполнитель ${id} в БД имеет статус: ${verifyExecuter.status}`);
+
+        // Если статус изменился на "blocked", отправляем уведомление
+        if (oldStatus !== 'blocked' && newStatus === 'blocked') {
+            console.log(`🚫 Исполнитель ${id} заблокирован, отправляем уведомление`);
+
+            try {
+                const fetch = (await import('node-fetch')).default;
+                const API_BASE_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+
+                const notificationResponse = await fetch(`${API_BASE_URL}/api/executers-bot/notify-executer-blocked`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        telegram_id: updatedExecuter.telegram_id,
+                        executer_name: updatedExecuter.name || 'Исполнитель',
+                        admin_name: 'Администратор',
+                        reason: data.block_reason || null
+                    })
+                });
+
+                if (notificationResponse.ok) {
+                    console.log(`📢 Уведомление о блокировке исполнителя ${id} отправлено в бот`);
+                } else {
+                    console.warn(`⚠️ Не удалось отправить уведомление о блокировке исполнителю ${id}: ${notificationResponse.status}`);
+                }
+            } catch (notifyError) {
+                console.error('❌ Ошибка отправки уведомления о блокировке в бот:', notifyError.message);
+                // Не прерываем процесс обновления исполнителя, если уведомление не отправилось
+            }
+        }
+
+        // Если статус изменился с "blocked" на "active" или "on_moderation", отправляем уведомление о разблокировке
+        if (oldStatus === 'blocked' && (newStatus === 'active' || newStatus === 'on_moderation')) {
+            console.log(`🟢 Исполнитель ${id} разблокирован, отправляем уведомление`);
+
+            try {
+                const fetch = (await import('node-fetch')).default;
+                const API_BASE_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+
+                const notificationResponse = await fetch(`${API_BASE_URL}/api/executers-bot/notify-executer-unblocked`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        telegram_id: updatedExecuter.telegram_id,
+                        executer_name: updatedExecuter.name || 'Исполнитель',
+                        admin_name: 'Администратор'
+                    })
+                });
+
+                if (notificationResponse.ok) {
+                    console.log(`📢 Уведомление о разблокировке исполнителя ${id} отправлено в бот`);
+                } else {
+                    console.warn(`⚠️ Не удалось отправить уведомление о разблокировке исполнителю ${id}: ${notificationResponse.status}`);
+                }
+            } catch (notifyError) {
+                console.error('❌ Ошибка отправки уведомления о разблокировке в бот:', notifyError.message);
+                // Не прерываем процесс обновления исполнителя, если уведомление не отправилось
+            }
+        }
+
         return updatedExecuter;
     } catch (error) {
+        console.error(`❌ Ошибка обновления исполнителя ${id}:`, error);
         throw new Error(`Error updating executer: ${error.message}`);
     }
-}
-
-export async function deleteExecuter(id) {
+}export async function deleteExecuter(id) {
     try {
         // Use a transaction for cleanup
         const t = await sequelize.transaction();

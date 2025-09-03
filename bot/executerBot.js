@@ -147,6 +147,27 @@ const calculateTotalEarnings = async (executerId) => {
   }
 };
 
+// Проверка, заблокирован ли исполнитель
+const isExecuterBlocked = async (telegramId) => {
+  try {
+    console.log(`🔍 Проверяем блокировку для telegramId: ${telegramId}`);
+    const response = await fetchAsAxios('GET', `/api/executers-bot/executer/telegram/${telegramId}`);
+    const executerData = response.data;
+
+    if (!executerData) {
+      console.log(`⚠️ Исполнитель с telegramId ${telegramId} не найден`);
+      return false; // Если исполнитель не найден, не блокируем доступ
+    }
+
+    const isBlocked = executerData.status === 'blocked';
+    console.log(`🔒 Статус исполнителя ${telegramId}: ${executerData.status}, заблокирован: ${isBlocked}`);
+    return isBlocked;
+  } catch (error) {
+    console.error(`❌ Ошибка проверки блокировки для telegramId ${telegramId}:`, error.message);
+    return false; // В случае ошибки не блокируем доступ
+  }
+};
+
 // Helper: определяем — отмечена ли услуга как "Выполнен" именно для этого исполнителя.
 // Мы повторяем логику из `ServicesTable.jsx` чтобы бот фильтровал услуги так же, как админская таблица.
 const isServiceCompletedForExecuter = (s, executerId = null, executerName = null) => {
@@ -303,6 +324,26 @@ const logNavigation = (telegramId, from, to) =>
 const logButtonClick = (telegramId, buttonText, context = '') =>
   logBotAction(telegramId, 'bot_button_click', `Нажата кнопка: "${buttonText}"${context ? ` в ${context}` : ''}`, { buttonText, context });
 
+// ==================== ПРОВЕРКА БЛОКИРОВКИ ====================
+
+// Функция проверки блокировки исполнителя
+const checkExecuterBlocked = async (telegramId) => {
+  try {
+    const response = await fetchAsAxios('POST', '/api/executers/auth', {
+      telegram_id: telegramId
+    });
+
+    if (response.data && response.data.id) {
+      return response.data.status === 'blocked';
+    }
+
+    return false; // Если исполнитель не найден, считаем что не заблокирован (чтобы показать обычное сообщение об отсутствии доступа)
+  } catch (error) {
+    console.error('❌ Ошибка проверки блокировки:', error);
+    return false;
+  }
+};
+
 // ==================== КОМАНДЫ БОТА ====================
 
 // Команда /start
@@ -328,6 +369,24 @@ bot.start(async (ctx) => {
 
     if (response.data && response.data.id) {
       const executerData = response.data;
+
+      // Проверяем статус исполнителя
+      if (executerData.status === 'blocked') {
+        await ctx.reply(
+          `🚫 *Аккаунт заблокирован*\n\n` +
+          `Ваш аккаунт был заблокирован администратором.\n\n` +
+          `📞 Для разблокировки обратитесь к администратору.`,
+          { parse_mode: 'Markdown' }
+        );
+
+        await logBotAction(telegramId, 'access_denied_blocked', `Заблокированный исполнитель ${executerData.name} попытался запустить бота`, {
+          executerId: executerData.id,
+          executerName: executerData.name,
+          executerStatus: executerData.status
+        });
+
+        return;
+      }
 
       // Сохраняем сессию
       userSessions[ctx.chat.id] = {
@@ -370,9 +429,10 @@ bot.start(async (ctx) => {
       await logActivity(executerData.id, 'login', 'Вход в систему');
     } else {
       await ctx.reply(
-        `❌ *Ошибка авторизации*\n\n` +
-        `Исполнитель с ID ${telegramId} не найден в системе.\n\n` +
-        `📞 Обратитесь к администратору для регистрации.`,
+        `🚫 *Доступ запрещен*\n\n` +
+        `У вас нет доступа к этому боту.\n\n` +
+        `📞 Обратитесь к администратору для получения доступа.\n` +
+        `После добавления вас в систему вы получите уведомление.`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -422,6 +482,16 @@ const showMyServices = async (ctx) => {
       return ctx.reply('❌ Необходима авторизация. Нажмите /start');
     }
 
+    // Проверка блокировки исполнителя
+    if (await isExecuterBlocked(session.telegramId)) {
+      return ctx.reply(
+        '🚫 *Аккаунт заблокирован*\n\n' +
+        'Ваш аккаунт заблокирован администратором.\n' +
+        'Обратитесь к администратору для разблокировки.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+
     console.log(`\n🛠️ === МОИ УСЛУГИ ===`);
     console.log(`👤 Executer ID: ${session.executerId}`);
 
@@ -436,9 +506,10 @@ const showMyServices = async (ctx) => {
       for (const o of (Array.isArray(activeOrders) ? activeOrders : [])) {
         const sid = o.service_id ?? o.Service?.id ?? o.serviceId ?? null;
         if (sid != null) {
-          // Проверяем, что заказ действительно активен (не завершен и не отменен)
+          // Проверяем, что заказ действительно активен (НЕ завершен и НЕ отменен)
           const status = (o.status || '').toString().toLowerCase();
-          if (!['completed', 'cancelled', 'done', 'выполнен'].includes(status)) {
+          // Исключаем завершенные, отмененные и неудачные заказы
+          if (!['completed', 'cancelled', 'done', 'выполнен', 'failed', 'отменён', 'отменен', 'ошибка'].includes(status)) {
             activeServiceIds.add(String(sid));
           }
         }
@@ -525,6 +596,16 @@ const showActiveServices = async (ctx) => {
     const session = userSessions[ctx.chat.id];
     if (!session?.authenticated) {
       return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    }
+
+    // Проверка блокировки исполнителя
+    if (await isExecuterBlocked(session.telegramId)) {
+      return ctx.reply(
+        '🚫 *Аккаунт заблокирован*\n\n' +
+        'Ваш аккаунт заблокирован администратором.\n' +
+        'Обратитесь к администратору для разблокировки.',
+        { parse_mode: 'Markdown' }
+      );
     }
 
     console.log(`\n📋 === АКТИВНЫЕ УСЛУГИ ===`);
@@ -667,6 +748,16 @@ const showStatistics = async (ctx) => {
       return ctx.reply('❌ Необходима авторизация. Нажмите /start');
     }
 
+    // Проверка блокировки исполнителя
+    if (await isExecuterBlocked(session.telegramId)) {
+      return ctx.reply(
+        '🚫 *Аккаунт заблокирован*\n\n' +
+        'Ваш аккаунт заблокирован администратором.\n' +
+        'Обратитесь к администратору для разблокировки.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+
     console.log(`\n📊 === СТАТИСТИКА ===`);
     console.log(`👤 Executer ID: ${session.executerId}`);
 
@@ -746,6 +837,16 @@ const showCompletedServices = async (ctx) => {
       return ctx.reply('❌ Необходима авторизация. Нажмите /start');
     }
 
+    // Проверка блокировки исполнителя
+    if (await isExecuterBlocked(session.telegramId)) {
+      return ctx.reply(
+        '🚫 *Аккаунт заблокирован*\n\n' +
+        'Ваш аккаунт заблокирован администратором.\n' +
+        'Обратитесь к администратору для разблокировки.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+
     const response = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
     const historyOrders = response.data || [];
 
@@ -806,6 +907,16 @@ const showCompletedOrders = async (ctx) => {
     const session = userSessions[ctx.chat.id];
     if (!session?.authenticated) {
       return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    }
+
+    // Проверка блокировки исполнителя
+    if (await isExecuterBlocked(session.telegramId)) {
+      return ctx.reply(
+        '🚫 *Аккаунт заблокирован*\n\n' +
+        'Ваш аккаунт заблокирован администратором.\n' +
+        'Обратитесь к администратору для разблокировки.',
+        { parse_mode: 'Markdown' }
+      );
     }
 
     const response = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${session.executerId}`);
@@ -888,6 +999,16 @@ const manageOrder = async (ctx, orderNumber) => {
     const session = userSessions[ctx.chat.id];
     if (!session?.authenticated) {
       return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    }
+
+    // Проверка блокировки исполнителя
+    if (await isExecuterBlocked(session.telegramId)) {
+      return ctx.reply(
+        '🚫 *Аккаунт заблокирован*\n\n' +
+        'Ваш аккаунт заблокирован администратором.\n' +
+        'Обратитесь к администратору для разблокировки.',
+        { parse_mode: 'Markdown' }
+      );
     }
 
     console.log(`\n🎯 === УПРАВЛЕНИЕ ЗАКАЗОМ ===`);
@@ -1137,7 +1258,26 @@ bot.on('text', async (ctx) => {
   // Проверка авторизации
   const session = userSessions[chatId];
   if (!session?.authenticated) {
-    return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    return ctx.reply('❌ Необходима авторизации. Нажмите /start');
+  }
+
+  // Проверка блокировки
+  const isBlocked = await checkExecuterBlocked(telegramId);
+  if (isBlocked) {
+    await ctx.reply(
+      `🚫 *Аккаунт заблокирован*\n\n` +
+      `Ваш аккаунт был заблокирован администратором.\n\n` +
+      `📞 Для разблокировки обратитесь к администратору.`,
+      { parse_mode: 'Markdown' }
+    );
+
+    await logBotAction(telegramId, 'access_denied_blocked', `Заблокированный исполнитель попытался выполнить команду: ${text}`, {
+      messageText: text,
+      chatId: chatId,
+      executerId: session.executerId
+    });
+
+    return;
   }
 
   // Логируем текстовое сообщение
@@ -1526,6 +1666,16 @@ bot.action(/^select_service_(\d+)$/, async (ctx) => {
 
     if (!session?.authenticated) {
       return ctx.reply('❌ Необходима авторизация. Нажмите /start');
+    }
+
+    // Проверка блокировки исполнителя
+    if (await isExecuterBlocked(session.telegramId)) {
+      return ctx.reply(
+        '🚫 *Аккаунт заблокирован*\n\n' +
+        'Ваш аккаунт заблокирован администратором.\n' +
+        'Обратитесь к администратору для разблокировки.',
+        { parse_mode: 'Markdown' }
+      );
     }
 
     // Логируем выбор услуги
@@ -2494,5 +2644,367 @@ export async function notifyMaterialReplacement({ telegramId, orderNumber, servi
     return false;
   }
 }
+
+// ==================== УВЕДОМЛЕНИЯ ====================
+
+// Функция уведомления о добавлении нового исполнителя
+export const notifyExecuterAdded = async (telegramId, executerName, adminName) => {
+  try {
+    console.log(`📢 Отправляем уведомление о добавлении исполнителя: ${telegramId}`);
+
+    const message = `🎉 *Добро пожаловать в команду!*\n\n` +
+      `✅ Вы были добавлены в систему как исполнитель\n` +
+      `👤 Имя: ${executerName}\n` +
+      `🆔 Telegram ID: ${telegramId}\n\n` +
+      `🚀 Теперь вы можете использовать этого бота для работы с заказами!\n\n` +
+      `▶️ Нажмите /start чтобы начать работу\n\n` +
+      `💼 _Добавлено администратором: ${adminName || 'Админ'}_`;
+
+    // Отправляем сообщение с повторными попытками
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        await bot.telegram.sendMessage(telegramId, message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🚀 Начать работу', callback_data: 'start_work' }
+            ]]
+          }
+        });
+
+        console.log(`✅ Уведомление о добавлении исполнителя отправлено пользователю ${telegramId} (попытка ${attempts + 1})`);
+        return true;
+
+      } catch (sendError) {
+        attempts++;
+        console.error(`❌ Ошибка отправки уведомления о добавлении (попытка ${attempts}/${maxAttempts}):`, sendError.message || sendError);
+
+        if (attempts < maxAttempts) {
+          // Ждем немного перед следующей попыткой
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+        } else {
+          console.error('❌ Все попытки отправки уведомления о добавлении исчерпаны');
+        }
+      }
+    }
+
+    return false;
+
+  } catch (error) {
+    console.error('❌ Критическая ошибка в функции уведомления о добавлении исполнителя:', error);
+    return false;
+  }
+};
+
+// Функция уведомления о назначении услуг исполнителю
+export const notifyServiceAssigned = async (telegramId, executerName, services, adminName) => {
+  try {
+    console.log(`📢 Отправляем уведомление о назначении услуг исполнителю: ${telegramId}`);
+
+    let message = `🎯 *Вам назначены новые услуги!*\n\n`;
+    message += `👤 Исполнитель: ${executerName}\n\n`;
+    message += `📋 *Назначенные услуги:*\n`;
+
+    // Добавляем список услуг
+    if (Array.isArray(services) && services.length > 0) {
+      services.forEach((service, index) => {
+        message += `${index + 1}. 🛠️ ${service.name}`;
+        if (service.category) {
+          message += ` (${service.category})`;
+        }
+        if (service.price) {
+          message += ` — ${service.price}₽`;
+        }
+        message += '\n';
+      });
+    } else {
+      message += `• Нет доступных услуг\n`;
+    }
+
+    message += `\n🚀 Теперь вы можете выполнять эти услуги через бота!\n\n`;
+    message += `▶️ Используйте команду /start для работы с новыми услугами\n\n`;
+    message += `💼 _Назначено администратором: ${adminName || 'Админ'}_`;
+
+    // Отправляем сообщение с повторными попытками
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        await bot.telegram.sendMessage(telegramId, message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '📋 Посмотреть услуги', callback_data: 'view_services' }
+            ]]
+          }
+        });
+
+        console.log(`✅ Уведомление о назначении услуг отправлено пользователю ${telegramId} (попытка ${attempts + 1})`);
+        return true;
+
+      } catch (sendError) {
+        attempts++;
+        console.error(`❌ Ошибка отправки уведомления о назначении услуг (попытка ${attempts}/${maxAttempts}):`, sendError.message || sendError);
+
+        if (attempts < maxAttempts) {
+          // Ждем немного перед следующей попыткой
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+        } else {
+          console.error('❌ Все попытки отправки уведомления о назначении услуг исчерпаны');
+        }
+      }
+    }
+
+    return false;
+
+  } catch (error) {
+    console.error('❌ Критическая ошибка в функции уведомления о назначении услуг:', error);
+    return false;
+  }
+};
+
+// Обработчик кнопки "Посмотреть услуги"
+bot.action('view_services', async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    const telegramId = ctx.from.id;
+
+    // Показываем доступные услуги
+    await showMyServices(ctx);
+
+  } catch (error) {
+    console.error('❌ Ошибка обработки кнопки "Посмотреть услуги":', error);
+    await ctx.answerCbQuery();
+    try {
+      await ctx.reply(
+        '❌ Произошла ошибка при получении списка услуг.\n' +
+        'Попробуйте позже или используйте команду /start'
+      );
+    } catch (replyError) {
+      console.error('❌ Не удалось отправить сообщение об ошибке:', replyError);
+    }
+  }
+});
+
+// Обработчик кнопки "Начать работу"
+bot.action('start_work', async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+
+    // Получаем данные из callback query
+    const telegramId = ctx.callbackQuery.from.id;
+    const firstName = ctx.callbackQuery.from.first_name || 'Пользователь';
+    const chatId = ctx.callbackQuery.from.id;
+
+    // Логируем запуск бота через кнопку
+    await logBotAction(telegramId, 'bot_start_button', `Пользователь ${firstName} нажал "Начать работу"`, {
+      firstName,
+      userId: telegramId,
+      username: ctx.callbackQuery.from.username || null
+    });
+
+    console.log(`🚀 Telegram ID: ${telegramId} нажал "Начать работу"`);
+    console.log(`👋 Имя: ${firstName}`);
+
+    // Авторизация исполнителя
+    const response = await fetchAsAxios('POST', '/api/executers/auth', {
+      telegram_id: telegramId
+    });
+
+    if (response.data && response.data.id) {
+      const executerData = response.data;
+
+      // Сохраняем сессию
+      userSessions[chatId] = {
+        executerId: executerData.id,
+        telegramId: telegramId,
+        name: executerData.name || firstName,
+        authenticated: true
+      };
+
+      // Получаем актуальный общий заработок
+      let balanceToShow = 0;
+      try {
+        balanceToShow = await calculateTotalEarnings(executerData.id);
+      } catch (balanceErr) {
+        console.warn('Не удалось рассчитать общий заработок, использую баланс из auth:', balanceErr.message);
+        balanceToShow = executerData.balance || 0;
+      }
+
+      // Удаляем предыдущее сообщение с кнопкой
+      try {
+        await ctx.deleteMessage();
+      } catch (deleteError) {
+        console.warn('⚠️ Не удалось удалить сообщение:', deleteError.message);
+      }
+
+      // Отправляем новое сообщение с главным меню
+      await ctx.reply(
+        `🎉 *Добро пожаловать, ${executerData.name || firstName}!*\n\n` +
+        `✅ Авторизация успешна\n` +
+        `🆔 Telegram ID: ${executerData.telegram_id}\n` +
+        `💰 Общий заработок: ${balanceToShow || 0}₽\n\n` +
+        `Выберите действие из меню:`,
+        {
+          parse_mode: 'Markdown',
+          ...getMainMenu()
+        }
+      );
+
+      // Логируем показ главного меню
+      await logBotAction(telegramId, 'bot_menu_main', 'Показано главное меню через кнопку', {
+        executerId: executerData.id,
+        executerName: executerData.name,
+        balance: balanceToShow || 0
+      });
+
+      await logActivity(executerData.id, 'login', 'Вход в систему через кнопку');
+    } else {
+      // Удаляем предыдущее сообщение с кнопкой
+      try {
+        await ctx.deleteMessage();
+      } catch (deleteError) {
+        console.warn('⚠️ Не удалось удалить сообщение при ошибке авторизации:', deleteError.message);
+      }
+
+      // Отправляем новое сообщение об ошибке
+      await ctx.reply(
+        `🚫 *Доступ запрещен*\n\n` +
+        `У вас нет доступа к этому боту.\n\n` +
+        `📞 Обратитесь к администратору для получения доступа.\n` +
+        `После добавления вас в систему вы получите уведомление.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка обработки кнопки "Начать работу":', error);
+    await ctx.answerCbQuery();
+    try {
+      // Удаляем предыдущее сообщение при ошибке
+      try {
+        await ctx.deleteMessage();
+      } catch (deleteError) {
+        console.warn('⚠️ Не удалось удалить сообщение при общей ошибке:', deleteError.message);
+      }
+
+      // Отправляем новое сообщение об ошибке
+      await ctx.reply(
+        '❌ Произошла ошибка при авторизации.\n' +
+        'Попробуйте позже или обратитесь к администратору.'
+      );
+    } catch (replyError) {
+      console.error('❌ Не удалось отправить сообщение об ошибке:', replyError);
+    }
+  }
+});
+
+// Функция уведомления о блокировке исполнителя
+export const notifyExecuterBlocked = async (telegramId, executerName, adminName, reason) => {
+  try {
+    console.log(`🚫 Отправляем уведомление о блокировке исполнителя: ${telegramId}`);
+
+    let message = `🚫 *Ваш аккаунт заблокирован*\n\n`;
+    message += `👤 Исполнитель: ${executerName}\n`;
+    message += `🆔 Telegram ID: ${telegramId}\n\n`;
+
+    if (reason) {
+      message += `❗ Причина блокировки: ${reason}\n\n`;
+    }
+
+    message += `⛔ Доступ к боту временно ограничен\n`;
+    message += `📞 Для разблокировки обратитесь к администратору\n\n`;
+    message += `💼 _Заблокировано администратором: ${adminName || 'Админ'}_`;
+
+    // Отправляем сообщение с повторными попытками
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        await bot.telegram.sendMessage(telegramId, message, {
+          parse_mode: 'Markdown'
+        });
+
+        console.log(`✅ Уведомление о блокировке отправлено пользователю ${telegramId} (попытка ${attempts + 1})`);
+        return true;
+
+      } catch (sendError) {
+        attempts++;
+        console.error(`❌ Ошибка отправки уведомления о блокировке (попытка ${attempts}/${maxAttempts}):`, sendError.message || sendError);
+
+        if (attempts < maxAttempts) {
+          // Ждем немного перед следующей попыткой
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+        } else {
+          console.error('❌ Все попытки отправки уведомления о блокировке исчерпаны');
+        }
+      }
+    }
+
+    return false;
+
+  } catch (error) {
+    console.error('❌ Критическая ошибка в функции уведомления о блокировке исполнителя:', error);
+    return false;
+  }
+};
+
+// Функция уведомления о разблокировке исполнителя
+export const notifyExecuterUnblocked = async (telegramId, executerName, adminName) => {
+  try {
+    console.log(`✅ Отправляем уведомление о разблокировке исполнителя: ${telegramId}`);
+
+    let message = `✅ *Ваш аккаунт разблокирован!*\n\n`;
+    message += `👤 Исполнитель: ${executerName}\n`;
+    message += `🆔 Telegram ID: ${telegramId}\n\n`;
+    message += `🎉 Доступ к боту восстановлен!\n`;
+    message += `🚀 Теперь вы можете снова работать с заказами\n\n`;
+    message += `▶️ Нажмите /start чтобы начать работу\n\n`;
+    message += `💼 _Разблокировано администратором: ${adminName || 'Админ'}_`;
+
+    // Отправляем сообщение с повторными попытками
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (attempts < maxAttempts) {
+      try {
+        await bot.telegram.sendMessage(telegramId, message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🚀 Начать работу', callback_data: 'start_work' }
+            ]]
+          }
+        });
+
+        console.log(`✅ Уведомление о разблокировке отправлено пользователю ${telegramId} (попытка ${attempts + 1})`);
+        return true;
+
+      } catch (sendError) {
+        attempts++;
+        console.error(`❌ Ошибка отправки уведомления о разблокировке (попытка ${attempts}/${maxAttempts}):`, sendError.message || sendError);
+
+        if (attempts < maxAttempts) {
+          // Ждем немного перед следующей попыткой
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+        } else {
+          console.error('❌ Все попытки отправки уведомления о разблокировке исчерпаны');
+        }
+      }
+    }
+
+    return false;
+
+  } catch (error) {
+    console.error('❌ Критическая ошибка в функции уведомления о разблокировке исполнителя:', error);
+    return false;
+  }
+};
 
 console.log('🤖 Бот для исполнителей готов к работе!');

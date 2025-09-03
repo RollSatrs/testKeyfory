@@ -370,6 +370,28 @@ export async function assignExecutersToService(serviceId, executerIds) {
             throw new Error('executerIds должен быть массивом id исполнителей');
         }
 
+        // Получаем текущих назначенных исполнителей ДО изменений
+        const currentAccesses = await ServiceAccess.findAll({
+            where: { service_id: serviceId },
+            include: [
+                {
+                    model: Executer,
+                    attributes: ['id', 'name', 'telegram_id', 'status']
+                }
+            ]
+        });
+
+        const currentExecuterIds = currentAccesses.map(a => a.executer_id);
+        const newExecuterIds = executerIds;
+
+        // Определяем добавленных и удаленных исполнителей
+        const addedExecuterIds = newExecuterIds.filter(id => !currentExecuterIds.includes(id));
+        const removedExecuterIds = currentExecuterIds.filter(id => !newExecuterIds.includes(id));
+
+        console.log(`📋 Назначение услуги "${service.name}" (ID: ${serviceId}):`);
+        console.log(`➕ Добавляются исполнители: ${addedExecuterIds.join(', ') || 'нет'}`);
+        console.log(`➖ Удаляются исполнители: ${removedExecuterIds.join(', ') || 'нет'}`);
+
         // Выполняем в транзакции
         const t = await sequelize.transaction();
         try {
@@ -412,7 +434,7 @@ export async function assignExecutersToService(serviceId, executerIds) {
                 ]
             });
 
-            return {
+            const result = {
                 message: 'Исполнители успешно назначены на услугу',
                 assigned_executers: accessesWithExecuters.map(a => ({
                     access_id: a.id,
@@ -422,9 +444,75 @@ export async function assignExecutersToService(serviceId, executerIds) {
                     has_access: a.has_access
                 }))
             };
-        } catch (txErr) {
+
+            // После успешного назначения отправляем уведомления в бот
+            try {
+                const fetch = (await import('node-fetch')).default;
+                const API_BASE_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+
+                // Получаем информацию об услуге для уведомления
+                const serviceInfo = {
+                    id: service.id,
+                    name: service.name,
+                    category: service.category,
+                    price: service.price
+                };
+
+                // 1. Уведомляем ДОБАВЛЕННЫХ исполнителей о назначении услуги
+                for (const executerId of addedExecuterIds) {
+                    const executer = await Executer.findByPk(executerId, {
+                        attributes: ['id', 'name', 'telegram_id', 'status']
+                    });
+
+                    if (executer?.telegram_id) {
+                        try {
+                            const notificationResponse = await fetch(`${API_BASE_URL}/api/executers-bot/notify-service-assigned`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    telegram_id: executer.telegram_id,
+                                    executer_name: executer.name || 'Исполнитель',
+                                    services: [serviceInfo],
+                                    admin_name: 'Администратор'
+                                })
+                            });
+
+                            if (notificationResponse.ok) {
+                                console.log(`✅ Уведомление о назначении услуги "${service.name}" отправлено исполнителю ${executer.name} (ID: ${executerId})`);
+                            } else {
+                                console.warn(`⚠️ Не удалось отправить уведомление исполнителю ${executerId}: ${notificationResponse.status}`);
+                            }
+                        } catch (notifyError) {
+                            console.error(`❌ Ошибка отправки уведомления исполнителю ${executerId}:`, notifyError.message);
+                        }
+                    }
+                }
+
+                // 2. Уведомляем УДАЛЕННЫХ исполнителей об отзыве доступа
+                for (const removedAccess of currentAccesses) {
+                    if (removedExecuterIds.includes(removedAccess.executer_id) && removedAccess.Executer?.telegram_id) {
+                        try {
+                            // Здесь можно добавить отдельное уведомление об отзыве доступа
+                            // Пока просто логируем
+                            console.log(`📤 Исполнитель ${removedAccess.Executer.name} (ID: ${removedAccess.executer_id}) больше не имеет доступа к услуге "${service.name}"`);
+                        } catch (removeNotifyError) {
+                            console.error(`❌ Ошибка обработки отзыва доступа для исполнителя ${removedAccess.executer_id}:`, removeNotifyError.message);
+                        }
+                    }
+                }
+
+            } catch (notifyError) {
+                console.error('❌ Ошибка отправки уведомлений в бот:', notifyError.message);
+                // Не прерываем процесс назначения исполнителей, если уведомления не отправились
+            }
+
+            return result;
+
+        } catch (err) {
             await t.rollback();
-            throw txErr;
+            throw err;
         }
     } catch (error) {
         throw new Error(`Error assigning executers to service: ${error.message}`);

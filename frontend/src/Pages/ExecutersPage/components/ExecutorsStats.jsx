@@ -11,14 +11,19 @@ export function ExecutorsStats({ refresh }) {
 
   async function fetchStats() {
     try {
-      const data = await apiFetch("/admin/executers/stats", { method: "GET" });
+      console.log(`📊 Запрашиваем статистику исполнителей...`);
+      const data = await apiFetch("/api/admin/executers/stats", {
+        method: "GET",
+      });
+      console.log(`📊 Получена статистика:`, data);
+
       setStats({
         active: data.active || 0,
         inactive: data.inactive || 0,
         blocked: data.blocked || 0,
       });
     } catch (e) {
-      console.error("Ошибка при получении статистики:", e);
+      console.error("❌ Ошибка при получении статистики:", e);
     }
   }
 
@@ -27,45 +32,47 @@ export function ExecutorsStats({ refresh }) {
   }, [refresh]);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div className="flex flex-wrap justify-center gap-3 mb-6">
       {/* Активные */}
-      <div className="bg-gradient-to-br from-green-100 via-white to-green-50 rounded-2xl shadow-lg p-7 flex flex-col items-center hover:scale-[1.03] transition">
-        <div className="flex items-center gap-3 mb-3">
-          <span className="bg-green-500 text-white rounded-full p-2 shadow">
-            <MdPeople size={28} />
+      <div className="bg-gradient-to-r from-green-100 to-green-50 rounded-lg shadow-sm px-4 py-3 flex items-center gap-2 hover:shadow-md transition">
+        <span className="bg-green-500 text-white rounded p-1.5">
+          <MdPeople size={16} />
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-green-600 font-medium">Активных:</span>
+          <span className="text-lg font-bold text-green-700">
+            {stats.active}
           </span>
-          <span className="text-lg font-semibold text-green-700">Активных</span>
-        </div>
-        <div className="text-4xl font-extrabold text-green-700 drop-shadow">
-          {stats.active}
         </div>
       </div>
+
       {/* Неактивные */}
-      <div className="bg-gradient-to-br from-gray-100 via-gray-50 to-orange-100 rounded-2xl shadow-lg p-7 flex flex-col items-center hover:scale-[1.03] transition">
-        <div className="flex items-center gap-3 mb-3">
-          <span className="bg-orange-400 text-white rounded-full p-2 shadow">
-            <MdOutlinePersonOff size={28} />
+      <div className="bg-gradient-to-r from-orange-100 to-orange-50 rounded-lg shadow-sm px-4 py-3 flex items-center gap-2 hover:shadow-md transition">
+        <span className="bg-orange-400 text-white rounded p-1.5">
+          <MdOutlinePersonOff size={16} />
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-orange-600 font-medium">
+            Неактивных:
           </span>
-          <span className="text-lg font-semibold text-orange-700">
-            Неактивных
+          <span className="text-lg font-bold text-orange-600">
+            {stats.inactive}
           </span>
-        </div>
-        <div className="text-4xl font-extrabold text-orange-600 drop-shadow">
-          {stats.inactive}
         </div>
       </div>
+
       {/* Заблокированные */}
-      <div className="bg-gradient-to-br from-red-100 via-white to-red-50 rounded-2xl shadow-lg p-7 flex flex-col items-center hover:scale-[1.03] transition">
-        <div className="flex items-center gap-3 mb-3">
-          <span className="bg-red-500 text-white rounded-full p-2 shadow">
-            <MdBlock size={28} />
+      <div className="bg-gradient-to-r from-red-100 to-red-50 rounded-lg shadow-sm px-4 py-3 flex items-center gap-2 hover:shadow-md transition">
+        <span className="bg-red-500 text-white rounded p-1.5">
+          <MdBlock size={16} />
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-red-600 font-medium">
+            Заблокированных:
           </span>
-          <span className="text-lg font-semibold text-red-700">
-            Заблокированных
+          <span className="text-lg font-bold text-red-600">
+            {stats.blocked}
           </span>
-        </div>
-        <div className="text-4xl font-extrabold text-red-600 drop-shadow">
-          {stats.blocked}
         </div>
       </div>
     </div>

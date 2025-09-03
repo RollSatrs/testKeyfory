@@ -13,6 +13,7 @@ import adminActiveServicesRoute from './route/RouteAdmin/adminActiveServicesRout
 import adminPricingRoute from './route/RouteAdmin/adminPricingRoute.js'
 import adminEarningsRoute from './route/RouteAdmin/adminEarningsRoute.js'
 import adminServiceExecutionsRoute from './route/RouteAdmin/adminServiceExecutionsRoute.js'
+import limitApprovalRoutes from './route/RouteAdmin/limitApprovalRoutes.js'
 import { executerRoute } from './route/RouteExecuter/executerRoute.js'
 import { executerOrderRoute } from './route/RouteExecuter/executerOrderRoute.js'
 import { executerMaterialRoute } from './route/RouteExecuter/executerMaterialRoute.js'
@@ -64,6 +65,7 @@ app.use('/api/admin/active-services', authMiddleware, adminActiveServicesRoute)
 app.use('/api/admin/pricing', authMiddleware, adminPricingRoute)
 app.use('/api/admin/earnings', authMiddleware, adminEarningsRoute)
 app.use('/api/admin/service-executions', authMiddleware, adminServiceExecutionsRoute)
+app.use('/api/admin/limit-approvals', authMiddleware, limitApprovalRoutes)
 
 // Роуты для бота (без middleware)
 app.use('/api/pricing/admin', adminPricingRoute)

@@ -16,11 +16,11 @@ const envPath = path.join(projectRoot, '.env');
 console.log(`📄 [bot/index.js] Использую .env файл: ${envPath}`);
 dotenv.config({ path: envPath });
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
-const token = process.env.ADMINBOT;
-const telegramId = process.env.TELEGRAMID;
+const token = process.env.EXECUTER_BOT_TOKEN; // Исправлено имя переменной
+const telegramId = process.env.ADMIN_TELEGRAM_ID; // Исправлено имя переменной
 
 if (!token) {
-  console.error('❌ TELEGRAM_BOT_TOKEN не найден в .env');
+  console.error('❌ EXECUTER_BOT_TOKEN не найден в .env');
   process.exit(1);
 }
 Й

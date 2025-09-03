@@ -1,4 +1,4 @@
-import { FaEdit, FaTrash, FaBan } from "react-icons/fa";
+import { FaEdit, FaTrash, FaBan, FaCheck } from "react-icons/fa";
 import { useEffect, useState } from "react";
 import {
   Table,
@@ -29,7 +29,24 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
   async function fetchExecutors() {
     setLoading(true);
     try {
+      console.log(
+        `👥 Запрашиваем данные исполнителей... (время: ${new Date().toLocaleTimeString()})`
+      );
       const data = await apiFetch("/api/admin/executers/get");
+      console.log(
+        `👥 Получены данные исполнителей:`,
+        data?.length || 0,
+        "записей"
+      );
+
+      // Логируем статусы всех исполнителей
+      if (Array.isArray(data)) {
+        data.forEach((executor) => {
+          console.log(
+            `👤 Исполнитель ${executor.id} (${executor.name}): статус = ${executor.status}`
+          );
+        });
+      }
 
       // Получаем информацию об активных услугах для каждого исполнителя
       const executorsWithActiveServices = await Promise.all(
@@ -51,11 +68,17 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
                 order.status === "pending" || order.status === "in_progress"
             ).length;
 
-            return {
+            const result = {
               ...executor,
               activeOrders: activeOrders || 0,
               activeServicesCount: activeServicesData?.count || 0,
             };
+
+            console.log(
+              `👤 Исполнитель ${executor.id}: статус=${executor.status}, активных заказов=${activeOrders}`
+            );
+
+            return result;
           } catch (error) {
             // Если 401 — перенаправим на логин
             if (error && error.status === 401) {
@@ -77,6 +100,17 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
         })
       );
 
+      console.log(
+        `✅ Обработано ${executorsWithActiveServices.length} исполнителей`
+      );
+
+      // Логируем финальные статусы
+      executorsWithActiveServices.forEach((executor) => {
+        console.log(
+          `📋 ФИНАЛЬНЫЕ ДАННЫЕ - Исполнитель ${executor.id} (${executor.name}): статус = ${executor.status}, активных заказов = ${executor.activeOrders}`
+        );
+      });
+
       setExecutors(executorsWithActiveServices);
     } catch (e) {
       message.error("Ошибка при загрузке исполнителей");
@@ -92,6 +126,9 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
 
   // Вызывать обновление статистики после любого действия
   function notifyChanged() {
+    console.log(
+      `🔄 notifyChanged() вызвана в ${new Date().toLocaleTimeString()}`
+    );
     fetchExecutors();
     if (onChanged) onChanged();
   }
@@ -159,14 +196,55 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
 
   async function handleBlock(id) {
     try {
-      await apiFetch(`/api/admin/executers/update/${id}`, {
+      console.log(`🚫 Блокируем исполнителя с ID: ${id}`);
+
+      const response = await apiFetch(`/api/admin/executers/update/${id}`, {
         method: "PUT",
         body: JSON.stringify({ status: "blocked" }),
       });
+
+      console.log(`✅ Ответ от API:`, response);
       message.success("Исполнитель заблокирован");
+
+      // Принудительно обновляем данные с задержкой
+      setTimeout(() => {
+        console.log(`🔄 Обновляем данные после блокировки исполнителя ${id}`);
+        notifyChanged();
+      }, 500);
+
+      // Также обновляем сразу
       notifyChanged();
-    } catch {
+    } catch (error) {
+      console.error(`❌ Ошибка блокировки исполнителя ${id}:`, error);
       message.error("Ошибка при блокировке исполнителя");
+    }
+  }
+
+  async function handleUnblock(id) {
+    try {
+      console.log(`✅ Разблокируем исполнителя с ID: ${id}`);
+
+      const response = await apiFetch(`/api/admin/executers/update/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: "inactive" }), // Разблокированные исполнители становятся неактивными
+      });
+
+      console.log(`✅ Ответ от API (разблокировка):`, response);
+      message.success("Исполнитель разблокирован");
+
+      // Принудительно обновляем данные с задержкой
+      setTimeout(() => {
+        console.log(
+          `🔄 Обновляем данные после разблокировки исполнителя ${id}`
+        );
+        notifyChanged();
+      }, 500);
+
+      // Также обновляем сразу
+      notifyChanged();
+    } catch (error) {
+      console.error(`❌ Ошибка разблокировки исполнителя ${id}:`, error);
+      message.error("Ошибка при разблокировке исполнителя");
     }
   }
 
@@ -187,23 +265,28 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
       title: "Статус",
       dataIndex: "status",
       key: "status",
-      render: (status) => (
-        <Tag
-          color={
-            status === "active"
-              ? "green"
+      render: (status, record) => {
+        console.log(
+          `🏷️ Рендерим статус для исполнителя ${record.id}: ${status}`
+        );
+        return (
+          <Tag
+            color={
+              status === "active"
+                ? "green"
+                : status === "blocked"
+                ? "red"
+                : "orange"
+            }
+          >
+            {status === "active"
+              ? "АКТИВЕН"
               : status === "blocked"
-              ? "red"
-              : "orange"
-          }
-        >
-          {status === "active"
-            ? "АКТИВЕН"
-            : status === "blocked"
-            ? "ЗАБЛОКИРОВАН"
-            : "НЕАКТИВЕН"}
-        </Tag>
-      ),
+              ? "ЗАБЛОКИРОВАН"
+              : "НЕАКТИВЕН"}
+          </Tag>
+        );
+      },
     },
     {
       title: "Назначенные услуги",
@@ -282,77 +365,125 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
     {
       title: "Действия",
       key: "actions",
-      render: (_, record) => (
-        <Space>
-          <Button
-            icon={<FaEdit />}
-            onClick={() => openEditModal(record)}
-            size="small"
-          />
-          <Popconfirm
-            title={
-              record.status === "active" && record.activeOrders > 0
-                ? `У активного исполнителя ${record.activeOrders} активных заказов. Деактивируйте исполнителя для удаления!`
-                : record.status !== "active"
-                ? "Удалить неактивного исполнителя?"
-                : "Удалить исполнителя?"
-            }
-            onConfirm={
-              record.status === "active" && record.activeOrders > 0
-                ? undefined
-                : () => handleDelete(record.id)
-            }
-            okText={
-              record.status === "active" && record.activeOrders > 0
-                ? undefined
-                : "Да"
-            }
-            cancelText={
-              record.status === "active" && record.activeOrders > 0
-                ? "Понятно"
-                : "Нет"
-            }
-            okButtonProps={{
-              disabled: record.status === "active" && record.activeOrders > 0,
-              style:
-                record.status === "active" && record.activeOrders > 0
-                  ? { display: "none" }
-                  : {},
-            }}
-          >
+      render: (_, record) => {
+        console.log(
+          `🎯 Рендерим действия для исполнителя ${record.id} со статусом: ${record.status}`
+        );
+        return (
+          <Space>
             <Button
-              icon={<FaTrash />}
-              danger
+              icon={<FaEdit />}
+              onClick={() => openEditModal(record)}
               size="small"
-              disabled={record.status === "active" && record.activeOrders > 0}
+            />
+            <Popconfirm
               title={
                 record.status === "active" && record.activeOrders > 0
-                  ? "Нельзя удалить активного исполнителя с активными заказами"
-                  : "Удалить исполнителя"
+                  ? `У активного исполнителя ${record.activeOrders} активных заказов. Деактивируйте исполнителя для удаления!`
+                  : record.status !== "active"
+                  ? "Удалить неактивного исполнителя?"
+                  : "Удалить исполнителя?"
               }
-            />
-          </Popconfirm>
-          {record.status !== "blocked" && (
-            <Popconfirm
-              title="Заблокировать исполнителя?"
-              onConfirm={() => handleBlock(record.id)}
-              okText="Да"
-              cancelText="Нет"
+              onConfirm={
+                record.status === "active" && record.activeOrders > 0
+                  ? undefined
+                  : () => handleDelete(record.id)
+              }
+              okText={
+                record.status === "active" && record.activeOrders > 0
+                  ? undefined
+                  : "Да"
+              }
+              cancelText={
+                record.status === "active" && record.activeOrders > 0
+                  ? "Понятно"
+                  : "Нет"
+              }
+              okButtonProps={{
+                disabled: record.status === "active" && record.activeOrders > 0,
+                style:
+                  record.status === "active" && record.activeOrders > 0
+                    ? { display: "none" }
+                    : {},
+              }}
             >
               <Button
-                icon={<FaBan />}
+                icon={<FaTrash />}
+                danger
                 size="small"
-                style={{ color: "#e53e3e" }}
+                disabled={record.status === "active" && record.activeOrders > 0}
+                title={
+                  record.status === "active" && record.activeOrders > 0
+                    ? "Нельзя удалить активного исполнителя с активными заказами"
+                    : "Удалить исполнителя"
+                }
               />
             </Popconfirm>
-          )}
-        </Space>
-      ),
+            {(() => {
+              const isBlocked = record.status === "blocked";
+              console.log(
+                `🔒 Исполнитель ${record.id}: isBlocked = ${isBlocked}, статус = ${record.status}`
+              );
+
+              if (isBlocked) {
+                console.log(
+                  `🟢 Показываем кнопку РАЗБЛОКИРОВАТЬ для исполнителя ${record.id}`
+                );
+                return (
+                  <Popconfirm
+                    title="Разблокировать исполнителя?"
+                    onConfirm={() => handleUnblock(record.id)}
+                    okText="Да"
+                    cancelText="Нет"
+                  >
+                    <Button
+                      icon={<FaCheck />}
+                      size="small"
+                      style={{ color: "#52c41a" }}
+                      title="Разблокировать исполнителя"
+                    />
+                  </Popconfirm>
+                );
+              } else {
+                console.log(
+                  `🚫 Показываем кнопку ЗАБЛОКИРОВАТЬ для исполнителя ${record.id}`
+                );
+                return (
+                  <Popconfirm
+                    title="Заблокировать исполнителя?"
+                    onConfirm={() => handleBlock(record.id)}
+                    okText="Да"
+                    cancelText="Нет"
+                  >
+                    <Button
+                      icon={<FaBan />}
+                      size="small"
+                      style={{ color: "#e53e3e" }}
+                      title="Заблокировать исполнителя"
+                    />
+                  </Popconfirm>
+                );
+              }
+            })()}
+          </Space>
+        );
+      },
     },
   ];
 
   return (
     <div className="bg-white rounded-2xl shadow p-6">
+      {(() => {
+        console.log(`🗂️ Рендерим таблицу с ${executors.length} исполнителями:`);
+        executors.forEach((executor, index) => {
+          console.log(
+            `  ${index + 1}. ID: ${executor.id}, Имя: ${
+              executor.name
+            }, Статус: ${executor.status}`
+          );
+        });
+        return null;
+      })()}
       <Table
         columns={columns}
         dataSource={executors}

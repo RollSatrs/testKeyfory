@@ -14,7 +14,9 @@ router.use(async (req, res, next) => {
     if (telegramId) {
       try {
         // Находим исполнителя и обновляем активность
-        const executer = await Executer.findOne({ where: { telegram_id: String(telegramId) } });
+        // Преобразуем в число для корректного сравнения
+        const numericTelegramId = parseInt(telegramId);
+        const executer = await Executer.findOne({ where: { telegram_id: numericTelegramId } });
         if (executer) {
           await updateExecuterActivity(executer.id);
         }
@@ -214,8 +216,9 @@ router.get('/order-materials/:orderNumber', async (req, res) => {
     if (telegramId) {
       // Сначала находим исполнителя по telegram_id
       const { Executer } = await import('../../../database/dbTables.js');
+      const numericTelegramId = parseInt(telegramId);
       const executer = await Executer.findOne({
-        where: { telegram_id: telegramId.toString() }
+        where: { telegram_id: numericTelegramId }
       });
 
       if (!executer) {
@@ -2453,6 +2456,411 @@ router.get('/debug-services', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Ошибка диагностики услуг',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/executers/request-limit-approval - Запрос на одобрение превышения лимита
+router.post('/request-limit-approval', async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { telegram_id, request_reason } = req.body;
+
+    console.log(`\n🎯 === ЗАПРОС ОДОБРЕНИЯ ЛИМИТА ===`);
+    console.log(`👤 Telegram ID: ${telegram_id}`);
+
+    // Находим исполнителя
+    const executer = await Executer.findOne({
+      where: { telegram_id: String(telegram_id) },
+      transaction
+    });
+
+    if (!executer) {
+      await transaction.rollback();
+      return res.status(404).json({
+        success: false,
+        error: 'Исполнитель не найден'
+      });
+    }
+
+    // Получаем текущее количество активных услуг
+    const activeServicesCount = await ServiceExecution.count({
+      where: {
+        executer_id: executer.id,
+        status: ['pending', 'in_progress']
+      },
+      transaction
+    });
+
+    // Проверяем, есть ли уже активный запрос
+    const { default: LimitApprovalRequest } = await import('../../../database/models/LimitApprovalRequest.js');
+
+    const existingRequest = await LimitApprovalRequest.findOne({
+      where: {
+        executer_id: executer.id,
+        status: 'pending'
+      },
+      transaction
+    });
+
+    if (existingRequest) {
+      await transaction.rollback();
+      return res.json({
+        success: false,
+        error: 'У вас уже есть активный запрос на одобрение',
+        existing_request: existingRequest
+      });
+    }
+
+    // Создаем новый запрос
+    const approvalRequest = await LimitApprovalRequest.create({
+      executer_id: executer.id,
+      current_services_count: activeServicesCount,
+      current_limit: executer.active_services_limit,
+      requested_limit: null, // Запрос на разовое превышение
+      request_reason: request_reason || 'Запрос на превышение лимита активных услуг',
+      status: 'pending'
+    }, { transaction });
+
+    await transaction.commit();
+
+    console.log(`✅ Запрос на одобрение создан: ID ${approvalRequest.id}`);
+
+    res.json({
+      success: true,
+      message: 'Запрос на одобрение отправлен администратору',
+      request: {
+        id: approvalRequest.id,
+        current_services_count: activeServicesCount,
+        current_limit: executer.active_services_limit,
+        status: 'pending',
+        created_at: approvalRequest.created_at
+      }
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error('❌ Ошибка создания запроса на одобрение:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутренняя ошибка сервера',
+      details: error.message
+    });
+  }
+});
+
+// GET /api/executers/check-limit-approval/:telegram_id - Проверить статус запроса на одобрение
+router.get('/check-limit-approval/:telegram_id', async (req, res) => {
+  try {
+    const { telegram_id } = req.params;
+
+    // Находим исполнителя
+    const executer = await Executer.findOne({
+      where: { telegram_id: String(telegram_id) }
+    });
+
+    if (!executer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Исполнитель не найден'
+      });
+    }
+
+    // Проверяем активный запрос
+    const { default: LimitApprovalRequest } = await import('../../../database/models/LimitApprovalRequest.js');
+
+    const activeRequest = await LimitApprovalRequest.findOne({
+      where: {
+        executer_id: executer.id,
+        status: 'pending'
+      },
+      order: [['created_at', 'DESC']]
+    });
+
+    res.json({
+      success: true,
+      has_pending_request: !!activeRequest,
+      request: activeRequest || null
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка проверки запроса на одобрение:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутренняя ошибка сервера',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/executers-bot/notify-service-assigned - Уведомить исполнителя о назначении услуг
+router.post('/notify-service-assigned', async (req, res) => {
+  try {
+    const { telegram_id, executer_name, services, admin_name } = req.body;
+
+    if (!telegram_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'telegram_id обязателен'
+      });
+    }
+
+    console.log(`📢 Запрос на уведомление о назначении услуг исполнителю: ${telegram_id}, услуг: ${services?.length || 0}`);
+
+    try {
+      // Импортируем функцию уведомления из бота
+      const { notifyServiceAssigned } = await import('../../../../bot/executerBot.js');
+
+      // Отправляем уведомление
+      const success = await notifyServiceAssigned(
+        telegram_id,
+        executer_name || 'Исполнитель',
+        services || [],
+        admin_name || 'Администратор'
+      );
+
+      if (success) {
+        res.json({
+          success: true,
+          message: 'Уведомление о назначении услуг успешно отправлено'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: 'Не удалось отправить уведомление о назначении услуг'
+        });
+      }
+    } catch (importError) {
+      console.error('❌ Ошибка импорта функции уведомления о назначении услуг:', importError);
+      res.status(500).json({
+        success: false,
+        error: 'Сервис уведомлений недоступен',
+        details: importError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка отправки уведомления о назначении услуг:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутренняя ошибка сервера',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/executers-bot/notify-executer-added - Уведомить исполнителя о добавлении в систему
+router.post('/notify-executer-added', async (req, res) => {
+  try {
+    const { telegram_id, executer_name, admin_name } = req.body;
+
+    if (!telegram_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'telegram_id обязателен'
+      });
+    }
+
+    console.log(`📢 Запрос на уведомление исполнителя: ${telegram_id}, имя: ${executer_name}`);
+
+    try {
+      // Импортируем функцию уведомления из бота
+      const { notifyExecuterAdded } = await import('../../../../bot/executerBot.js');
+
+      // Отправляем уведомление
+      const success = await notifyExecuterAdded(
+        telegram_id,
+        executer_name || 'Исполнитель',
+        admin_name || 'Администратор'
+      );
+
+      if (success) {
+        res.json({
+          success: true,
+          message: 'Уведомление успешно отправлено'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: 'Не удалось отправить уведомление'
+        });
+      }
+    } catch (importError) {
+      console.error('❌ Ошибка импорта функции уведомления:', importError);
+      res.status(500).json({
+        success: false,
+        error: 'Сервис уведомлений недоступен',
+        details: importError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка отправки уведомления исполнителю:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутренняя ошибка сервера',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/executers-bot/notify-executer-blocked - Уведомить исполнителя о блокировке
+router.post('/notify-executer-blocked', async (req, res) => {
+  try {
+    const { telegram_id, executer_name, admin_name, reason } = req.body;
+
+    if (!telegram_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'telegram_id обязателен'
+      });
+    }
+
+    console.log(`🚫 Запрос на уведомление о блокировке исполнителя: ${telegram_id}, имя: ${executer_name}`);
+
+    try {
+      // Импортируем функцию уведомления из бота
+      const { notifyExecuterBlocked } = await import('../../../../bot/executerBot.js');
+
+      // Отправляем уведомление
+      const success = await notifyExecuterBlocked(
+        telegram_id,
+        executer_name || 'Исполнитель',
+        admin_name || 'Администратор',
+        reason
+      );
+
+      if (success) {
+        res.json({
+          success: true,
+          message: 'Уведомление о блокировке успешно отправлено'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: 'Не удалось отправить уведомление о блокировке'
+        });
+      }
+    } catch (importError) {
+      console.error('❌ Ошибка импорта функции уведомления о блокировке:', importError);
+      res.status(500).json({
+        success: false,
+        error: 'Сервис уведомлений о блокировке недоступен',
+        details: importError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка отправки уведомления о блокировке исполнителю:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутренняя ошибка сервера',
+      details: error.message
+    });
+  }
+});
+
+// POST /api/executers-bot/notify-executer-unblocked - Уведомить исполнителя о разблокировке
+router.post('/notify-executer-unblocked', async (req, res) => {
+  try {
+    const { telegram_id, executer_name, admin_name } = req.body;
+
+    if (!telegram_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'telegram_id обязателен'
+      });
+    }
+
+    console.log(`✅ Запрос на уведомление о разблокировке исполнителя: ${telegram_id}, имя: ${executer_name}`);
+
+    try {
+      // Импортируем функцию уведомления из бота
+      const { notifyExecuterUnblocked } = await import('../../../../bot/executerBot.js');
+
+      // Отправляем уведомление
+      const success = await notifyExecuterUnblocked(
+        telegram_id,
+        executer_name || 'Исполнитель',
+        admin_name || 'Администратор'
+      );
+
+      if (success) {
+        res.json({
+          success: true,
+          message: 'Уведомление о разблокировке успешно отправлено'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: 'Не удалось отправить уведомление о разблокировке'
+        });
+      }
+    } catch (importError) {
+      console.error('❌ Ошибка импорта функции уведомления о разблокировке:', importError);
+      res.status(500).json({
+        success: false,
+        error: 'Сервис уведомлений недоступен',
+        details: importError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка отправки уведомления о разблокировке исполнителю:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутренняя ошибка сервера',
+      details: error.message
+    });
+  }
+});
+
+// GET /api/executers-bot/executer/telegram/:telegramId - Получить информацию об исполнителе по telegram_id
+router.get('/executer/telegram/:telegramId', async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+
+    if (!telegramId) {
+      return res.status(400).json({
+        success: false,
+        error: 'telegram_id обязателен'
+      });
+    }
+
+    console.log(`🔍 Запрос информации об исполнителе с telegram_id: ${telegramId}`);
+
+    // Импортируем функцию для получения исполнителя
+    const { getExecuterByTelegramId } = await import('../../service/ServiceAdmim/adminExecuterService.js');
+
+    const executer = await getExecuterByTelegramId(telegramId);
+
+    if (!executer) {
+      return res.status(404).json({
+        success: false,
+        error: 'Исполнитель не найден'
+      });
+    }
+
+    console.log(`✅ Исполнитель найден: ID=${executer.id}, статус=${executer.status}`);
+
+    res.json({
+      success: true,
+      data: {
+        id: executer.id,
+        name: executer.name,
+        telegram_id: executer.telegram_id,
+        status: executer.status,
+        active_services_limit: executer.active_services_limit
+      }
+    });
+
+  } catch (error) {
+    console.error(`❌ Ошибка получения информации об исполнителе по telegram_id ${req.params.telegramId}:`, error);
+    res.status(500).json({
+      success: false,
+      error: 'Внутренняя ошибка сервера',
       details: error.message
     });
   }
