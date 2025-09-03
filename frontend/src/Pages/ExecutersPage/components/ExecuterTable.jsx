@@ -226,11 +226,11 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
 
       const response = await apiFetch(`/api/admin/executers/update/${id}`, {
         method: "PUT",
-        body: JSON.stringify({ status: "inactive" }), // Разблокированные исполнители становятся неактивными
+        body: JSON.stringify({ status: "active" }), // Разблокированные исполнители становятся активными
       });
 
       console.log(`✅ Ответ от API (разблокировка):`, response);
-      message.success("Исполнитель разблокирован");
+      message.success("Исполнитель разблокирован и активирован");
 
       // Принудительно обновляем данные с задержкой
       setTimeout(() => {

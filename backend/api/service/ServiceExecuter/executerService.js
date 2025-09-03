@@ -5,16 +5,41 @@ import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
 // Функция для автоматического обновления активности исполнителя
 export const updateExecuterActivity = async (executerId) => {
   try {
+    console.log(`🔄 Обновление активности исполнителя ID: ${executerId}`);
+
     const executer = await Executer.findByPk(executerId);
-    if (executer) {
-      await executer.update({
-        last_activity: new Date(),
-        status: 'active'
-      });
+    if (!executer) {
+      console.warn(`⚠️ Исполнитель с ID ${executerId} не найден`);
+      return null;
     }
-    return executer;
+
+    console.log(`👤 Текущий статус исполнителя ${executerId}: ${executer.status}`);
+
+    // Если исполнитель заблокирован, не меняем статус
+    if (executer.status === 'blocked') {
+      console.log(`🚫 Исполнитель ${executerId} заблокирован, не меняем статус`);
+      await executer.update({
+        last_activity: new Date()
+      });
+      return executer;
+    }
+
+    // Активируем исполнителя, если он неактивен
+    const newStatus = executer.status === 'inactive' ? 'active' : executer.status;
+
+    console.log(`✅ Обновляем исполнителя ${executerId}: статус ${executer.status} → ${newStatus}`);
+
+    await executer.update({
+      last_activity: new Date(),
+      status: newStatus
+    });
+
+    const updatedExecuter = await Executer.findByPk(executerId);
+    console.log(`🔍 Проверка обновления: исполнитель ${executerId} теперь имеет статус: ${updatedExecuter.status}`);
+
+    return updatedExecuter;
   } catch (err) {
-    console.error('Ошибка при обновлении активности:', err);
+    console.error(`❌ Ошибка при обновлении активности исполнителя ${executerId}:`, err);
   }
 };
 
@@ -41,8 +66,10 @@ export const addExecuter = async (telegramId, name = null) => {
     }
 
     // Проверяем, есть ли уже такой исполнитель
+    const stringTelegramId = telegramId.toString();
+
     const existingExecuter = await Executer.findOne({
-  where: { telegram_id: String(telegramId) }
+      where: { telegram_id: stringTelegramId }
     });
 
     if (existingExecuter) {
@@ -50,7 +77,7 @@ export const addExecuter = async (telegramId, name = null) => {
     }
 
     const executer = await Executer.create({
-      telegram_id: telegramId,
+      telegram_id: stringTelegramId,
       name: name,
       status: 'inactive', // новые исполнители неактивны до первого действия
       rating: 0,
@@ -71,16 +98,25 @@ export const checkExecuter = async (telegramId) => {
       throw new Error('Telegram ID не указан');
     }
 
-    // Ensure we compare strings because telegram_id column is VARCHAR
-    const normalizedTelegramId = String(telegramId);
+    console.log(`🔍 Проверка исполнителя с telegram_id: ${telegramId} (тип: ${typeof telegramId})`);
+
+    // Преобразуем в строку для корректного сравнения с БД (telegram_id хранится как varchar)
+    const stringTelegramId = telegramId.toString();
+
     const executer = await Executer.findOne({
-      where: { telegram_id: normalizedTelegramId }
+      where: { telegram_id: stringTelegramId }
     });
+
+    if (executer) {
+      console.log(`✅ Исполнитель найден: ID ${executer.id}, статус: ${executer.status}`);
+    } else {
+      console.log(`❌ Исполнитель с telegram_id ${telegramId} не найден`);
+    }
 
     return executer;
   } catch (err) {
-    console.error('Ошибка при проверке исполнителя:', err);
-    throw new Error('Ошибка сервера');
+    console.error(`❌ Ошибка при проверке исполнителя с telegram_id ${telegramId}:`, err);
+    throw new Error(err.message || 'Ошибка сервера');
   }
 };
 
@@ -200,8 +236,10 @@ export const loginExecuter = async (telegramId) => {
 // Получение профиля исполнителя
 export const getExecuterProfile = async (telegramId) => {
   try {
+    const stringTelegramId = telegramId.toString();
+
     const executer = await Executer.findOne({
-  where: { telegram_id: String(telegramId) },
+      where: { telegram_id: stringTelegramId },
       attributes: ['id', 'name', 'telegram_id', 'rating', 'status', 'create_date_executer']
     });
 
@@ -219,8 +257,10 @@ export const getExecuterProfile = async (telegramId) => {
 // Обновление профиля исполнителя
 export const updateExecuterProfile = async (telegramId, updateData) => {
   try {
+    const stringTelegramId = telegramId.toString();
+
     const executer = await Executer.findOne({
-  where: { telegram_id: String(telegramId) }
+      where: { telegram_id: stringTelegramId }
     });
 
     if (!executer) {
@@ -242,7 +282,7 @@ export const updateExecuterProfile = async (telegramId, updateData) => {
     }
 
     await Executer.update(updateFields, {
-  where: { telegram_id: String(telegramId) }
+      where: { telegram_id: stringTelegramId }
     });
 
     const updatedExecuter = await getExecuterProfile(telegramId);
@@ -262,8 +302,10 @@ export const updateExecuterStatus = async (telegramId, status) => {
       throw new Error('Недопустимый статус');
     }
 
+    const stringTelegramId = telegramId.toString();
+
     const executer = await Executer.findOne({
-  where: { telegram_id: String(telegramId) }
+      where: { telegram_id: stringTelegramId }
     });
 
     if (!executer) {
@@ -272,7 +314,7 @@ export const updateExecuterStatus = async (telegramId, status) => {
 
     await Executer.update(
       { status: status },
-  { where: { telegram_id: String(telegramId) } }
+      { where: { telegram_id: stringTelegramId } }
     );
 
     const updatedExecuter = await getExecuterProfile(telegramId);

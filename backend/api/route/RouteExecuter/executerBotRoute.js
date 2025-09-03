@@ -14,9 +14,9 @@ router.use(async (req, res, next) => {
     if (telegramId) {
       try {
         // Находим исполнителя и обновляем активность
-        // Преобразуем в число для корректного сравнения
-        const numericTelegramId = parseInt(telegramId);
-        const executer = await Executer.findOne({ where: { telegram_id: numericTelegramId } });
+        // Преобразуем в строку для корректного сравнения с БД
+        const stringTelegramId = telegramId.toString();
+        const executer = await Executer.findOne({ where: { telegram_id: stringTelegramId } });
         if (executer) {
           await updateExecuterActivity(executer.id);
         }
@@ -216,9 +216,9 @@ router.get('/order-materials/:orderNumber', async (req, res) => {
     if (telegramId) {
       // Сначала находим исполнителя по telegram_id
       const { Executer } = await import('../../../database/dbTables.js');
-      const numericTelegramId = parseInt(telegramId);
+      const stringTelegramId = telegramId.toString();
       const executer = await Executer.findOne({
-        where: { telegram_id: numericTelegramId }
+        where: { telegram_id: stringTelegramId }
       });
 
       if (!executer) {
