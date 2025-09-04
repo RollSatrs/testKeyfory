@@ -428,17 +428,20 @@ router.post('/use-reserved-material', async (req, res) => {
     const executerName = executer ? executer.name : 'Неизвестный исполнитель';
 
     // Используем зарезервированный материал
+    const useDate = new Date();
     await reservedMaterial.update({
       status: MATERIAL_STATUS.USED,
       order_number: order_number,
       executer_id: executer_id,
       executer_name: executerName,
-      used_date: new Date(),
+      used_date: useDate,
       reserved_for: null, // Очищаем резервацию
       reserved_at: null
     });
 
     console.log(`✅ Зарезервированный материал ${reservedMaterial.id} использован для заказа ${order_number}`);
+    console.log(`📅 Дата использования зарезервированного материала: ${useDate.toISOString()}`);
+    console.log(`👤 Материал назначен исполнителю: ${executerName} (ID: ${executer_id})`);
 
     res.json({
       success: true,
@@ -1007,12 +1010,18 @@ const createServiceExecutionHandler = async (req, res) => {
       });
 
       if (availableMaterial) {
+        // Получаем имя исполнителя для корректного логирования
+        const executerName = executer ? executer.name : 'Неизвестный исполнитель';
+
         await availableMaterial.update({
           status: MATERIAL_STATUS.USED,
           order_number: order_number,
-          used_date: new Date(),
-          executer_id: executer_id
+          used_date: new Date(), // Фиксируем дату использования при создании заказа
+          executer_id: executer_id,
+          executer_name: executerName
         }, { transaction: t });
+
+        console.log(`📅 Материал ${availableMaterial.id} - установлена дата использования: ${new Date().toISOString()}`);
 
         // Сохраняем содержимое материала в выполнении
         await serviceExecution.update({ material_contents: availableMaterial.contents }, { transaction: t });
@@ -1724,10 +1733,11 @@ router.post('/assign-material', async (req, res) => {
       order_number: orderNumber,
       executer_id: executer.id,
       executer_name: executer.name,
-      used_date: new Date()
+      used_date: new Date() // Фиксируем дату использования при назначении материала
     });
 
     console.log(`✅ Материал ${materialId} назначен заказу ${orderNumber}`);
+    console.log(`📅 Дата использования установлена: ${new Date().toISOString()}`);
 
     res.json({
       success: true,
@@ -1874,6 +1884,16 @@ router.post('/request-replacement', async (req, res) => {
     const replacementRequest = await MaterialReplacement.create(replacementData);
 
     console.log(`✅ Запрос на замену создан с ID: ${replacementRequest.id}`);
+
+    // Обновляем материал, добавляем дату запроса замены
+    const replacementDate = new Date();
+    await material.update({
+      status: 'pending_replace',
+      replacement_requested_date: replacementDate
+    });
+
+    console.log(`📅 Материал ${materialId} обновлен: статус "pending_replace", дата запроса замены: ${replacementDate.toISOString()}`);
+    console.log(`🔄 Запрос замены для заказа ${orderNumber} от исполнителя ${executer.name} (${telegramId})`);
 
     // Проверяем настройки автоматической замены для услуги
     const service = await Services.findByPk(execution.service_id, {

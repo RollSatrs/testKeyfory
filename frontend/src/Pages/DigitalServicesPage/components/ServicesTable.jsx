@@ -240,6 +240,22 @@ export function ServicesTable({
           apiFetch(`/api/admin/materials/service/${service.id}`),
           apiFetch(`/api/admin/materials/service/${service.id}/stats`),
         ]);
+
+        // Логируем полученные данные для отладки
+        console.log(
+          `📦 Загружены материалы для услуги "${service.name}":`,
+          materials
+        );
+        if (materials.length > 0) {
+          console.log(`📋 Первый материал:`, {
+            id: materials[0].id,
+            status: materials[0].status,
+            used_date: materials[0].used_date,
+            replacement_requested_date: materials[0].replacement_requested_date,
+            contents: materials[0].contents,
+          });
+        }
+
         setServiceMaterials(materials);
         setMaterialStats(stats);
       } catch (err) {
@@ -483,6 +499,36 @@ export function ServicesTable({
     );
   }
 
+  // Функция для удаления материала
+  async function handleDeleteMaterial(materialId) {
+    try {
+      await apiFetch(`/api/admin/materials/delete/${materialId}`, {
+        method: "DELETE",
+      });
+
+      // Обновляем список материалов
+      const materials = await apiFetch(
+        `/api/admin/materials/service/${selectedService.id}`
+      );
+      setServiceMaterials(materials);
+
+      // Обновляем статистику
+      const stats = await apiFetch(
+        `/api/admin/materials/service/${selectedService.id}/stats`
+      );
+      setMaterialStats(stats);
+
+      // Обновляем общий список услуг (для обновления счетчиков)
+      fetchServices();
+      if (onChange) onChange();
+
+      message.success("Материал успешно удален");
+    } catch (error) {
+      console.error("Ошибка при удалении материала:", error);
+      message.error("Ошибка при удалении материала");
+    }
+  }
+
   const columns = [
     {
       title: "Название услуги",
@@ -599,6 +645,7 @@ export function ServicesTable({
         const directExecuter = record.assignedExecuter;
         if (directExecuter) {
           allExecuters.push({
+            id: directExecuter.id,
             name: directExecuter.name || `ID: ${directExecuter.id}`,
             status: directExecuter.status,
             telegram_id: directExecuter.telegram_id,
@@ -609,18 +656,16 @@ export function ServicesTable({
         // Добавляем исполнителей из ServiceAccess
         const assignedExecuters = record.assigned_executers || [];
         assignedExecuters.forEach((executer) => {
-          // Проверяем, чтобы не добавлять дубликаты
+          // Проверяем, чтобы не добавлять дубликаты по ID
           const isDuplicate = allExecuters.some(
             (ex) =>
-              ex.name === executer.executer_name ||
-              (ex.telegram_id &&
-                executer.telegram_id &&
-                ex.telegram_id === executer.telegram_id)
+              ex.id && executer.executer_id && ex.id === executer.executer_id
           );
 
           if (!isDuplicate) {
             allExecuters.push({
-              name: executer.executer_name,
+              id: executer.executer_id,
+              name: executer.executer_name || `ID: ${executer.executer_id}`,
               status: executer.status,
               telegram_id: executer.telegram_id,
               source: "service_access",
@@ -628,14 +673,26 @@ export function ServicesTable({
           }
         });
 
+        // Удаляем дубликаты по имени, если ID не помогли
+        const uniqueExecuters = [];
+        const seenNames = new Set();
+
+        allExecuters.forEach((executer) => {
+          const key = executer.id || executer.name;
+          if (!seenNames.has(key)) {
+            seenNames.add(key);
+            uniqueExecuters.push(executer);
+          }
+        });
+
         // Если никого не назначено
-        if (allExecuters.length === 0) {
+        if (uniqueExecuters.length === 0) {
           return <Tag color="default">Не назначены</Tag>;
         }
 
         // Если один исполнитель
-        if (allExecuters.length === 1) {
-          const executer = allExecuters[0];
+        if (uniqueExecuters.length === 1) {
+          const executer = uniqueExecuters[0];
           return (
             <Tag color={executer.status === "active" ? "green" : "orange"}>
               {executer.name}
@@ -647,9 +704,9 @@ export function ServicesTable({
         // Если несколько исполнителей - показываем всех
         return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-            {allExecuters.map((executer, index) => (
+            {uniqueExecuters.map((executer, index) => (
               <Tag
-                key={index}
+                key={executer.id || index}
                 color={executer.status === "active" ? "green" : "orange"}
                 style={{ margin: "2px" }}
               >
@@ -666,164 +723,137 @@ export function ServicesTable({
       dataIndex: "status",
       key: "status",
       render: (status, record) => {
-        // Build list for tooltip: assigned executers + active orders
+        // Простое отображение статуса услуги
+        const getStatusText = (statusValue) => {
+          switch (statusValue) {
+            case "active":
+              return "АКТИВНА";
+            case "inactive":
+              return "НЕАКТИВНА";
+            default:
+              return statusValue || "—";
+          }
+        };
+
+        const getStatusColor = (statusValue) => {
+          switch (statusValue) {
+            case "active":
+              return "green";
+            case "inactive":
+              return "orange";
+            default:
+              return "default";
+          }
+        };
+
+        // Для tooltip показываем информацию об исполнителях и заказах
         const activeOrders = Array.isArray(record.active_orders)
           ? record.active_orders
           : [];
         const assigned = Array.isArray(record.assigned_executers)
           ? record.assigned_executers
           : [];
+        const completedOrders = Array.isArray(record.completed_orders)
+          ? record.completed_orders
+          : [];
 
-        // Build executor -> service status mapping (per-executor)
-        // Use executor id when available to avoid name collisions
-        const execMap = new Map();
+        const tooltipLines = [];
 
-        // Normalize executor identity across different payload shapes to avoid duplicates
-        const normalizeExecutor = (obj, fallbackPrefix = "") => {
-          // Return nulls when no meaningful identity is present to avoid
-          // introducing placeholder names like '—' which pollute exec maps.
-          if (!obj) return { key: null, name: null };
-
-          const id =
-            obj.executer_id ||
-            obj.executer?.id ||
-            obj.executer?.user_id ||
-            obj.id ||
-            null;
-          const name =
-            obj.executer_name ||
-            obj.executer?.name ||
-            obj.name ||
-            (id ? `ID: ${id}` : null) ||
-            null;
-
-          const key =
-            id != null
-              ? String(id)
-              : name != null
-              ? `${fallbackPrefix}:${String(name)}`
-              : null;
-          return { key: key ? String(key) : null, name: name || null };
-        };
-
-        // Seed from assigned executers (preserve order)
-        for (const a of assigned) {
-          const { key, name } = normalizeExecutor(a, "assigned");
-          const raw = (a.status || (a.Executer && a.Executer.status) || "")
-            .toString()
-            .toLowerCase();
-          const label = raw === "inactive" ? "Неактивен" : "Активен";
-          if (key) execMap.set(key, { name, label });
+        if (assigned.length > 0) {
+          tooltipLines.push("Назначенные исполнители:");
+          assigned.forEach((exec) => {
+            const execName = exec.executer_name || `ID: ${exec.executer_id}`;
+            const execStatus =
+              exec.status === "active" ? "Активен" : "Неактивен";
+            tooltipLines.push(`• ${execName} (${execStatus})`);
+          });
         }
 
-        // Completed orders: these mark service completed for given executor
-        if (Array.isArray(record.completed_orders)) {
-          for (const o of record.completed_orders) {
-            if (!o) continue;
-            const { key, name } = normalizeExecutor(o, "completed");
-            if (!key) continue;
-            execMap.set(key, { name, label: "Выполнен" });
-          }
+        if (activeOrders.length > 0) {
+          tooltipLines.push("Активные заказы:");
+          activeOrders.forEach((order) => {
+            const orderNum = order.order_number || order.order || order.id;
+
+            // Пытаемся получить имя исполнителя из разных возможных источников
+            let execName = "Не указан";
+
+            // Сначала проверяем прямые поля
+            if (order.executer_name) {
+              execName = order.executer_name;
+            } else if (order.executer && order.executer.name) {
+              execName = order.executer.name;
+            } else if (order.executer_id) {
+              // Пытаемся найти исполнителя по ID в списке назначенных
+              const foundExecuter = assigned.find(
+                (exec) =>
+                  exec.executer_id === order.executer_id ||
+                  exec.Executer?.id === order.executer_id
+              );
+              if (foundExecuter) {
+                execName =
+                  foundExecuter.executer_name ||
+                  foundExecuter.Executer?.name ||
+                  `ID: ${order.executer_id}`;
+              } else {
+                execName = `ID: ${order.executer_id}`;
+              }
+            }
+
+            tooltipLines.push(`• Заказ #${orderNum} - ${execName}`);
+          });
         }
 
-        // Active orders: if executor already marked Выполнен keep it, else mark Активен (or Выполнен per order status)
-        for (const o of activeOrders) {
-          if (!o) continue;
-          const { key, name } = normalizeExecutor(o, "active");
-          if (!key) continue;
-          const prev = execMap.get(key);
-          if (prev && prev.label === "Выполнен") continue;
-          const raw = (o.status || o.state || "").toString().toLowerCase();
-          const isCompleted =
-            raw.includes("completed") ||
-            raw.includes("выполн") ||
-            raw.includes("done") ||
-            raw.includes("заверш");
-          const label = isCompleted ? "Выполнен" : "Активен";
-          execMap.set(key, { name, label });
+        if (completedOrders.length > 0) {
+          tooltipLines.push("Завершенные заказы:");
+          completedOrders.forEach((order) => {
+            const orderNum = order.order_number || order.order || order.id;
+
+            // Пытаемся получить имя исполнителя из разных возможных источников
+            let execName = "Не указан";
+
+            // Сначала проверяем прямые поля
+            if (order.executer_name) {
+              execName = order.executer_name;
+            } else if (order.executer && order.executer.name) {
+              execName = order.executer.name;
+            } else if (order.executer_id) {
+              // Пытаемся найти исполнителя по ID в списке назначенных
+              const foundExecuter = assigned.find(
+                (exec) =>
+                  exec.executer_id === order.executer_id ||
+                  exec.Executer?.id === order.executer_id
+              );
+              if (foundExecuter) {
+                execName =
+                  foundExecuter.executer_name ||
+                  foundExecuter.Executer?.name ||
+                  `ID: ${order.executer_id}`;
+              } else {
+                execName = `ID: ${order.executer_id}`;
+              }
+            }
+
+            tooltipLines.push(`• Заказ #${orderNum} - ${execName} (Выполнен)`);
+          });
         }
 
-        // Merge entries by executor name (prefer 'Выполнен' over 'Активен' over 'Неактивен')
-        const priority = (label) =>
-          label === "Выполнен" ? 3 : label === "Активен" ? 2 : 1;
-        const nameMap = new Map(); // name -> label (merged)
-
-        // Aggregate labels from execMap (may contain multiple keys for same name)
-        for (const [, val] of execMap) {
-          const nm = val.name || "—";
-          const existing = nameMap.get(nm);
-          if (!existing) nameMap.set(nm, val.label);
-          else if (priority(val.label) > priority(existing))
-            nameMap.set(nm, val.label);
+        if (tooltipLines.length === 0) {
+          tooltipLines.push(
+            "Нет назначенных исполнителей или активных заказов"
+          );
         }
-
-        // Build ordered list: assigned first (preserve order), then remaining names
-        const lines = [];
-        const addedNames = new Set();
-        for (const a of assigned) {
-          const { name: normName } = normalizeExecutor(a, "assigned");
-          const nm = normName || `ID: ${a.executer_id || "?"}`;
-          if (nameMap.has(nm)) {
-            lines.push(`${nm} (${nameMap.get(nm)})`);
-            addedNames.add(nm);
-          } else {
-            const raw = (a.status || (a.Executer && a.Executer.status) || "")
-              .toString()
-              .toLowerCase();
-            const label = raw === "inactive" ? "Неактивен" : "Активен";
-            lines.push(`${nm} (${label})`);
-            addedNames.add(nm);
-          }
-        }
-
-        for (const [nm, label] of nameMap) {
-          if (addedNames.has(nm)) continue;
-          lines.push(`${nm} (${label})`);
-        }
-
-        const dedup = lines;
 
         const tooltipContent = (
           <div style={{ maxWidth: 320, whiteSpace: "pre-line" }}>
-            {dedup.length > 0 ? (
-              dedup.map((line, idx) => <div key={idx}>• {line}</div>)
-            ) : (
-              <div>Нет назначенных исполнителей или активных заказов</div>
-            )}
+            {tooltipLines.map((line, idx) => (
+              <div key={idx}>{line}</div>
+            ))}
           </div>
         );
 
-        // Build a concise count label (like in the 'Исполнители' column).
-        // Keep the tooltip content unchanged (lists executor -> status lines).
-        const totalExecutors = dedup.length;
-
-        // Also compute simple breakdown counts for optional use in label/title
-        let completedCount = 0;
-        let activeCount = 0;
-        let inactiveCount = 0;
-        for (const l of nameMap.values()) {
-          if (l === "Выполнен") completedCount += 1;
-          else if (l === "Активен") activeCount += 1;
-          else if (l === "Неактивен") inactiveCount += 1;
-        }
-
-        // Main visible label: number of executors (keeps UI compact).
-        const mainLabel =
-          totalExecutors > 0 ? `${totalExecutors} исполн.` : status || "—";
-
-        // Choose a neutral color; highlight if there are completed executions so admin notices.
-        const tagColor =
-          completedCount > 0
-            ? "blue"
-            : status === "active"
-            ? "green"
-            : status === "inactive"
-            ? "orange"
-            : "default";
-
         return (
           <Tooltip title={tooltipContent} placement="topLeft">
-            <Tag color={tagColor}>{mainLabel}</Tag>
+            <Tag color={getStatusColor(status)}>{getStatusText(status)}</Tag>
           </Tooltip>
         );
       },
@@ -836,6 +866,38 @@ export function ServicesTable({
       render: (active_orders, record) => {
         // Collect orders from multiple possible fields and always show them
         const orders = [];
+
+        // Получаем список назначенных исполнителей для поиска по ID
+        const assigned = Array.isArray(record.assigned_executers)
+          ? record.assigned_executers
+          : [];
+
+        // Функция для получения имени исполнителя по различным источникам
+        const getExecuterName = (orderObj) => {
+          // Проверяем прямые поля
+          if (orderObj.executer_name) return orderObj.executer_name;
+          if (orderObj.executer && orderObj.executer.name)
+            return orderObj.executer.name;
+
+          // Если есть executer_id, ищем по ID в назначенных исполнителях
+          if (orderObj.executer_id) {
+            const foundExecuter = assigned.find(
+              (exec) =>
+                exec.executer_id === orderObj.executer_id ||
+                exec.Executer?.id === orderObj.executer_id
+            );
+            if (foundExecuter) {
+              return (
+                foundExecuter.executer_name ||
+                foundExecuter.Executer?.name ||
+                `ID: ${orderObj.executer_id}`
+              );
+            }
+            return `ID: ${orderObj.executer_id}`;
+          }
+
+          return null;
+        };
 
         if (
           Array.isArray(record.active_orders) &&
@@ -853,8 +915,7 @@ export function ServicesTable({
               orders.push({
                 order_number: o.order_number || o.order || o.id,
                 status: o.status || o.state || null,
-                executer_name:
-                  o.executer_name || (o.executer && o.executer.name) || null,
+                executer_name: getExecuterName(o),
               });
             }
           });
@@ -902,8 +963,7 @@ export function ServicesTable({
               orders.push({
                 order_number: num,
                 status: o.status || o.state || "completed",
-                executer_name:
-                  o.executer_name || (o.executer && o.executer.name) || null,
+                executer_name: getExecuterName(o),
               });
             }
           });
@@ -1372,6 +1432,15 @@ export function ServicesTable({
                 key: "used_date",
                 width: 140,
                 render: (date, record) => {
+                  console.log(
+                    `🗓️ Рендер даты использования для материала ${record.id}:`,
+                    {
+                      status: record.status,
+                      used_date: date,
+                      raw_date: record.used_date,
+                    }
+                  );
+
                   if (
                     record.status === "used" ||
                     record.status === "replaced" ||
@@ -1396,6 +1465,15 @@ export function ServicesTable({
                 key: "replacement_requested_date",
                 width: 150,
                 render: (date, record) => {
+                  console.log(
+                    `🔄 Рендер даты запроса замены для материала ${record.id}:`,
+                    {
+                      status: record.status,
+                      replacement_requested_date: date,
+                      raw_date: record.replacement_requested_date,
+                    }
+                  );
+
                   if (record.status === "pending_replace") {
                     return date
                       ? new Date(date).toLocaleString("ru-RU", {
@@ -1409,6 +1487,28 @@ export function ServicesTable({
                   }
                   return "-";
                 },
+              },
+              {
+                title: "Действия",
+                key: "actions",
+                width: 100,
+                render: (_, record) => (
+                  <Popconfirm
+                    title="Удалить материал?"
+                    description="Это действие нельзя отменить. Материал будет полностью удален из системы."
+                    onConfirm={() => handleDeleteMaterial(record.id)}
+                    okText="Да"
+                    cancelText="Нет"
+                    okType="danger"
+                  >
+                    <Button
+                      danger
+                      size="small"
+                      icon={<FaTrash />}
+                      title="Удалить материал"
+                    />
+                  </Popconfirm>
+                ),
               },
             ]}
           />

@@ -488,8 +488,8 @@ adminRoute.post('/auto-replace-material', async (req, res) => {
             telegramId: executer.telegram_id,
             orderNumber: orderNumber,
             serviceName: execution.Service?.name || 'Неизвестная услуга',
-            oldMaterial: `${currentMaterial.type_key || 'Материал'} - ${currentMaterial.contents || 'Содержимое'}`,
-            newMaterial: `${newMaterial.type_key || 'Материал'} - ${newMaterial.contents || 'Содержимое'}`,
+            oldMaterial: currentMaterial.contents || 'Содержимое не указано',
+            newMaterial: newMaterial.contents || 'Содержимое не указано',
             adminComment: 'Автоматическая замена согласно настройкам услуги'
           });
 

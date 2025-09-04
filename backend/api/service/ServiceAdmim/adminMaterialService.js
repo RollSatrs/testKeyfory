@@ -284,7 +284,18 @@ export async function getMaterialStats() {
         const total = await Material.count();
         const available = await Material.count({ where: { status: MATERIAL_STATUS.AVAILABLE } });
         const used = await Material.count({ where: { status: MATERIAL_STATUS.USED } });
-        const pending_replace = await Material.count({ where: { status: 'pending_replace' } });
+
+        // Считаем "На замене" как сумму pending_replace и replaced
+        const pending_replace_count = await Material.count({ where: { status: 'pending_replace' } });
+        const replaced_count = await Material.count({ where: { status: MATERIAL_STATUS.REPLACED } });
+        const pending_replace = pending_replace_count + replaced_count;
+
+        console.log(`📊 Статистика материалов:`, {
+            total,
+            available,
+            used,
+            pending_replace: `${pending_replace} (${pending_replace_count} pending + ${replaced_count} replaced)`
+        });
 
         return {
             total,
@@ -301,6 +312,12 @@ export async function getMaterialsByService(serviceId) {
     try {
         const materials = await Material.findAll({
             where: { service_id: serviceId },
+            attributes: [
+                'id', 'contents', 'status', 'source', 'type_key',
+                'added_date', 'used_date', 'replacement_requested_date', // Важные поля дат
+                'order_id', 'order_number', 'executer_id', 'executer_name',
+                'is_used', 'used_reason', 'reserved_for', 'reserved_at'
+            ],
             include: [
                 {
                     model: Services,
@@ -308,10 +325,26 @@ export async function getMaterialsByService(serviceId) {
                     attributes: ['name', 'category']
                 }
             ],
-            order: [['createdAt', 'DESC']]
+            order: [['added_date', 'DESC']]  // Исправлено с createdAt на added_date
         });
+
+        console.log(`📦 Найдено материалов для услуги ${serviceId}: ${materials.length}`);
+
+        // Логируем первые несколько материалов для проверки
+        if (materials.length > 0) {
+            materials.slice(0, 3).forEach(material => {
+                console.log(`📋 Material ID ${material.id}:`, {
+                    status: material.status,
+                    used_date: material.used_date,
+                    replacement_requested_date: material.replacement_requested_date,
+                    order_number: material.order_number
+                });
+            });
+        }
+
         return materials;
     } catch (error) {
+        console.error(`❌ Ошибка получения материалов для услуги ${serviceId}:`, error);
         throw new Error(`Error fetching materials by service: ${error.message}`);
     }
 }
@@ -532,12 +565,21 @@ export async function getMaterialStatsByService(serviceId) {
                 status: MATERIAL_STATUS.USED
             }
         });
-        const pending_replace = await Material.count({
+
+        // Считаем "На замене" как сумму pending_replace и replaced
+        const pending_replace_count = await Material.count({
             where: {
                 service_id: serviceId,
                 status: 'pending_replace'
             }
         });
+        const replaced_count = await Material.count({
+            where: {
+                service_id: serviceId,
+                status: MATERIAL_STATUS.REPLACED
+            }
+        });
+        const pending_replace = pending_replace_count + replaced_count;
 
         // Статистика по источникам
         const sourceStats = await Material.findAll({

@@ -1,7 +1,7 @@
 import { Services, Material, ExecuterPricing, Executer, ServiceAccess, ServiceExecution, Admin } from "../../../database/dbTables.js";
 import { sequelize } from "../../../database/databaseOn.js";
 import { Op } from 'sequelize';
-import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
+import { MATERIAL_STATUS, ORDER_STATUS } from '../../../constants/statusConstants.js';
 
 
 export async function getAllServices(includeDeleted = false) {
@@ -33,10 +33,16 @@ export async function getAllServices(includeDeleted = false) {
             // Получаем все материалы для услуги
             const materials = await Material.findAll({ where: { service_id: service.id } });
 
-            // Считаем доступные ключи (материалы со статусом не "used")
-            const availableKeys = materials.filter(m =>
-                m.status !== MATERIAL_STATUS.USED && m.status !== 'ИСПОЛЬЗОВАН'
-            ).length;
+            // Считаем доступные ключи (исключаем использованные и замененные материалы)
+            const availableKeys = materials.filter(m => {
+                const status = m.status?.toLowerCase();
+                return status !== MATERIAL_STATUS.USED.toLowerCase() &&
+                       status !== 'использован' &&
+                       status !== MATERIAL_STATUS.REPLACED.toLowerCase() &&
+                       status !== 'заменен' &&
+                       status !== 'replaced' &&
+                       status !== 'pending_replace'
+            }).length;
 
             // Получаем уникальные источники материалов для услуги
             const sources = [...new Set(materials.map(m => m.source))];
@@ -64,10 +70,19 @@ export async function getAllServices(includeDeleted = false) {
             });
 
             // Получаем все активные заказы для услуги с именами исполнителей
+            // ИСКЛЮЧАЕМ завершённые заказы из активных
             const activeOrders = await ServiceExecution.findAll({
                 where: {
                     service_id: service.id,
-                    status: ['in_progress', 'active', 'pending_approval']
+                    status: {
+                        [Op.in]: [
+                            ORDER_STATUS.PENDING,
+                            ORDER_STATUS.IN_PROGRESS,
+                            'active',
+                            'pending_approval'
+                        ],
+                        [Op.not]: ORDER_STATUS.COMPLETED // Явно исключаем completed
+                    }
                 },
                 include: [{
                     model: Executer,
@@ -80,7 +95,10 @@ export async function getAllServices(includeDeleted = false) {
 
             // Получаем завершённые заказы для индикации "ВЫПОЛНЕН" в админке
             const completedOrders = await ServiceExecution.findAll({
-                where: { service_id: service.id, status: 'completed' },
+                where: {
+                    service_id: service.id,
+                    status: ORDER_STATUS.COMPLETED
+                },
                 include: [{
                     model: Executer,
                     as: 'Executer',
@@ -94,7 +112,7 @@ export async function getAllServices(includeDeleted = false) {
             // Build a deduplicated list of order entries combining ServiceExecution and Material.order_number
             const ordersMap = new Map();
 
-            // From ServiceExecution rows first (preserve order)
+            // From ServiceExecution rows first (preserve order) - ТОЛЬКО активные заказы
             for (const o of activeOrders) {
                 const num = o.order_number || null;
                 if (num) {
@@ -109,10 +127,18 @@ export async function getAllServices(includeDeleted = false) {
             }
 
             // Then add any order_numbers present directly on materials (fallback)
+            // НО ИСКЛЮЧАЕМ завершённые заказы из материалов
             for (const m of materials) {
                 if (m.order_number) {
                     const num = m.order_number;
-                    if (!ordersMap.has(num)) {
+
+                    // Проверяем, не является ли этот заказ завершённым
+                    const isCompletedOrder = completedOrders.some(co =>
+                        (co.order_number && String(co.order_number) === String(num))
+                    );
+
+                    // Добавляем только если заказ НЕ завершён и ещё не добавлен
+                    if (!isCompletedOrder && !ordersMap.has(num)) {
                         ordersMap.set(num, {
                             order_number: num,
                             executer_id: m.executer_id || null,

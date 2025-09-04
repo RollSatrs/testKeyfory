@@ -297,18 +297,13 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
                     });
 
                     if (updatedOldMaterial) {
-                        oldMaterialDescription = updatedOldMaterial.type_key
-                            ? `${updatedOldMaterial.type_key} - ${updatedOldMaterial.contents}`
-                            : updatedOldMaterial.contents || 'Старый материал';
-
+                        oldMaterialDescription = updatedOldMaterial.contents || 'Старый материал';
                         console.log(`📦 Старый материал для уведомления: ${oldMaterialDescription} (статус: ${updatedOldMaterial.status})`);
                     }
                 }
 
                 // Используем актуальные данные нового материала
-                const newMaterialDescription = updatedNewMaterial?.type_key
-                    ? `${updatedNewMaterial.type_key} - ${updatedNewMaterial.contents}`
-                    : updatedNewMaterial?.contents || 'Новый материал';
+                const newMaterialDescription = updatedNewMaterial?.contents || 'Новый материал';
 
                 console.log(`📦 Новый материал для уведомления: ${newMaterialDescription} (статус: ${updatedNewMaterial?.status})`);
                 console.log(`👤 Назначен исполнителю: ${updatedNewMaterial?.executer_id}, заказ: ${updatedNewMaterial?.order_number}`);
@@ -337,8 +332,8 @@ export async function processReplacementWithNewMaterial(replacementId, newMateri
             console.log(`📨 Не удалось отправить уведомление исполнителю ${replacement.Executer.telegram_id}`);
             console.log(`📋 Заказ: #${replacement.ServiceExecution.order_number}`);
             console.log(`🎯 Услуга: ${replacement.ServiceExecution.Service.name}`);
-            console.log(`❌ Старый материал: ${replacement.Material ? `${replacement.Material.type_key} - ${replacement.Material.contents}` : 'Не указан'}`);
-            console.log(`✅ Новый материал: ${newMaterial.type_key} - ${newMaterial.contents}`);
+            console.log(`❌ Старый материал: ${replacement.Material ? replacement.Material.contents : 'Не указан'}`);
+            console.log(`✅ Новый материал: ${newMaterial.contents}`);
             if (adminComment) {
                 console.log(`💬 Комментарий: ${adminComment}`);
             }
@@ -500,8 +495,12 @@ export async function replaceMaterial(oldMaterialId, newMaterialId) {
         }
 
         // Обновляем статусы материалов
+        // Старый материал помечаем как "заменен" для корректной статистики
         await Material.update(
-            { status: MATERIAL_STATUS.AVAILABLE },
+            {
+                status: MATERIAL_STATUS.REPLACED,
+                replaced_date: new Date() // Добавляем дату замены
+            },
             { where: { id: oldMaterialId } }
         );
 
@@ -510,7 +509,8 @@ export async function replaceMaterial(oldMaterialId, newMaterialId) {
                 status: MATERIAL_STATUS.USED,
                 order_number: oldMaterial.order_number,
                 executer_id: oldMaterial.executer_id,
-                executer_name: oldMaterial.executer_name
+                executer_name: oldMaterial.executer_name,
+                used_date: new Date() // Добавляем дату использования
             },
             { where: { id: newMaterialId } }
         );
@@ -519,12 +519,20 @@ export async function replaceMaterial(oldMaterialId, newMaterialId) {
         try {
             const botModule = await import('../../../bot/executerBot.js');
             if (botModule && botModule.notifyMaterialReplacement) {
-                await botModule.notifyMaterialReplacement(
-                    oldMaterial.executer_id,
-                    oldMaterial.order_number,
-                    oldMaterial.contents,
-                    newMaterial.contents
-                );
+                // Получаем информацию об исполнителе для получения telegram_id
+                const executer = await Executer.findByPk(oldMaterial.executer_id);
+                const service = await Services.findByPk(oldMaterial.service_id);
+
+                if (executer && executer.telegram_id) {
+                    await botModule.notifyMaterialReplacement({
+                        telegramId: executer.telegram_id,
+                        orderNumber: oldMaterial.order_number,
+                        serviceName: service ? service.name : 'Неизвестная услуга',
+                        oldMaterial: oldMaterial.contents,
+                        newMaterial: newMaterial.contents,
+                        adminComment: null // Можно будет добавить в будущем
+                    });
+                }
             }
         } catch (botError) {
             console.warn('Не удалось отправить уведомление в бота:', botError.message);

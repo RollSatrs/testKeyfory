@@ -353,18 +353,20 @@ executerRoute.post('/service-execution', async (req, res) => {
           }
 
           // Назначаем материал к заказу
+          const materialUseDate = new Date();
           await assignedMaterial.update({
             status: MATERIAL_STATUS.USED,
             order_number: orderNumber,
             executer_id: executerId,
             executer_name: executerName,
-            used_date: new Date(),
+            used_date: materialUseDate,
             reserved_for: null, // Очищаем резервацию
             reserved_at: null
           });
 
           const wasReserved = assignedMaterial.reserved_for ? '(зарезервированный)' : '(обычный)';
           console.log(`✅ Материал ${assignedMaterial.id} ${wasReserved} автоматически назначен к заказу ${orderNumber} для исполнителя ${executerName}`);
+          console.log(`📅 Дата использования материала: ${materialUseDate.toISOString()}`);
         } else {
           console.log(`⚠️ Нет доступных материалов для услуги ${serviceId}`);
         }
@@ -440,14 +442,17 @@ executerRoute.post('/assign-material-to-order', async (req, res) => {
     const executerName = executer ? executer.name : 'Неизвестный исполнитель';
 
     // Назначаем материал к заказу
+    const assignmentDate = new Date();
     await availableMaterial.update({
       status: MATERIAL_STATUS.USED,
       order_number: orderNumber,
       executer_id: executerId,
-      executer_name: executerName
+      executer_name: executerName,
+      used_date: assignmentDate
     });
 
     console.log(`✅ Материал ${availableMaterial.id} назначен к заказу ${orderNumber}`);
+    console.log(`📅 Дата использования при ручном назначении: ${assignmentDate.toISOString()}`);
 
     res.json({
       success: true,

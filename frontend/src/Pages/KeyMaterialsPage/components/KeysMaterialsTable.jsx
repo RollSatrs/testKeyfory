@@ -311,9 +311,24 @@ export function KeysMaterialsTable({
     let matchesStatus = true;
     if (statusFilter) {
       if (statusFilter === "available") {
-        // Старая логика для совместимости
-        matchesStatus = m.status !== "использован" && !m.order_number;
+        // Доступные материалы
+        matchesStatus =
+          (m.status === "available" ||
+            m.status === "доступен" ||
+            m.status === "ДОСТУПЕН") &&
+          !m.order_number;
+      } else if (statusFilter === "pending_replace") {
+        // На замене: включаем и pending_replace и заменен
+        matchesStatus =
+          m.status === "pending_replace" || m.status === "заменен";
+      } else if (statusFilter === "used") {
+        // Использованные материалы
+        matchesStatus =
+          m.status === "used" ||
+          m.status === "использован" ||
+          m.status === "ИСПОЛЬЗОВАН";
       } else {
+        // Прямое сравнение статуса
         matchesStatus = m.status === statusFilter;
       }
     }
@@ -348,10 +363,10 @@ export function KeysMaterialsTable({
 
   // Функция для определения реального статуса материала для отображения
   const getMaterialDisplayStatus = (material) => {
-    // Если материал имеет статус "заменен" напрямую в БД
+    // Если материал имеет статус "заменен" напрямую в БД - показываем как "На замене"
     if (material.status === "заменен") {
       return {
-        text: "Заменен",
+        text: "На замене",
         color: "orange",
         originalStatus: material.status,
       };
@@ -364,10 +379,10 @@ export function KeysMaterialsTable({
         replacement.status === "completed"
     );
 
-    // Если есть завершенная замена - показываем "Заменен"
+    // Если есть завершенная замена - показываем "На замене"
     if (hasCompletedReplacement) {
       return {
-        text: "Заменен",
+        text: "На замене",
         color: "orange",
         originalStatus: material.status,
       };
@@ -376,7 +391,11 @@ export function KeysMaterialsTable({
     // Иначе показываем обычный статус
     const materialStatus = material.status;
 
-    if (materialStatus === "used" || materialStatus === "ИСПОЛЬЗОВАН") {
+    if (
+      materialStatus === "used" ||
+      materialStatus === "ИСПОЛЬЗОВАН" ||
+      materialStatus === "использован"
+    ) {
       return {
         text: "Использован",
         color: "red",
