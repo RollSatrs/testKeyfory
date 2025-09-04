@@ -1,4 +1,4 @@
-import { Services, Material, ExecuterPricing, Executer, ServiceAccess, ServiceExecution, Admin } from "../../../database/dbTables.js";
+import { Services, Material, ExecuterPricing, Executer, ServiceAccess, ServiceExecution, Admin, ExecuterServiceStatus } from "../../../database/dbTables.js";
 import { sequelize } from "../../../database/databaseOn.js";
 import { Op } from 'sequelize';
 import { MATERIAL_STATUS, ORDER_STATUS } from '../../../constants/statusConstants.js';
@@ -152,6 +152,16 @@ export async function getAllServices(includeDeleted = false) {
 
             const active_orders_array = Array.from(ordersMap.values());
 
+            // Получаем индивидуальные статусы исполнителей
+            const executerStatuses = await ExecuterServiceStatus.findAll({
+                where: { service_id: service.id },
+                include: [{
+                    model: Executer,
+                    as: 'Executer',
+                    attributes: ['id', 'name', 'telegram_id', 'status', 'is_bot_active'] // 🔧 Добавили status и is_bot_active
+                }]
+            });
+
             result.push({
                 ...service.dataValues,
                 source: sources.join(', ') || '-',
@@ -171,6 +181,18 @@ export async function getAllServices(includeDeleted = false) {
                     telegram_id: access.Executer?.telegram_id,
                     status: access.Executer?.status,
                     has_access: access.has_access
+                })),
+                // 🔄 НОВОЕ: Индивидуальные статусы исполнителей
+                executer_statuses: executerStatuses.map(status => ({
+                    executer_id: status.executer_id,
+                    executer_name: status.Executer?.name || `ID: ${status.executer_id}`,
+                    telegram_id: status.Executer?.telegram_id,
+                    executer_status: status.Executer?.status, // 🆕 Статус самого исполнителя (active/inactive/blocked)
+                    executer_is_bot_active: status.Executer?.is_bot_active, // 🆕 Реально онлайн в боте
+                    service_status: status.status, // 🆕 Статус услуги для этого исполнителя (inactive/active/completed)
+                    total_orders: status.total_orders,
+                    created_at: status.created_at,
+                    updated_at: status.updated_at
                 }))
             });
         }
@@ -194,7 +216,7 @@ export async function getServiceById(id) {
 
 export async function addServiices(data) {
     try {
-    const { name, category, price, status, loading_method, executer_id } = data;
+    const { name, category, price, loading_method, executer_id } = data;
 
         if (!name || !category) {
             throw new Error('Name and category are required');
@@ -209,8 +231,8 @@ export async function addServiices(data) {
             }
         }
 
-        // Ensure newly created services are active by default so executers see them in the bot
-        const svcStatus = (typeof status === 'string' && status.trim() !== '') ? status : 'active';
+        // Новые услуги создаются без глобального статуса - используем индивидуальные статусы исполнителей
+        const svcStatus = 'active'; // По умолчанию услуга активна
 
         // Определяем, является ли услуга расходной (цифровой) по категории
         const digitalCategories = [
@@ -371,14 +393,21 @@ export async function permanentDeleteService(id) {
 
 export async function getServiceStats() {
     try {
-        const total = await Services.count();
-        const active = await Services.count({ where: { status: 'active' } });
-        const inactive = await Services.count({ where: { status: 'inactive' } });
+        // Получаем статистику по индивидуальным статусам исполнителей
+        const statusStats = await getServiceStatusesStats();
+
+        // Также считаем общее количество услуг
+        const totalServices = await Services.count({
+            where: { is_deleted: false }
+        });
 
         return {
-            total,
-            active,
-            inactive
+            total: totalServices,
+            active: statusStats.active || 0,
+            inactive: statusStats.inactive || 0,
+            completed: statusStats.completed || 0,
+            // Для совместимости со старым интерфейсом
+            total_connections: statusStats.total || 0
         };
     } catch (error) {
         throw new Error(`Error fetching service stats: ${error.message}`);
@@ -445,6 +474,29 @@ export async function assignExecutersToService(serviceId, executerIds) {
             } else if (executerIds.length === 0) {
                 // если список пуст — снимем прямую привязку
                 await Services.update({ executer_id: null }, { where: { id: serviceId }, transaction: t });
+            }
+
+            // 🔄 НОВОЕ: Создаем записи индивидуальных статусов для всех назначенных исполнителей
+            console.log(`📋 Создаю записи статусов для ${executerIds.length} исполнителей`);
+            for (const executerId of executerIds) {
+                await createOrUpdateExecuterServiceStatus(
+                    serviceId,
+                    executerId,
+                    'inactive',
+                    { transaction: t }
+                );
+            }
+
+            // 🗑️ НОВОЕ: Удаляем записи статусов для исполнителей, которые больше не назначены
+            if (removedExecuterIds.length > 0) {
+                console.log(`🗑️ Удаляю записи статусов для ${removedExecuterIds.length} исполнителей`);
+                await ExecuterServiceStatus.destroy({
+                    where: {
+                        service_id: serviceId,
+                        executer_id: removedExecuterIds
+                    },
+                    transaction: t
+                });
             }
 
             await t.commit();
@@ -648,5 +700,204 @@ export async function updateServicePricing(serviceId, basePrice, customPricing =
         };
     } catch (error) {
         throw new Error(`Error updating service pricing: ${error.message}`);
+    }
+}
+
+// ==================== УПРАВЛЕНИЕ СТАТУСАМИ ИСПОЛНИТЕЛЕЙ ПО УСЛУГАМ ====================
+
+/**
+ * Создает или обновляет статус исполнителя для услуги
+ * @param {number} serviceId - ID услуги
+ * @param {number} executerId - ID исполнителя
+ * @param {string} status - Статус: 'inactive', 'active', 'completed'
+ * @param {object} options - Дополнительные опции
+ */
+export async function createOrUpdateExecuterServiceStatus(serviceId, executerId, status = 'inactive', options = {}) {
+    const { transaction } = options;
+
+    try {
+        console.log(`🔄 Создаю/обновляю статус услуги ${serviceId} для исполнителя ${executerId}: ${status}`);
+
+        const [statusRecord, created] = await ExecuterServiceStatus.findOrCreate({
+            where: {
+                service_id: serviceId,
+                executer_id: executerId
+            },
+            defaults: {
+                status: status,
+                total_orders: status === 'active' || status === 'completed' ? 1 : 0,
+                created_at: new Date(),
+                updated_at: new Date()
+            },
+            transaction
+        });
+
+        // Если запись уже существует, обновляем статус
+        if (!created && statusRecord.status !== status) {
+            const updateData = {
+                status: status,
+                updated_at: new Date()
+            };
+
+            // Увеличиваем счетчик заказов при переходе в active или completed
+            if ((status === 'active' || status === 'completed') && statusRecord.status === 'inactive') {
+                updateData.total_orders = statusRecord.total_orders + 1;
+            }
+
+            await statusRecord.update(updateData, { transaction });
+            console.log(`✅ Обновлен статус услуги ${serviceId} для исполнителя ${executerId}: ${statusRecord.status} → ${status}`);
+        } else if (created) {
+            console.log(`✅ Создан новый статус услуги ${serviceId} для исполнителя ${executerId}: ${status}`);
+        }
+
+        return statusRecord;
+    } catch (error) {
+        console.error(`❌ Ошибка создания/обновления статуса услуги:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Активирует услугу для исполнителя (переводит в статус 'active')
+ * @param {number} serviceId - ID услуги
+ * @param {number} executerId - ID исполнителя
+ * @param {object} options - Дополнительные опции
+ */
+export async function activateServiceForExecuter(serviceId, executerId, options = {}) {
+    const { transaction } = options;
+
+    try {
+        console.log(`🟢 Активирую услугу ${serviceId} для исполнителя ${executerId}`);
+
+        const statusRecord = await createOrUpdateExecuterServiceStatus(
+            serviceId,
+            executerId,
+            'active',
+            { transaction }
+        );
+
+        console.log(`✅ Услуга ${serviceId} активирована для исполнителя ${executerId}`);
+        return statusRecord;
+    } catch (error) {
+        console.error(`❌ Ошибка активации услуги:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Завершает услугу для исполнителя (переводит в статус 'completed')
+ * @param {number} serviceId - ID услуги
+ * @param {number} executerId - ID исполнителя
+ * @param {object} options - Дополнительные опции
+ */
+export async function completeServiceForExecuter(serviceId, executerId, options = {}) {
+    const { transaction } = options;
+
+    try {
+        console.log(`🔵 Завершаю услугу ${serviceId} для исполнителя ${executerId}`);
+
+        const statusRecord = await createOrUpdateExecuterServiceStatus(
+            serviceId,
+            executerId,
+            'completed',
+            { transaction }
+        );
+
+        console.log(`✅ Услуга ${serviceId} завершена для исполнителя ${executerId}`);
+        return statusRecord;
+    } catch (error) {
+        console.error(`❌ Ошибка завершения услуги:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Получает статус исполнителя для услуги
+ * @param {number} serviceId - ID услуги
+ * @param {number} executerId - ID исполнителя
+ */
+export async function getExecuterServiceStatus(serviceId, executerId) {
+    try {
+        const statusRecord = await ExecuterServiceStatus.findOne({
+            where: {
+                service_id: serviceId,
+                executer_id: executerId
+            },
+            include: [
+                {
+                    model: Executer,
+                    as: 'Executer',
+                    attributes: ['id', 'name']
+                },
+                {
+                    model: Services,
+                    as: 'Service',
+                    attributes: ['id', 'name']
+                }
+            ]
+        });
+
+        return statusRecord || null;
+    } catch (error) {
+        console.error(`❌ Ошибка получения статуса услуги:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Получает все статусы по услуге
+ * @param {number} serviceId - ID услуги
+ */
+export async function getServiceExecuterStatuses(serviceId) {
+    try {
+        const statusRecords = await ExecuterServiceStatus.findAll({
+            where: { service_id: serviceId },
+            include: [
+                {
+                    model: Executer,
+                    as: 'Executer',
+                    attributes: ['id', 'name', 'telegram_id']
+                }
+            ],
+            order: [['updated_at', 'DESC']]
+        });
+
+        return statusRecords;
+    } catch (error) {
+        console.error(`❌ Ошибка получения статусов исполнителей услуги:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Получает статистику по статусам услуг
+ */
+export async function getServiceStatusesStats() {
+    try {
+        const stats = await ExecuterServiceStatus.findAll({
+            attributes: [
+                'status',
+                [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+            ],
+            group: ['status'],
+            raw: true
+        });
+
+        const result = {
+            total: 0,
+            inactive: 0,
+            active: 0,
+            completed: 0
+        };
+
+        stats.forEach(stat => {
+            result[stat.status] = parseInt(stat.count) || 0;
+            result.total += parseInt(stat.count) || 0;
+        });
+
+        return result;
+    } catch (error) {
+        console.error(`❌ Ошибка получения статистики статусов:`, error);
+        throw error;
     }
 }

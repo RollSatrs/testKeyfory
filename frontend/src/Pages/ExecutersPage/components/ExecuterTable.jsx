@@ -267,25 +267,24 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
       key: "status",
       render: (status, record) => {
         console.log(
-          `🏷️ Рендерим статус для исполнителя ${record.id}: ${status}`
+          `🏷️ Рендерим статус для исполнителя ${record.id}: status=${status}, is_bot_active=${record.is_bot_active}`
         );
-        return (
-          <Tag
-            color={
-              status === "active"
-                ? "green"
-                : status === "blocked"
-                ? "red"
-                : "orange"
-            }
-          >
-            {status === "active"
-              ? "АКТИВЕН"
-              : status === "blocked"
-              ? "ЗАБЛОКИРОВАН"
-              : "НЕАКТИВЕН"}
-          </Tag>
-        );
+
+        // Определяем статус на основе реальной активности в боте
+        let statusText, color;
+
+        if (status === "blocked") {
+          statusText = "● ЗАБЛОКИРОВАН";
+          color = "red";
+        } else if (record.is_bot_active === true) {
+          statusText = "● ОНЛАЙН";
+          color = "green";
+        } else {
+          statusText = "● ОФЛАЙН";
+          color = "orange";
+        }
+
+        return <Tag color={color}>{statusText}</Tag>;
       },
     },
     {

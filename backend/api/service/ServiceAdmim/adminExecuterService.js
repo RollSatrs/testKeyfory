@@ -1,6 +1,6 @@
 import { Executer, Order, Services, ServiceAccess, Log, Material } from "../../../database/dbTables.js";
 import { sequelize } from "../../../database/databaseOn.js";
-import { Op } from 'sequelize';
+import { Op, Sequelize } from 'sequelize';
 
 // Обновить статус исполнителя на основе активности
 export async function updateExecuterActivity(executerId) {
@@ -358,14 +358,11 @@ export async function getExecuterOrders(executerId) {
 
 export async function getExecuterByTelegramId(telegramId) {
     try {
-        // Преобразуем telegramId в число, чтобы избежать ошибки типов
-        const numericTelegramId = parseInt(telegramId);
-        if (isNaN(numericTelegramId)) {
-            throw new Error(`Invalid telegram ID: ${telegramId}`);
-        }
+        // НЕ преобразуем telegramId в число, оставляем как строку
+        const telegramIdString = String(telegramId);
 
         const executer = await Executer.findOne({
-            where: { telegram_id: numericTelegramId }
+            where: { telegram_id: telegramIdString }
         });
         return executer;
     } catch (error) {
@@ -452,16 +449,28 @@ export async function addExecuter(data) {
     }
 }
 
-export async function updateExecuter(id, data) {
+export async function updateExecuter(id, data, options = {}) {
     try {
-        console.log(`🔄 Начинаем обновление исполнителя ${id} с данными:`, data);
+        console.log(`🔄 updateExecuter: id=${id}, options=`, options);
+        console.log(`📝 updateExecuter: данные для обновления=`, data);
 
-        const executer = await Executer.findByPk(id);
-        if (!executer) {
-            throw new Error('Executer not found');
+        let executer;
+        if (options.searchBy === 'telegram_id') {
+            console.log(`🔍 Поиск исполнителя по telegram_id: ${options.telegram_id}`);
+            executer = await Executer.findOne({ where: { telegram_id: options.telegram_id } });
+            if (!executer) {
+                console.error(`❌ Исполнитель не найден по telegram_id: ${options.telegram_id}`);
+                throw new Error('Executer not found by telegram_id');
+            }
+        } else {
+            executer = await Executer.findByPk(id);
+            if (!executer) {
+                throw new Error('Executer not found');
+            }
         }
 
-        console.log(`📋 Исполнитель ${id} найден, текущий статус: ${executer.status}`);
+        console.log(`📋 Исполнитель найден: ID=${executer.id}, имя=${executer.name}`);
+        console.log(`📊 Текущие значения: is_bot_active=${executer.is_bot_active}, last_bot_activity=${executer.last_bot_activity}`);
 
         // Запоминаем старый статус для сравнения
         const oldStatus = executer.status;
@@ -469,15 +478,16 @@ export async function updateExecuter(id, data) {
 
         // Обновляем исполнителя (теперь включаем статус)
         const updatedExecuter = await executer.update(data);
-        console.log(`✅ Исполнитель ${id} обновлен, новый статус: ${updatedExecuter.status}`);
+        console.log(`✅ Обновление выполнено для исполнителя ${executer.id}`);
+        console.log(`📊 Новые значения: is_bot_active=${updatedExecuter.is_bot_active}, last_bot_activity=${updatedExecuter.last_bot_activity}`);
 
         // Проверяем, что изменения действительно сохранились
-        const verifyExecuter = await Executer.findByPk(id);
-        console.log(`🔍 Проверка сохранения: исполнитель ${id} в БД имеет статус: ${verifyExecuter.status}`);
+        const verifyExecuter = await Executer.findByPk(executer.id);
+        console.log(`🔍 Проверка в БД: is_bot_active=${verifyExecuter.is_bot_active}, last_bot_activity=${verifyExecuter.last_bot_activity}`);
 
         // Если статус изменился на "blocked", отправляем уведомление
         if (oldStatus !== 'blocked' && newStatus === 'blocked') {
-            console.log(`🚫 Исполнитель ${id} заблокирован, отправляем уведомление`);
+            console.log(`🚫 Исполнитель ${executer.id} заблокирован, отправляем уведомление`);
 
             try {
                 const fetch = (await import('node-fetch')).default;
@@ -659,5 +669,34 @@ export async function updateExecuterRating(id, newRating) {
         return updatedExecuter;
     } catch (error) {
         throw new Error(`Error updating executer rating: ${error.message}`);
+    }
+}
+
+// Получить статистику исполнителей по онлайн статусам
+export async function getExecuterOnlineStats() {
+    try {
+        const total = await Executer.count();
+        const online = await Executer.count({
+            where: { is_bot_active: true }
+        });
+        const blocked = await Executer.count({
+            where: { status: 'blocked' }
+        });
+        const offline = await Executer.count({
+            where: {
+                is_bot_active: false,
+                status: { [Op.ne]: 'blocked' }
+            }
+        });
+
+        return {
+            total,
+            online,
+            offline,
+            blocked
+        };
+    } catch (error) {
+        console.error('Error getting executer online stats:', error);
+        throw new Error(`Error getting executer online stats: ${error.message}`);
     }
 }

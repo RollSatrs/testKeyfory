@@ -1,4 +1,4 @@
-import {
+﻿import {
   FaEdit,
   FaTrash,
   FaUpload,
@@ -95,13 +95,17 @@ export function ServicesTable({
     id: null,
     name: "",
     category: "",
-    status: "",
     price: 0,
   });
 
   useEffect(() => {
     fetchServices();
     fetchExecuters();
+
+    // Логгирование для отладки автообновления статусов
+    console.log(
+      `🔄 ServicesTable: Обновление данных услуг и исполнителей (время: ${new Date().toLocaleTimeString()})`
+    );
   }, [refresh, showDeleted]);
 
   async function fetchServices() {
@@ -110,6 +114,29 @@ export function ServicesTable({
         ? "/api/admin/services/get?includeDeleted=true"
         : "/api/admin/services/get";
       const data = await apiFetch(url);
+
+      // Логгируем статусы исполнителей для отладки
+      console.log(`📋 Получены данные услуг: ${data?.length || 0} записей`);
+
+      if (Array.isArray(data)) {
+        data.forEach((service) => {
+          if (
+            service.executer_statuses &&
+            service.executer_statuses.length > 0
+          ) {
+            console.log(`🏢 Услуга "${service.name}" - статусы исполнителей:`);
+            service.executer_statuses.forEach((executerStatus) => {
+              console.log(
+                `  👤 ${executerStatus.executer_name} (${executerStatus.telegram_id}): ` +
+                  `статус исполнителя = ${executerStatus.executer_status}, ` +
+                  `онлайн в боте = ${executerStatus.executer_is_bot_active}, ` +
+                  `статус услуги = ${executerStatus.service_status}`
+              );
+            });
+          }
+        });
+      }
+
       setServices(data);
     } catch (error) {
       console.error("Ошибка загрузки услуг:", error);
@@ -163,7 +190,6 @@ export function ServicesTable({
       id: service.id,
       name: service.name,
       category: service.category,
-      status: service.status,
       price: service.price || 0,
     });
 
@@ -638,223 +664,112 @@ export function ServicesTable({
       key: "executers",
       width: 200,
       render: (_, record) => {
-        // Собираем всех исполнителей в один массив
-        const allExecuters = [];
+        // Используем новую систему индивидуального статуса для каждого исполнителя
+        const executerStatuses = record.executer_statuses || [];
 
-        // Добавляем прямо назначенного исполнителя
-        const directExecuter = record.assignedExecuter;
-        if (directExecuter) {
-          allExecuters.push({
-            id: directExecuter.id,
-            name: directExecuter.name || `ID: ${directExecuter.id}`,
-            status: directExecuter.status,
-            telegram_id: directExecuter.telegram_id,
-            source: "direct",
-          });
-        }
-
-        // Добавляем исполнителей из ServiceAccess
-        const assignedExecuters = record.assigned_executers || [];
-        assignedExecuters.forEach((executer) => {
-          // Проверяем, чтобы не добавлять дубликаты по ID
-          const isDuplicate = allExecuters.some(
-            (ex) =>
-              ex.id && executer.executer_id && ex.id === executer.executer_id
-          );
-
-          if (!isDuplicate) {
-            allExecuters.push({
-              id: executer.executer_id,
-              name: executer.executer_name || `ID: ${executer.executer_id}`,
-              status: executer.status,
-              telegram_id: executer.telegram_id,
-              source: "service_access",
-            });
-          }
-        });
-
-        // Удаляем дубликаты по имени, если ID не помогли
-        const uniqueExecuters = [];
-        const seenNames = new Set();
-
-        allExecuters.forEach((executer) => {
-          const key = executer.id || executer.name;
-          if (!seenNames.has(key)) {
-            seenNames.add(key);
-            uniqueExecuters.push(executer);
-          }
-        });
-
-        // Если никого не назначено
-        if (uniqueExecuters.length === 0) {
+        // Если нет назначенных исполнителей
+        if (executerStatuses.length === 0) {
           return <Tag color="default">Не назначены</Tag>;
         }
 
+        // Определяем эмодзи и цвета для статуса исполнителя (онлайн/офлайн/заблокирован)
+        const getExecuterStatusEmoji = (executerStatus, isBotActive) => {
+          console.log(
+            `🎯 getExecuterStatusEmoji: статус="${executerStatus}", онлайн="${isBotActive}"`
+          );
+
+          // Если заблокирован - всегда красный, независимо от активности в боте
+          if (executerStatus === "blocked") {
+            return "🔴"; // заблокирован
+          }
+
+          // Онлайн только если реально активен в боте
+          if (isBotActive === true) {
+            return "🟢"; // онлайн (реально активен в боте)
+          }
+
+          // Во всех остальных случаях - офлайн
+          return "🟠"; // офлайн
+        };
+
+        // Определяем текст и цвет для статуса услуги
+        const getServiceStatusDisplay = (serviceStatus) => {
+          switch (serviceStatus) {
+            case "inactive":
+              return { color: "orange", text: "НЕ АКТИВЕН" };
+            case "active":
+              return { color: "green", text: "АКТИВЕН" };
+            case "completed":
+              return { color: "blue", text: "ВЫПОЛНЕНА" };
+            default:
+              return { color: "default", text: "НЕИЗВЕСТНО" };
+          }
+        };
+
         // Если один исполнитель
-        if (uniqueExecuters.length === 1) {
-          const executer = uniqueExecuters[0];
+        if (executerStatuses.length === 1) {
+          const executerStatus = executerStatuses[0];
+
+          console.log(`👤 Рендерим одного исполнителя:`, {
+            executer_name: executerStatus.executer_name,
+            telegram_id: executerStatus.telegram_id,
+            executer_status: executerStatus.executer_status,
+            executer_is_bot_active: executerStatus.executer_is_bot_active,
+            service_status: executerStatus.service_status,
+          });
+
+          const executerEmoji = getExecuterStatusEmoji(
+            executerStatus.executer_status,
+            executerStatus.executer_is_bot_active
+          );
+          const serviceDisplay = getServiceStatusDisplay(
+            executerStatus.service_status
+          );
+
           return (
-            <Tag color={executer.status === "active" ? "green" : "orange"}>
-              {executer.name}
-              {executer.telegram_id && ` (${executer.telegram_id})`}
+            <Tag color={serviceDisplay.color}>
+              {executerEmoji} {executerStatus.executer_name}
+              {executerStatus.telegram_id &&
+                `(${executerStatus.telegram_id})`}{" "}
+              - {serviceDisplay.text}
             </Tag>
           );
         }
 
-        // Если несколько исполнителей - показываем всех
+        // Если несколько исполнителей - показываем каждого со своим статусом
         return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-            {uniqueExecuters.map((executer, index) => (
-              <Tag
-                key={executer.id || index}
-                color={executer.status === "active" ? "green" : "orange"}
-                style={{ margin: "2px" }}
-              >
-                {executer.name}
-                {executer.telegram_id && ` (${executer.telegram_id})`}
-              </Tag>
-            ))}
-          </div>
-        );
-      },
-    },
-    {
-      title: "Статус",
-      dataIndex: "status",
-      key: "status",
-      render: (status, record) => {
-        // Простое отображение статуса услуги
-        const getStatusText = (statusValue) => {
-          switch (statusValue) {
-            case "active":
-              return "АКТИВНА";
-            case "inactive":
-              return "НЕАКТИВНА";
-            default:
-              return statusValue || "—";
-          }
-        };
+            {executerStatuses.map((executerStatus, index) => {
+              console.log(`👥 Рендерим исполнителя ${index + 1}:`, {
+                executer_name: executerStatus.executer_name,
+                telegram_id: executerStatus.telegram_id,
+                executer_status: executerStatus.executer_status,
+                executer_is_bot_active: executerStatus.executer_is_bot_active,
+                service_status: executerStatus.service_status,
+              });
 
-        const getStatusColor = (statusValue) => {
-          switch (statusValue) {
-            case "active":
-              return "green";
-            case "inactive":
-              return "orange";
-            default:
-              return "default";
-          }
-        };
-
-        // Для tooltip показываем информацию об исполнителях и заказах
-        const activeOrders = Array.isArray(record.active_orders)
-          ? record.active_orders
-          : [];
-        const assigned = Array.isArray(record.assigned_executers)
-          ? record.assigned_executers
-          : [];
-        const completedOrders = Array.isArray(record.completed_orders)
-          ? record.completed_orders
-          : [];
-
-        const tooltipLines = [];
-
-        if (assigned.length > 0) {
-          tooltipLines.push("Назначенные исполнители:");
-          assigned.forEach((exec) => {
-            const execName = exec.executer_name || `ID: ${exec.executer_id}`;
-            const execStatus =
-              exec.status === "active" ? "Активен" : "Неактивен";
-            tooltipLines.push(`• ${execName} (${execStatus})`);
-          });
-        }
-
-        if (activeOrders.length > 0) {
-          tooltipLines.push("Активные заказы:");
-          activeOrders.forEach((order) => {
-            const orderNum = order.order_number || order.order || order.id;
-
-            // Пытаемся получить имя исполнителя из разных возможных источников
-            let execName = "Не указан";
-
-            // Сначала проверяем прямые поля
-            if (order.executer_name) {
-              execName = order.executer_name;
-            } else if (order.executer && order.executer.name) {
-              execName = order.executer.name;
-            } else if (order.executer_id) {
-              // Пытаемся найти исполнителя по ID в списке назначенных
-              const foundExecuter = assigned.find(
-                (exec) =>
-                  exec.executer_id === order.executer_id ||
-                  exec.Executer?.id === order.executer_id
+              const executerEmoji = getExecuterStatusEmoji(
+                executerStatus.executer_status,
+                executerStatus.executer_is_bot_active
               );
-              if (foundExecuter) {
-                execName =
-                  foundExecuter.executer_name ||
-                  foundExecuter.Executer?.name ||
-                  `ID: ${order.executer_id}`;
-              } else {
-                execName = `ID: ${order.executer_id}`;
-              }
-            }
-
-            tooltipLines.push(`• Заказ #${orderNum} - ${execName}`);
-          });
-        }
-
-        if (completedOrders.length > 0) {
-          tooltipLines.push("Завершенные заказы:");
-          completedOrders.forEach((order) => {
-            const orderNum = order.order_number || order.order || order.id;
-
-            // Пытаемся получить имя исполнителя из разных возможных источников
-            let execName = "Не указан";
-
-            // Сначала проверяем прямые поля
-            if (order.executer_name) {
-              execName = order.executer_name;
-            } else if (order.executer && order.executer.name) {
-              execName = order.executer.name;
-            } else if (order.executer_id) {
-              // Пытаемся найти исполнителя по ID в списке назначенных
-              const foundExecuter = assigned.find(
-                (exec) =>
-                  exec.executer_id === order.executer_id ||
-                  exec.Executer?.id === order.executer_id
+              const serviceDisplay = getServiceStatusDisplay(
+                executerStatus.service_status
               );
-              if (foundExecuter) {
-                execName =
-                  foundExecuter.executer_name ||
-                  foundExecuter.Executer?.name ||
-                  `ID: ${order.executer_id}`;
-              } else {
-                execName = `ID: ${order.executer_id}`;
-              }
-            }
 
-            tooltipLines.push(`• Заказ #${orderNum} - ${execName} (Выполнен)`);
-          });
-        }
-
-        if (tooltipLines.length === 0) {
-          tooltipLines.push(
-            "Нет назначенных исполнителей или активных заказов"
-          );
-        }
-
-        const tooltipContent = (
-          <div style={{ maxWidth: 320, whiteSpace: "pre-line" }}>
-            {tooltipLines.map((line, idx) => (
-              <div key={idx}>{line}</div>
-            ))}
+              return (
+                <Tag
+                  key={executerStatus.executer_id || index}
+                  color={serviceDisplay.color}
+                  style={{ margin: "2px" }}
+                >
+                  {executerEmoji} {executerStatus.executer_name}
+                  {executerStatus.telegram_id &&
+                    `(${executerStatus.telegram_id})`}{" "}
+                  - {serviceDisplay.text}
+                </Tag>
+              );
+            })}
           </div>
-        );
-
-        return (
-          <Tooltip title={tooltipContent} placement="topLeft">
-            <Tag color={getStatusColor(status)}>{getStatusText(status)}</Tag>
-          </Tooltip>
         );
       },
     },
@@ -1213,17 +1128,6 @@ export function ServicesTable({
           placeholder="Цена услуги (₽)"
           style={{ marginBottom: 16 }}
         />
-        <Select
-          name="status"
-          value={form.status || undefined}
-          onChange={(value) => handleChange("status", value)}
-          placeholder="Выберите статус"
-          className="w-full"
-          style={{ marginBottom: 16 }}
-        >
-          <Select.Option value="active">АКТИВНА</Select.Option>
-          <Select.Option value="inactive">НЕАКТИВНА</Select.Option>
-        </Select>
         <Select
           mode="multiple"
           value={selectedExecuters}

@@ -2986,4 +2986,78 @@ router.post('/notify-material-edited', async (req, res) => {
   }
 });
 
+// PUT /api/executers-bot/update-activity - Публичный endpoint для обновления активности бота (без авторизации)
+router.put('/update-activity', async (req, res) => {
+  try {
+    const { telegram_id, is_bot_active, last_bot_activity } = req.body;
+
+    console.log(`📥 [BOT] Получен запрос на обновление активности:`, {
+      telegram_id,
+      is_bot_active,
+      last_bot_activity
+    });
+
+    if (!telegram_id) {
+      console.error('❌ [BOT] telegram_id не предоставлен');
+      return res.status(400).json({ error: 'telegram_id is required' });
+    }
+
+    const { updateExecuter } = await import('../../service/ServiceAdmim/adminExecuterService.js');
+
+    const updateData = {
+      is_bot_active: is_bot_active !== undefined ? is_bot_active : true,
+      last_bot_activity: last_bot_activity || new Date()
+    };
+
+    console.log(`🔄 [BOT] Обновляем данные:`, updateData);
+    console.log(`🔍 [BOT] Поиск по telegram_id: ${telegram_id}`);
+
+    // Найти исполнителя по telegram_id и обновить его активность
+    const result = await updateExecuter(null, updateData, {
+      searchBy: 'telegram_id',
+      telegram_id
+    });
+
+    console.log(`✅ [BOT] Результат обновления:`, result);
+    console.log(`🟢 [BOT] Обновлена активность исполнителя ${telegram_id}: ${is_bot_active ? 'онлайн' : 'офлайн'}`);
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('❌ [BOT] Ошибка обновления активности исполнителя в боте:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// GET /api/executers-bot/all-executers - Получить всех исполнителей для автоматической проверки активности
+router.get('/all-executers', async (req, res) => {
+  try {
+    console.log('🔍 Запрос всех исполнителей для проверки активности...');
+
+    const { getAllExecuters } = await import('../../service/ServiceAdmim/adminExecuterService.js');
+    const executers = await getAllExecuters();
+
+    console.log(`👥 Найдено исполнителей: ${executers ? executers.length : 0}`);
+
+    if (!executers || !Array.isArray(executers)) {
+      return res.json([]);
+    }
+
+    // Возвращаем только необходимые поля для проверки активности
+    const executersForActivity = executers.map(executer => ({
+      id: executer.id,
+      name: executer.name,
+      telegram_id: executer.telegram_id,
+      status: executer.status,
+      is_bot_active: executer.is_bot_active,
+      last_bot_activity: executer.last_bot_activity
+    }));
+
+    res.json(executersForActivity);
+
+  } catch (error) {
+    console.error('❌ Ошибка получения всех исполнителей:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

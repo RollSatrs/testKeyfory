@@ -126,6 +126,8 @@ export const Executer = sequelize.define('Executer', {
   access_rights: { type: DataTypes.JSON }, // права доступа к услугам
   active_services_limit: { type: DataTypes.INTEGER, allowNull: true }, // лимит активных услуг (null = без лимита)
   last_activity: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }, // последняя активность
+  last_bot_activity: { type: DataTypes.DATE, allowNull: true }, // 🆕 время последней активности в боте
+  is_bot_active: { type: DataTypes.BOOLEAN, defaultValue: false }, // 🆕 активен ли исполнитель в боте в данный момент
   create_date_executer: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'executers', timestamps: false });
 
@@ -361,6 +363,48 @@ ExecuterActiveServices.belongsTo(Executer, {foreignKey: 'executer_id', as: 'Exec
 
 Services.hasMany(ExecuterActiveServices, {foreignKey: 'service_id', as: 'ActiveExecuters'});
 ExecuterActiveServices.belongsTo(Services, {foreignKey: 'service_id', as: 'Service'});
+
+// Статусы исполнителей по услугам (индивидуальное отслеживание)
+export const ExecuterServiceStatus = sequelize.define('ExecuterServiceStatus', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  executer_id: {
+    type: DataTypes.INTEGER,
+    references: { model: 'executers', key: 'id' },
+    allowNull: false
+  },
+  service_id: {
+    type: DataTypes.INTEGER,
+    references: { model: 'services', key: 'id' },
+    allowNull: false
+  },
+  status: {
+    type: DataTypes.ENUM('inactive', 'active', 'completed'),
+    defaultValue: 'inactive',
+    allowNull: false
+  },
+  total_orders: { type: DataTypes.INTEGER, defaultValue: 0 },
+  created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, {
+  tableName: 'executer_service_status',
+  timestamps: false,
+  indexes: [
+    {
+      unique: true,
+      fields: ['executer_id', 'service_id']
+    },
+    {
+      fields: ['status']
+    }
+  ]
+});
+
+// Связи для ExecuterServiceStatus
+Executer.hasMany(ExecuterServiceStatus, {foreignKey: 'executer_id', as: 'ServiceStatuses'});
+ExecuterServiceStatus.belongsTo(Executer, {foreignKey: 'executer_id', as: 'Executer'});
+
+Services.hasMany(ExecuterServiceStatus, {foreignKey: 'service_id', as: 'ExecuterStatuses'});
+ExecuterServiceStatus.belongsTo(Services, {foreignKey: 'service_id', as: 'Service'});
 
 // Системные настройки
 export const SystemConfig = sequelize.define('SystemConfig', {

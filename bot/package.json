@@ -8,7 +8,8 @@
     "start": "node executerBot.js",
     "dev": "nodemon executerBot.js",
     "prod": "NODE_ENV=production node executerBot.js",
-    "admin": "node index.js"
+    "admin": "node index.js",
+    "auto-offline": "node autoOfflineChecker.js"
   },
   "keywords": [
     "telegram-bot",

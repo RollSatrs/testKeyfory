@@ -12,7 +12,8 @@ import {
     getExecuterRights,
     updateExecuterRights,
     getAllLogs,
-    getExecuterOrders
+    getExecuterOrders,
+    getExecuterOnlineStats
 } from '../../service/ServiceAdmim/adminExecuterService.js';
 
 export const executerRoute = express.Router();
@@ -178,5 +179,56 @@ executerRoute.delete('/delete/:id', async (req, res) => {
     } catch (error) {
         console.error('Error deleting executer:', error);
         res.status(400).json({ error: error.message });
+    }
+});
+
+// PUT /executers/bot-activity - обновление активности исполнителя в боте
+executerRoute.put('/bot-activity', async (req, res) => {
+    try {
+        const { telegram_id, is_bot_active, last_bot_activity } = req.body;
+
+        console.log(`📥 Получен запрос на обновление активности:`, {
+            telegram_id,
+            is_bot_active,
+            last_bot_activity
+        });
+
+        if (!telegram_id) {
+            console.error('❌ telegram_id не предоставлен');
+            return res.status(400).json({ error: 'telegram_id is required' });
+        }
+
+        const updateData = {
+            is_bot_active: is_bot_active !== undefined ? is_bot_active : true,
+            last_bot_activity: last_bot_activity || new Date()
+        };
+
+        console.log(`🔄 Обновляем данные:`, updateData);
+        console.log(`🔍 Поиск по telegram_id: ${telegram_id}`);
+
+        // Найти исполнителя по telegram_id и обновить его активность
+        const result = await updateExecuter(null, updateData, {
+            searchBy: 'telegram_id',
+            telegram_id
+        });
+
+        console.log(`✅ Результат обновления:`, result);
+        console.log(`🟢 Обновлена активность исполнителя ${telegram_id}: ${is_bot_active ? 'онлайн' : 'офлайн'}`);
+
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Ошибка обновления активности исполнителя в боте:', error);
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// GET /executers/online-stats - получить статистику исполнителей по онлайн статусам
+executerRoute.get('/online-stats', async (req, res) => {
+    try {
+        const stats = await getExecuterOnlineStats();
+        res.json(stats);
+    } catch (error) {
+        console.error('Error getting executer online stats:', error);
+        res.status(500).json({ error: error.message });
     }
 });

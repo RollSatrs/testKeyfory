@@ -65,6 +65,47 @@ console.log('🤖 Инициализация бота для исполните�
 
 // ==================== УТИЛИТЫ ====================
 
+// Функция для обновления активности исполнителя в боте
+const updateExecuterBotActivity = async (telegramId, isActive = true) => {
+  try {
+    console.log(`🔄 Попытка обновить активность исполнителя ${telegramId} на ${isActive ? 'онлайн' : 'офлайн'}...`);
+
+    const requestData = {
+      telegram_id: String(telegramId), // Преобразуем в строку для совместимости с БД
+      is_bot_active: isActive,
+      last_bot_activity: new Date().toISOString()
+    };
+
+    console.log(`📤 Отправляем данные:`, requestData);
+
+    const response = await fetchAsAxios('PUT', `/api/executers-bot/update-activity`, requestData);
+
+    console.log(`� Ответ API: status=${response.status}, ok=${response.ok}`);
+    console.log(`📥 Данные ответа:`, response.data);
+
+    if (response.ok) {
+      console.log(`✅ Успешно обновлена активность исполнителя ${telegramId}: ${isActive ? 'онлайн' : 'офлайн'}`);
+    } else {
+      console.error(`❌ API вернул ошибку: ${response.status} - ${response.statusText}`);
+    }
+
+    return response;
+  } catch (error) {
+    console.error(`❌ Ошибка обновления активности исполнителя ${telegramId}:`, error);
+    return null;
+  }
+};
+
+// Функция для установки исполнителя в офлайн при отключении
+const setExecuterOffline = async (telegramId) => {
+  return await updateExecuterBotActivity(telegramId, false);
+};
+
+// Функция для установки исполнителя в онлайн при активности
+const setExecuterOnline = async (telegramId) => {
+  return await updateExecuterBotActivity(telegramId, true);
+};
+
 // Перевод статуса исполнения на удобочитаемый русский текст
 const translateStatus = (status) => {
   if (!status && status !== '') return 'Неизвестно';
@@ -397,6 +438,9 @@ bot.start(async (ctx) => {
       };
 
       ctx.session = userSessions[ctx.chat.id];
+
+      // 🆕 Устанавливаем исполнителя в онлайн при старте бота
+      await setExecuterOnline(telegramId);
 
       // Получаем актуальный общий заработок через нашу универсальную функцию
       let balanceToShow = 0;
@@ -1260,6 +1304,9 @@ bot.on('text', async (ctx) => {
   if (!session?.authenticated) {
     return ctx.reply('❌ Необходима авторизации. Нажмите /start');
   }
+
+  // 🆕 Обновляем онлайн статус при любой активности
+  await setExecuterOnline(telegramId);
 
   // Проверка блокировки
   const isBlocked = await checkExecuterBlocked(telegramId);
@@ -3084,5 +3131,80 @@ export const notifyMaterialEdited = async (telegramId, executerName, materialInf
     return false;
   }
 };
+
+// ==================== АВТОМАТИЧЕСКАЯ ПРОВЕРКА НЕАКТИВНЫХ ИСПОЛНИТЕЛЕЙ ====================
+
+// Функция для автоматического перевода неактивных исполнителей в офлайн
+const checkAndUpdateInactiveExecuters = async () => {
+  try {
+    console.log(`🔍 [${new Date().toLocaleTimeString()}] Проверяем неактивных исполнителей...`);
+
+    // Получаем всех исполнителей через публичный API бота
+    const response = await fetchAsAxios('GET', '/api/executers-bot/all-executers');
+
+    console.log(`🔍 API Response status: ${response.status}, ok: ${response.ok}`);
+    console.log(`🔍 API Response data:`, response.data ? 'данные есть' : 'данные отсутствуют');
+
+    if (!response.ok || !response.data) {
+      console.error(`❌ Не удалось получить список исполнителей. Status: ${response.status}, StatusText: ${response.statusText}`);
+      console.error(`❌ Response data:`, response.data);
+      return;
+    }    const executors = response.data;
+
+    console.log(`👥 Найдено ${executors.length} исполнителей`);
+
+    // Время бездействия после которого исполнитель считается офлайн (5 минут)
+    const OFFLINE_TIMEOUT = 5 * 60 * 1000; // 5 минут в миллисекундах
+    const now = new Date();
+
+    let updatedCount = 0;
+
+    for (const executor of executors) {
+      // Если исполнитель помечен как онлайн, но долго не было активности
+      if (executor.is_bot_active === true && executor.last_bot_activity) {
+        const lastActivity = new Date(executor.last_bot_activity);
+        const timeSinceActivity = now - lastActivity;
+
+        if (timeSinceActivity > OFFLINE_TIMEOUT) {
+          console.log(`⏰ Исполнитель ${executor.name} (${executor.telegram_id}) неактивен ${Math.round(timeSinceActivity / 60000)} минут, переводим в офлайн`);
+
+          // Обновляем статус на офлайн через публичный API бота
+          const updateResponse = await fetchAsAxios('PUT', '/api/executers-bot/update-activity', {
+            telegram_id: String(executor.telegram_id), // Преобразуем в строку
+            is_bot_active: false,
+            last_bot_activity: new Date().toISOString()
+          });
+
+          if (updateResponse.ok) {
+            console.log(`✅ Исполнитель ${executor.name} переведен в офлайн`);
+            updatedCount++;
+          } else {
+            console.error(`❌ Ошибка обновления статуса исполнителя ${executor.name}:`, updateResponse.status);
+          }
+        }
+      }
+    }
+
+    if (updatedCount > 0) {
+      console.log(`📊 Обновлено статусов: ${updatedCount}`);
+    } else {
+      console.log(`✅ Все статусы актуальны`);
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка проверки неактивных исполнителей:', error.message);
+  }
+};
+
+// Запускаем автоматическую проверку каждые 2 минуты
+const AUTO_CHECK_INTERVAL = 2 * 60 * 1000; // 2 минуты
+
+console.log(`🚀 Запускаем автоматическую проверку неактивных исполнителей каждые ${AUTO_CHECK_INTERVAL / 60000} минут`);
+
+// Первоначальная проверка через 30 секунд после запуска
+setTimeout(checkAndUpdateInactiveExecuters, 30000);
+
+// Регулярные проверки
+setInterval(checkAndUpdateInactiveExecuters, AUTO_CHECK_INTERVAL);
 
 console.log('🤖 Бот для исполнителей готов к работе!');

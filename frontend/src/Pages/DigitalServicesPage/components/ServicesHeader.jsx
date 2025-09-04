@@ -67,7 +67,6 @@ export function ServicesHeader({ onAdd, children }) {
     name: "",
     category: "",
     price: "",
-    status: "",
     loadingMethod: "manual",
     executer_id: "",
     customPricing: [], // [{executer_id, executer_name, custom_price}]
@@ -181,7 +180,6 @@ export function ServicesHeader({ onAdd, children }) {
           name: form.name,
           category: form.category,
           price: parseFloat(form.price) || 0,
-          status: form.status,
           loading_method: form.loadingMethod,
           executer_id: form.executer_id || null,
         }),
@@ -268,7 +266,6 @@ export function ServicesHeader({ onAdd, children }) {
       name: "",
       category: "",
       price: "",
-      status: "",
       loadingMethod: "manual",
       executer_id: "",
       customPricing: [],
@@ -380,17 +377,6 @@ export function ServicesHeader({ onAdd, children }) {
                 </div>
               </div>
             )}
-            <Select
-              name="status"
-              value={form.status || undefined}
-              onChange={(value) => handleChange("status", value)}
-              placeholder="Выберите статус"
-              className="w-full"
-              required
-            >
-              <Select.Option value="active">АКТИВНА</Select.Option>
-              <Select.Option value="inactive">НЕАКТИВНА</Select.Option>
-            </Select>
 
             {/* Исполнители: множественный выбор + быстрые кнопки */}
             <div className="mt-2">
@@ -550,7 +536,6 @@ export function ServicesHeader({ onAdd, children }) {
                 disabled={
                   !form.name ||
                   !form.category ||
-                  !form.status ||
                   (form.loadingMethod === "manual" && !manualInput.trim()) ||
                   (form.loadingMethod === "file" && fileList.length === 0) ||
                   (form.loadingMethod === "api" && !apiConfig.url.trim())

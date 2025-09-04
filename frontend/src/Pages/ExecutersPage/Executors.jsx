@@ -2,7 +2,7 @@ import { ExecutorsHeader } from "./components/ExecutorsHeader";
 import { ExecutorsStats } from "./components/ExecutorsStats";
 import { ExecuterTable } from "./components/ExecuterTable";
 import { ExecutorsSearch } from "./components/ExecutorsSearch";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 export function Executors() {
   const [refresh, setRefresh] = useState(false);
@@ -11,6 +11,21 @@ export function Executors() {
   const [serviceFilter, setServiceFilter] = useState("");
   const [materialFilter, setMaterialFilter] = useState("");
   const [executors, setExecutors] = useState([]);
+
+  // Автообновление в реальном времени каждые 30 секунд
+  useEffect(() => {
+    console.log("🔄 Запускаем автообновление данных исполнителей...");
+
+    const interval = setInterval(() => {
+      console.log("⏱️ Автообновление данных исполнителей...");
+      setRefresh((r) => !r);
+    }, 15000); // 15 секунд
+
+    return () => {
+      console.log("🛑 Останавливаем автообновление данных исполнителей");
+      clearInterval(interval);
+    };
+  }, []);
 
   const filteredExecutors = useMemo(() => {
     return executors.filter((e) => {

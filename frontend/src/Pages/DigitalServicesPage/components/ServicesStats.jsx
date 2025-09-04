@@ -9,6 +9,8 @@ export function ServicesStats({ refresh }) {
     total: 0,
     active: 0,
     inactive: 0,
+    completed: 0,
+    total_connections: 0,
   });
 
   async function fetchStats() {
@@ -18,6 +20,8 @@ export function ServicesStats({ refresh }) {
         total: data.total || 0,
         active: data.active || 0,
         inactive: data.inactive || 0,
+        completed: data.completed || 0,
+        total_connections: data.total_connections || 0,
       });
     } catch (e) {
       console.error("Ошибка при получении статистики:", e);
@@ -28,7 +32,7 @@ export function ServicesStats({ refresh }) {
   }, [refresh]); // теперь статистика обновляется при изменении refresh
 
   return (
-    <div className="grid grid-cols-3 gap-4 mb-6">
+    <div className="grid grid-cols-4 gap-4 mb-6">
       <div className="bg-white rounded-xl shadow p-6 flex flex-col">
         <div className="flex items-center gap-2 text-gray-500 mb-2">
           <MdListAlt size={20} />
@@ -39,17 +43,26 @@ export function ServicesStats({ refresh }) {
       <div className="bg-white rounded-xl shadow p-6 flex flex-col">
         <div className="flex items-center gap-2 text-gray-500 mb-2">
           <MdListAlt size={20} />
-          Активных услуг
+          Неактивных связей
+        </div>
+        <div className="text-2xl font-bold text-yellow-500">
+          {stats.inactive}
+        </div>
+      </div>
+      <div className="bg-white rounded-xl shadow p-6 flex flex-col">
+        <div className="flex items-center gap-2 text-gray-500 mb-2">
+          <MdListAlt size={20} />
+          Активных связей
         </div>
         <div className="text-2xl font-bold text-green-600">{stats.active}</div>
       </div>
       <div className="bg-white rounded-xl shadow p-6 flex flex-col">
         <div className="flex items-center gap-2 text-gray-500 mb-2">
           <MdListAlt size={20} />
-          Неактивных услуг
+          Выполненных связей
         </div>
-        <div className="text-2xl font-bold text-yellow-500">
-          {stats.inactive}
+        <div className="text-2xl font-bold text-blue-600">
+          {stats.completed}
         </div>
       </div>
     </div>
