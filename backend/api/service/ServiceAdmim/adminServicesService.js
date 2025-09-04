@@ -162,6 +162,15 @@ export async function getAllServices(includeDeleted = false) {
                 }]
             });
 
+            // 🆕 ЛОГИРОВАНИЕ СТАТУСОВ ИСПОЛНИТЕЛЕЙ
+            if (executerStatuses.length > 0) {
+                console.log(`\n📋 Услуга "${service.name}" - статусы исполнителей:`);
+                executerStatuses.forEach(status => {
+                    console.log(`  👤 ${status.Executer?.name} (${status.Executer?.telegram_id}): ` +
+                               `исполнитель=${status.Executer?.status}, онлайн=${status.Executer?.is_bot_active}, услуга=${status.status}`);
+                });
+            }
+
             result.push({
                 ...service.dataValues,
                 source: sources.join(', ') || '-',

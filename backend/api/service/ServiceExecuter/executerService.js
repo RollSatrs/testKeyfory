@@ -1,4 +1,4 @@
-import { Executer, Services, Material, Log, ServiceAccess, MaterialReplacement, ServiceExecution } from '../../../database/dbTables.js';
+import { Executer, Services, Material, Log, ServiceAccess, MaterialReplacement, ServiceExecution, sequelize } from '../../../database/dbTables.js';
 import { Op } from 'sequelize';
 import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
 
@@ -426,6 +426,64 @@ export const createServiceExecution = async (serviceId, executerId, orderNumber)
     //   }
     // );
 
+    // 🆕 ОБНОВЛЯЕМ СТАТУС УСЛУГИ ДЛЯ ИСПОЛНИТЕЛЯ НА "АКТИВЕН"
+    console.log(`\n🚀 === ОБНОВЛЕНИЕ СТАТУСА УСЛУГИ ===`);
+    console.log(`👤 Исполнитель ID: ${executerId}`);
+    console.log(`🎯 Услуга ID: ${serviceId}`);
+    console.log(`📊 Устанавливаем статус: "active"`);
+
+    try {
+      const { ExecuterServiceStatus } = await import('../../../database/dbTables.js');
+
+      // Сначала найдем или создадим запись
+      const [statusRecord, created] = await ExecuterServiceStatus.findOrCreate({
+        where: {
+          executer_id: executerId,
+          service_id: serviceId
+        },
+        defaults: {
+          status: 'active',
+          total_orders: 1,
+          created_at: new Date(),
+          updated_at: new Date()
+        }
+      });
+
+      // Если запись уже существовала, обновляем ее
+      if (!created) {
+        await statusRecord.update({
+          status: 'active',
+          total_orders: (statusRecord.total_orders || 0) + 1,
+          updated_at: new Date()
+        });
+      }
+
+      console.log(`✅ Результат обновления ExecuterServiceStatus:`, {
+        created: created,
+        id: statusRecord.id,
+        status: statusRecord.status,
+        total_orders: statusRecord.total_orders
+      });
+      console.log(`🎯 Статус услуги ${serviceId} для исполнителя ${executerId} ДОЛЖЕН БЫТЬ ОБНОВЛЕН на 'active'`);
+
+      // 🔍 ПРОВЕРЯЕМ, ЧТО ЗАПИСЬ ДЕЙСТВИТЕЛЬНО ОБНОВИЛАСЬ
+      const checkStatus = await ExecuterServiceStatus.findOne({
+        where: { executer_id: executerId, service_id: serviceId }
+      });
+
+      console.log(`🔍 Проверка записи в ExecuterServiceStatus:`, {
+        found: !!checkStatus,
+        executer_id: checkStatus?.executer_id,
+        service_id: checkStatus?.service_id,
+        status: checkStatus?.status,  // 👈 ЭТО ГЛАВНОЕ!
+        total_orders: checkStatus?.total_orders,
+        updated_at: checkStatus?.updated_at
+      });
+    } catch (statusError) {
+      console.error('❌ Ошибка обновления статуса услуги:', statusError);
+      // Не прерываем выполнение, заказ все равно создается
+    }
+
     // Записываем лог
     await createExecuterLog(
       executerId,
@@ -545,6 +603,53 @@ export const completeServiceExecution = async (executionId, executerId) => {
       completed_at: new Date(),
       price: individualPrice
     });
+
+    // 🆕 ОБНОВЛЯЕМ СТАТУС УСЛУГИ ДЛЯ ИСПОЛНИТЕЛЯ НА "ВЫПОЛНЕНА"
+    console.log(`\n🚀 === ОБНОВЛЕНИЕ СТАТУСА УСЛУГИ НА ЗАВЕРШЕННЫЙ ===`);
+    console.log(`👤 Исполнитель ID: ${executerId}`);
+    console.log(`🎯 Услуга ID: ${execution.service_id}`);
+    console.log(`📊 Устанавливаем статус: "completed"`);
+
+    try {
+      const { ExecuterServiceStatus } = await import('../../../database/dbTables.js');
+
+      // Обновляем статус на 'completed'
+      const [affectedRows] = await ExecuterServiceStatus.update(
+        {
+          status: 'completed',
+          updated_at: new Date()
+        },
+        {
+          where: {
+            executer_id: executerId,
+            service_id: execution.service_id
+          }
+        }
+      );
+
+      console.log(`✅ Обновление статуса на 'completed':`, {
+        affectedRows,
+        executer_id: executerId,
+        service_id: execution.service_id
+      });
+
+      // 🔍 ПРОВЕРЯЕМ РЕЗУЛЬТАТ ОБНОВЛЕНИЯ
+      const checkStatus = await ExecuterServiceStatus.findOne({
+        where: { executer_id: executerId, service_id: execution.service_id }
+      });
+
+      console.log(`🔍 Проверка записи в ExecuterServiceStatus после завершения:`, {
+        found: !!checkStatus,
+        executer_id: checkStatus?.executer_id,
+        service_id: checkStatus?.service_id,
+        status: checkStatus?.status,  // 👈 ЭТО ГЛАВНОЕ!
+        total_orders: checkStatus?.total_orders,
+        updated_at: checkStatus?.updated_at
+      });
+    } catch (statusError) {
+      console.error('❌ Ошибка обновления статуса услуги на completed:', statusError);
+      // Не прерываем выполнение, заказ все равно завершается
+    }
 
     // Обновляем баланс исполнителя — добавляем цену выполнения
     try {

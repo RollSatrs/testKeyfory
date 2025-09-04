@@ -2561,12 +2561,20 @@ const clearWebhooks = async () => {
 };
 
 // Запуск бота с предварительной очисткой
-const startBot = async () => {
+// Запуск бота с повторными попытками и улучшенной обработкой конфликтов
+const startBot = async (retryCount = 0) => {
+  const maxRetries = 3;
+  const retryDelay = 5000; // 5 секунд между попытками
+
   try {
+    console.log(`🚀 Попытка запуска бота #${retryCount + 1}...`);
+
     await clearWebhooks();
 
-    // Небольшая задержка для предотвращения конфликтов
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Увеличиваем задержку для предотвращения конфликтов
+    const delay = retryCount > 0 ? retryDelay * retryCount : 1000;
+    console.log(`⏳ Ожидание ${delay}мс перед запуском...`);
+    await new Promise(resolve => setTimeout(resolve, delay));
 
     await bot.launch();
 
@@ -2574,13 +2582,19 @@ const startBot = async () => {
     console.log(`🔗 API URL: ${API_BASE_URL}`);
     console.log(`🎯 Режим: ${process.env.NODE_ENV || 'development'}`);
   } catch (error) {
-    console.error('❌ Ошибка запуска бота:', error.message);
+    console.error(`❌ Ошибка запуска бота (попытка ${retryCount + 1}/${maxRetries + 1}):`, error.message);
 
     if (error.message.includes('409') && error.message.includes('Conflict')) {
-      console.error('🔄 Конфликт: другой экземпляр бота уже запущен');
-      console.error('💡 Завершите все процессы Node.js: taskkill /F /IM node.exe');
-      console.error('💡 Подождите 30 секунд и попробуйте снова');
-      process.exit(1);
+      if (retryCount < maxRetries) {
+        console.warn(`🔄 Конфликт detected, повторная попытка через ${retryDelay}мс...`);
+        setTimeout(() => startBot(retryCount + 1), retryDelay);
+        return;
+      } else {
+        console.error('� Исчерпаны все попытки запуска');
+        console.error('💡 Попробуйте: taskkill /F /IM node.exe');
+        console.error('💡 И перезапустите приложение через 30 секунд');
+        process.exit(1);
+      }
     }
 
     if (error.message.includes('401')) {
@@ -2599,17 +2613,46 @@ const startBot = async () => {
 // Запускаем бот
 startBot();
 
-// Graceful shutdown
-process.once('SIGINT', () => {
-  console.log('\n🛑 Получен сигнал SIGINT, завершаем работу бота...');
-  bot.stop('SIGINT');
-  process.exit(0);
-});
+// Переменная для отслеживания интервалов
+let intervalId = null;
 
-process.once('SIGTERM', () => {
-  console.log('\n🛑 Получен сигнал SIGTERM, завершаем работу бота...');
-  bot.stop('SIGTERM');
-  process.exit(0);
+// Graceful shutdown с тайм-аутом
+const gracefulShutdown = async (signal) => {
+  console.log(`\n🛑 Получен сигнал ${signal}, корректно завершаем работу бота...`);
+
+  try {
+    // Очищаем все интервалы
+    if (intervalId) {
+      clearInterval(intervalId);
+      console.log('⏰ Остановлена автоматическая проверка исполнителей');
+    }
+
+    // Останавливаем бота с тайм-аутом
+    console.log('🤖 Останавливаем бота...');
+    await Promise.race([
+      bot.stop(signal),
+      new Promise(resolve => setTimeout(resolve, 3000)) // Тайм-аут 3 секунды
+    ]);
+
+    console.log('✅ Бот корректно завершен');
+  } catch (error) {
+    console.error('❌ Ошибка при завершении бота:', error.message);
+  }
+
+  // Принудительное завершение через 5 секунд
+  setTimeout(() => {
+    console.log('⚠️ Принудительное завершение процесса');
+    process.exit(0);
+  }, 5000);
+};
+
+process.once('SIGINT', () => gracefulShutdown('SIGINT'));
+process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Обработка ошибки nodemon restart
+process.on('SIGUSR2', () => {
+  console.log('\n� Получен сигнал SIGUSR2 (nodemon restart), корректно завершаем бота...');
+  gracefulShutdown('SIGUSR2');
 });
 
 // Функция для отправки уведомления о замене материала
@@ -3204,7 +3247,7 @@ console.log(`🚀 Запускаем автоматическую проверк
 // Первоначальная проверка через 30 секунд после запуска
 setTimeout(checkAndUpdateInactiveExecuters, 30000);
 
-// Регулярные проверки
-setInterval(checkAndUpdateInactiveExecuters, AUTO_CHECK_INTERVAL);
+// Регулярные проверки - сохраняем ID интервала
+intervalId = setInterval(checkAndUpdateInactiveExecuters, AUTO_CHECK_INTERVAL);
 
 console.log('🤖 Бот для исполнителей готов к работе!');

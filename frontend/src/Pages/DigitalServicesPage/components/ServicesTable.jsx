@@ -667,8 +667,17 @@ export function ServicesTable({
         // Используем новую систему индивидуального статуса для каждого исполнителя
         const executerStatuses = record.executer_statuses || [];
 
+        // 🆕 ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ВХОДЯЩИХ ДАННЫХ
+        console.log(`\n🔍 === РЕНДЕР КОЛОНКИ ИСПОЛНИТЕЛИ ===`);
+        console.log(`📋 Услуга: "${record.name}" (ID: ${record.id})`);
+        console.log(`👥 Количество исполнителей: ${executerStatuses.length}`);
+        console.log(`📊 Полные данные executerStatuses:`, executerStatuses);
+
         // Если нет назначенных исполнителей
         if (executerStatuses.length === 0) {
+          console.log(
+            `❌ Нет назначенных исполнителей для услуги "${record.name}"`
+          );
           return <Tag color="default">Не назначены</Tag>;
         }
 
@@ -694,14 +703,24 @@ export function ServicesTable({
 
         // Определяем текст и цвет для статуса услуги
         const getServiceStatusDisplay = (serviceStatus) => {
+          console.log(
+            `🎯 getServiceStatusDisplay: получен статус услуги = "${serviceStatus}"`
+          );
+
           switch (serviceStatus) {
             case "inactive":
+              console.log(`📊 Статус услуги: inactive → НЕ АКТИВЕН (orange)`);
               return { color: "orange", text: "НЕ АКТИВЕН" };
             case "active":
+              console.log(`📊 Статус услуги: active → АКТИВЕН (green)`);
               return { color: "green", text: "АКТИВЕН" };
             case "completed":
+              console.log(`📊 Статус услуги: completed → ВЫПОЛНЕНА (blue)`);
               return { color: "blue", text: "ВЫПОЛНЕНА" };
             default:
+              console.log(
+                `📊 Статус услуги: unknown/undefined (${serviceStatus}) → НЕИЗВЕСТНО (default)`
+              );
               return { color: "default", text: "НЕИЗВЕСТНО" };
           }
         };

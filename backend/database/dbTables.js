@@ -415,3 +415,6 @@ export const SystemConfig = sequelize.define('SystemConfig', {
   created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { tableName: 'system_config', timestamps: false });
+
+// Экспортируем sequelize для использования в других модулях
+export { sequelize };

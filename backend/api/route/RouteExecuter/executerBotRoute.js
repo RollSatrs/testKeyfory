@@ -1,6 +1,6 @@
 import express from 'express';
 import { Op } from 'sequelize';
-import { Services, Material, ServiceAccess, Executer, ServiceExecution, MaterialReplacement, ExecuterPricing, Order } from '../../../database/dbTables.js';
+import { Services, Material, ServiceAccess, Executer, ServiceExecution, MaterialReplacement, ExecuterPricing, Order, ExecuterServiceStatus } from '../../../database/dbTables.js';
 import { sequelize } from '../../../database/databaseOn.js';
 import { updateExecuterActivity } from '../../service/ServiceExecuter/executerService.js';
 import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
@@ -1033,6 +1033,17 @@ const createServiceExecutionHandler = async (req, res) => {
         created_at: new Date()
       }, { transaction: t });
 
+      // 🆕 ОБНОВЛЯЕМ СТАТУС УСЛУГИ ДЛЯ ИСПОЛНИТЕЛЯ НА "АКТИВЕН"
+      await ExecuterServiceStatus.upsert({
+        executer_id: executer_id,
+        service_id: service_id,
+        status: 'active',
+        total_orders: sequelize.literal('total_orders + 1'),
+        updated_at: new Date()
+      }, { transaction: t });
+
+      console.log(`🔄 Статус услуги ${service_id} для исполнителя ${executer_id} обновлен на "active"`);
+
       // Попробуем найти доступный материал для этой услуги и пометить его использованным
       const availableMaterial = await Material.findOne({
         where: {
@@ -1063,6 +1074,37 @@ const createServiceExecutionHandler = async (req, res) => {
         // Сохраняем содержимое материала в выполнении
         await serviceExecution.update({ material_contents: availableMaterial.contents }, { transaction: t });
       }
+
+      // 🆕 Обновляем статус услуги для исполнителя на "active" при создании заказа
+      console.log(`\n🚀 === ОБНОВЛЕНИЕ СТАТУСА УСЛУГИ ===`);
+      console.log(`👤 Исполнитель ID: ${executer_id}`);
+      console.log(`🎯 Услуга ID: ${service_id}`);
+      console.log(`📊 Устанавливаем статус: "active"`);
+
+      const upsertResult = await ExecuterServiceStatus.upsert({
+        executer_id: executer_id,
+        service_id: service_id,
+        status: 'active',
+        total_orders: sequelize.literal('COALESCE(total_orders, 0) + 1'),
+        updated_at: new Date()
+      }, { transaction: t });
+
+      console.log(`✅ Результат upsert:`, upsertResult);
+      console.log(`🎯 Статус услуги ${service_id} для исполнителя ${executer_id} ДОЛЖЕН БЫТЬ ОБНОВЛЕН на 'active'`);
+
+      // 🔍 ПРОВЕРЯЕМ, ЧТО ЗАПИСЬ ДЕЙСТВИТЕЛЬНО ОБНОВИЛАСЬ
+      const checkStatus = await ExecuterServiceStatus.findOne({
+        where: { executer_id: executer_id, service_id: service_id }
+      }, { transaction: t });
+
+      console.log(`🔍 Проверка записи в ExecuterServiceStatus:`, {
+        found: !!checkStatus,
+        executer_id: checkStatus?.executer_id,
+        service_id: checkStatus?.service_id,
+        status: checkStatus?.status,  // 👈 ЭТО ГЛАВНОЕ!
+        total_orders: checkStatus?.total_orders,
+        updated_at: checkStatus?.updated_at
+      });
 
       await t.commit();
 
@@ -1454,6 +1496,27 @@ router.post('/bot-cancel-order', async (req, res) => {
       cancel_reason: reason
     });
 
+    // 🆕 ПРОВЕРЯЕМ И ОБНОВЛЯЕМ СТАТУС УСЛУГИ ПРИ ОТМЕНЕ
+    // Если у исполнителя больше нет активных заказов по этой услуге, переводим статус в "inactive"
+    const remainingActiveOrders = await ServiceExecution.count({
+      where: {
+        executer_id: executer.id,
+        service_id: execution.service_id,
+        status: 'in_progress'
+      }
+    });
+
+    if (remainingActiveOrders === 0) {
+      await ExecuterServiceStatus.upsert({
+        executer_id: executer.id,
+        service_id: execution.service_id,
+        status: 'inactive',
+        updated_at: new Date()
+      });
+
+      console.log(`🔄 Статус услуги ${execution.service_id} для исполнителя ${executer.id} обновлен на "inactive" (нет активных заказов)`);
+    }
+
     console.log(`✅ Заказ ${orderNumber} отменен через бота`);
 
     res.json({
@@ -1654,6 +1717,16 @@ router.post('/bot-complete-order', async (req, res) => {
       }, { transaction: t });
 
       console.log(`💰 Создана запись о заработке: ${finalPrice}₽ для исполнителя ${executer.id} за услугу ${execution.service_id} (order_id: ${orderId})`);
+
+      // 🆕 ОБНОВЛЯЕМ СТАТУС УСЛУГИ ДЛЯ ИСПОЛНИТЕЛЯ НА "ВЫПОЛНЕНА"
+      await ExecuterServiceStatus.upsert({
+        executer_id: executer.id,
+        service_id: execution.service_id,
+        status: 'completed',
+        updated_at: new Date()
+      }, { transaction: t });
+
+      console.log(`🔄 Статус услуги ${execution.service_id} для исполнителя ${executer.id} обновлен на "completed"`);
 
       await t.commit();
 

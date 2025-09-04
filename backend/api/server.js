@@ -77,6 +77,41 @@ app.get('/', (req, res) => {
   res.send('👋 Сервер работает!');
 });
 
+// Временный роут для тестирования создания заказа
+app.post('/test-create-order', async (req, res) => {
+  try {
+    console.log('\n🧪 === ТЕСТОВОЕ СОЗДАНИЕ ЗАКАЗА ===');
+
+    const orderData = {
+      serviceId: '244',
+      executerId: 44,
+      orderNumber: '58',
+      autoAssignMaterial: true
+    };
+
+    console.log('📊 Данные заказа:', orderData);
+
+    const { createServiceExecution } = await import('../service/ServiceExecuter/executerService.js');
+
+    const execution = await createServiceExecution(orderData.serviceId, orderData.executerId, orderData.orderNumber);
+
+    console.log('✅ Заказ создан:', execution.id);
+
+    res.json({
+      success: true,
+      executionId: execution.id,
+      message: 'Тестовый заказ создан успешно'
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка тестового создания заказа:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
 // Функция запуска сервера с инициализацией БД
 const startServer = async () => {
   try {
