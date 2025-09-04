@@ -213,6 +213,12 @@ const isExecuterBlocked = async (telegramId) => {
 // Мы повторяем логику из `ServicesTable.jsx` чтобы бот фильтровал услуги так же, как админская таблица.
 const isServiceCompletedForExecuter = (s, executerId = null, executerName = null) => {
   try {
+    // 🆕 НОВЫЙ ПОДХОД: проверяем executionStatus напрямую из API
+    if (s.executionStatus === 'completed' || s.lastExecution?.status === 'completed') {
+      console.log(`DEBUG_BOT_SERVICES: Service ${s.id} (${s.name}) marked as completed via executionStatus`);
+      return true;
+    }
+
     // Нормализатор исполнителя — аналогичный фронтенду
     const normalizeExecutor = (obj, fallbackPrefix = '') => {
       if (!obj) return { key: null, name: '—' };
@@ -567,7 +573,8 @@ const showMyServices = async (ctx) => {
       console.log('DEBUG_BOT_SERVICES: /services response raw:', JSON.stringify(response.data, null, 2));
     }
 
-    // Исключаем услуги с активными заказами - показываем только те, по которым НЕТ активных заказов
+    // В "Моих услугах" показываем услуги, по которым МОЖНО создать новый заказ
+    // Исключаем только услуги с АКТИВНЫМИ заказами (не завершенными!)
     const visibleServices = [];
     for (const s of (Array.isArray(services) ? services : [])) {
       try {
@@ -575,11 +582,12 @@ const showMyServices = async (ctx) => {
 
         if (DEBUG_BOT_SERVICES) {
           console.log(
-            `DEBUG_SERVICES: id=${s.id} name="${s.name}" hasActiveOrder=${hasActiveOrder}`
+            `DEBUG_SERVICES: id=${s.id} name="${s.name}" hasActiveOrder=${hasActiveOrder} executionStatus=${s.executionStatus || 'none'}`
           );
         }
 
-        // Показываем только услуги БЕЗ активных заказов
+        // В "Моих услугах" показываем услуги БЕЗ активных заказов
+        // Завершенные услуги МОЖНО показывать - по ним можно создать новый заказ
         if (!hasActiveOrder) {
           visibleServices.push(s);
         }
@@ -587,6 +595,11 @@ const showMyServices = async (ctx) => {
         console.log('DEBUG_SERVICES: error evaluating service', s && s.id, err.message);
         visibleServices.push(s);
       }
+    }
+
+    if (DEBUG_BOT_SERVICES) {
+      console.log(`DEBUG_SERVICES: Total services: ${services.length}`);
+      console.log(`DEBUG_SERVICES: Visible services (excluding active orders): ${visibleServices.length}`);
     }
 
     if (!Array.isArray(visibleServices) || visibleServices.length === 0) {
@@ -945,7 +958,7 @@ const showCompletedServices = async (ctx) => {
   }
 };
 
-// Показать только выполненные услуги (без отмененных)
+// Показать только ЗАВЕРШЕННЫЕ ЗАКАЗЫ (не услуги!) - это история выполненных работ
 const showCompletedOrders = async (ctx) => {
   try {
     const session = userSessions[ctx.chat.id];
@@ -1411,33 +1424,60 @@ bot.on('text', async (ctx) => {
   }
 
   // Обработка кнопок главного меню
+  // Очищаем все состояния ожидания при переходах по меню
+  const clearWaitingStates = (chatId) => {
+    delete waitingStates.orderNumber[chatId];
+    delete waitingStates.cancellationReason[chatId];
+    delete waitingStates.replacementReason[chatId];
+  };
+
   switch (text) {
     case '🛠️ Мои услуги':
+      clearWaitingStates(chatId);
       await showMyServices(ctx);
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Мои услуги"');
       break;
 
     case '📋 Активные услуги':
+      clearWaitingStates(chatId);
       await showActiveServices(ctx);
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Активные услуги"');
       break;
 
     case '📊 Статистика':
+      clearWaitingStates(chatId);
       await showStatistics(ctx);
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Статистика"');
       break;
 
     case '📚 История заказов':
+      clearWaitingStates(chatId);
       await showCompletedServices(ctx);
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "История заказов"');
       break;
 
     case '✅ Выполненные услуги':
+      clearWaitingStates(chatId);
       await showCompletedOrders(ctx);
       await logActivity(session.executerId, 'menu_navigation', 'Переход к разделу "Выполненные услуги"');
       break;
 
     default:
+      // Проверяем, не вводит ли пользователь номер заказа без выбора услуги
+      if (/^\d+$/.test(text.trim())) {
+        return ctx.reply(
+          '❌ *Для создания заказа сначала выберите услугу!*\n\n' +
+          '1️⃣ Перейдите в "🛠️ Мои услуги"\n' +
+          '2️⃣ Выберите нужную услугу\n' +
+          '3️⃣ Введите номер заказа\n\n' +
+          '_Номера заказов вводятся только после выбора услуги._',
+          {
+            parse_mode: 'Markdown',
+            ...getMainMenu()
+          }
+        );
+      }
+
       ctx.reply(
         '❓ Неизвестная команда.\n\n' +
         'Используйте кнопки меню для навигации.',
@@ -1455,6 +1495,23 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
     const chatId = ctx.chat.id;
     const session = userSessions[chatId];
     const waitingData = waitingStates.orderNumber[chatId];
+
+    // Дополнительная проверка состояния
+    if (!waitingData || !waitingData.serviceId) {
+      console.warn(`⚠️ Некорректное состояние ожидания для пользователя ${chatId}`);
+
+      // Очищаем некорректное состояние
+      delete waitingStates.orderNumber[chatId];
+
+      return ctx.reply(
+        '❌ *Ошибка состояния!*\n\n' +
+        'Для создания заказа сначала выберите услугу в разделе "🛠️ Мои услуги".',
+        {
+          parse_mode: 'Markdown',
+          ...getMainMenu()
+        }
+      );
+    }
 
     // Валидация номера заказа
     if (!/^\d+$/.test(orderNumber)) {
@@ -1576,11 +1633,18 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
 
       // Кнопки убраны - исполнитель может продолжить работу через главное меню
     } else {
+      // Очищаем состояние ожидания при неуспешном ответе от API
+      delete waitingStates.orderNumber[chatId];
+
       ctx.reply(`❌ Ошибка создания заказа: ${response.data.message}`);
     }
 
   } catch (error) {
     console.error('❌ Ошибка создания заказа:', error);
+
+    // 🚨 КРИТИЧНО: Очищаем состояние ожидания при любой ошибке
+    delete waitingStates.orderNumber[chatId];
+
     if (error.response?.data?.message) {
       ctx.reply(`❌ ${error.response.data.message}`);
     } else {
@@ -2805,8 +2869,26 @@ export const notifyServiceAssigned = async (telegramId, executerName, services, 
         if (service.category) {
           message += ` (${service.category})`;
         }
-        if (service.price) {
+
+        // Показываем индивидуальную цену исполнителя с указанием базовой цены при различии
+        if (service.individualPrice !== null && service.individualPrice !== undefined) {
+          if (service.standardPrice !== null && service.standardPrice !== undefined &&
+              service.standardPrice !== service.individualPrice) {
+            // Если индивидуальная цена отличается от стандартной
+            message += ` — ${service.individualPrice}₽ (базовая: ${service.standardPrice}₽)`;
+          } else {
+            // Если индивидуальная цена равна стандартной или стандартной нет
+            message += ` — ${service.individualPrice}₽`;
+          }
+        } else if (service.standardPrice !== null && service.standardPrice !== undefined) {
+          // Если есть только стандартная цена
+          message += ` — ${service.standardPrice}₽`;
+        } else if (service.price !== null && service.price !== undefined) {
+          // Fallback на обычное поле price
           message += ` — ${service.price}₽`;
+        } else {
+          // Если цена не указана
+          message += ` — цена не указана`;
         }
         message += '\n';
       });

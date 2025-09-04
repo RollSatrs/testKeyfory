@@ -570,7 +570,9 @@ export async function assignExecutersToService(serviceId, executerIds) {
                                 id: service.id,
                                 name: service.name,
                                 category: service.category,
-                                price: individualPrice
+                                standardPrice: service.price,
+                                individualPrice: individualPrice,
+                                price: individualPrice // для обратной совместимости
                             };
 
                             const notificationResponse = await fetch(`${API_BASE_URL}/api/executers-bot/notify-service-assigned`, {
