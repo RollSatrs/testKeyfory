@@ -275,7 +275,7 @@ router.get('/order-materials/:orderNumber', async (req, res) => {
         });
       }
 
-      // Если назначенных материалов нет, показываем доступные (для обратной совместимости)
+      // Если назначенных материалов нет, ищем доступные и автоматически назначаем их
       const availableMaterials = await Material.findAll({
         where: {
           service_id: execution.service_id,
@@ -284,22 +284,59 @@ router.get('/order-materials/:orderNumber', async (req, res) => {
         },
         attributes: ['id', 'contents', 'status', 'type_key', 'service_id'],
         order: [['added_date', 'ASC']],  // Тот же порядок, что в автоназначении
-        limit: 10 // Ограничиваем количество для производительности
+        limit: 1 // Берем только один материал для автоназначения
       });
 
       console.log(`📦 Найдено доступных материалов для услуги ${execution.service_id}: ${availableMaterials.length}`);
+
+      // Если есть доступные материалы, автоматически назначаем первый на заказ
+      if (availableMaterials.length > 0) {
+        const materialToAssign = availableMaterials[0];
+
+        try {
+          // Автоматически назначаем материал на заказ
+          await Material.update({
+            status: MATERIAL_STATUS.USED,
+            order_number: orderNumber,
+            used_date: new Date(),
+            executer_id: executer.id
+          }, {
+            where: {
+              id: materialToAssign.id,
+              status: MATERIAL_STATUS.AVAILABLE // Убеждаемся, что материал еще доступен
+            }
+          });
+
+          console.log(`✅ Автоматически назначен материал ${materialToAssign.id} на заказ ${orderNumber}`);
+
+          // Обновляем статус материала и возвращаем его
+          materialToAssign.status = MATERIAL_STATUS.USED;
+          materialToAssign.order_number = orderNumber;
+          materialToAssign.executer_id = executer.id;
+
+          return res.json({
+            success: true,
+            data: [materialToAssign]
+          });
+
+        } catch (assignError) {
+          console.error(`❌ Ошибка при автоназначении материала:`, assignError);
+          // Если ошибка при назначении, показываем как доступные
+        }
+      }
 
       // Логируем материалы перед отправкой
       availableMaterials.forEach(material => {
         console.log(`📦 Available Material: ${material.contents} (Status: ${material.status})`);
       });
 
+      // Если нет доступных материалов для автоназначения, возвращаем пустой ответ
       const response = {
         success: true,
-        data: availableMaterials
+        data: [] // Пустой массив, если нет материалов
       };
 
-      console.log(`📤 Отправляем доступные материалы:`, response);
+      console.log(`📤 Отправляем пустой ответ - нет доступных материалов:`, response);
 
       res.json(response);
     } else {

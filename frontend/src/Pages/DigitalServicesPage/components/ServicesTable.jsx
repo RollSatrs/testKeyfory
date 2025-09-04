@@ -1397,12 +1397,22 @@ export function ServicesTable({
                     used: "red",
                     pending_replace: "orange",
                     replaced: "gray",
+                    // Русские статусы
+                    доступен: "green",
+                    использован: "red",
+                    "на замене": "orange",
+                    заменен: "gray",
                   };
                   const statusTexts = {
                     available: "Доступен",
                     used: "Использован",
                     pending_replace: "На замене",
                     replaced: "Использован",
+                    // Русские статусы - оставляем как есть
+                    доступен: "Доступен",
+                    использован: "Использован",
+                    "на замене": "На замене",
+                    заменен: "Заменен",
                   };
                   return (
                     <Tag color={statusColors[status] || "default"}>
@@ -1441,10 +1451,14 @@ export function ServicesTable({
                     }
                   );
 
+                  // Показываем дату использования для всех статусов кроме "доступен"
                   if (
                     record.status === "used" ||
                     record.status === "replaced" ||
-                    record.status === "pending_replace"
+                    record.status === "pending_replace" ||
+                    record.status === "использован" ||
+                    record.status === "заменен" ||
+                    record.status === "на замене"
                   ) {
                     return date
                       ? new Date(date).toLocaleString("ru-RU", {
@@ -1474,7 +1488,12 @@ export function ServicesTable({
                     }
                   );
 
-                  if (record.status === "pending_replace") {
+                  // Показываем дату для статусов "pending_replace", "заменен" и "на замене"
+                  if (
+                    record.status === "pending_replace" ||
+                    record.status === "заменен" ||
+                    record.status === "на замене"
+                  ) {
                     return date
                       ? new Date(date).toLocaleString("ru-RU", {
                           year: "numeric",

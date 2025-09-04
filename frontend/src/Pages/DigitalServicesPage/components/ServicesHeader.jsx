@@ -162,6 +162,18 @@ export function ServicesHeader({ onAdd, children }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Проверяем, что есть материалы для добавления
+    const hasMaterials =
+      (form.loadingMethod === "manual" && manualInput.trim()) ||
+      (form.loadingMethod === "file" && fileList.length > 0) ||
+      (form.loadingMethod === "api" && apiConfig.url.trim());
+
+    if (!hasMaterials) {
+      message.error("Необходимо добавить материалы для услуги!");
+      return;
+    }
+
     try {
       const serviceData = await apiFetch("/api/admin/services/add", {
         method: "POST",
@@ -336,19 +348,23 @@ export function ServicesHeader({ onAdd, children }) {
               name="loadingMethod"
               value={form.loadingMethod || undefined}
               onChange={(value) => handleChange("loadingMethod", value)}
-              placeholder="Способ загрузки ключей"
+              placeholder="Способ загрузки ключей *"
               className="w-full"
+              required
             >
               <Select.Option value="manual">Ручная загрузка</Select.Option>
               <Select.Option value="file">Загрузка из файла</Select.Option>
               <Select.Option value="api">Через API</Select.Option>
             </Select>
+            <div className="text-xs text-red-600 font-medium">
+              * Обязательно добавьте материалы для услуги
+            </div>
 
             {/* Поле для ручного ввода материалов */}
             {form.loadingMethod === "manual" && (
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700">
-                  Материалы (каждый с новой строки):
+                  Материалы (каждый с новой строки) *:
                 </label>
                 <TextArea
                   placeholder="Введите материалы, каждый с новой строки:&#10;material1&#10;material2&#10;material3"
@@ -356,10 +372,11 @@ export function ServicesHeader({ onAdd, children }) {
                   onChange={(e) => setManualInput(e.target.value)}
                   rows={4}
                   className="w-full"
+                  required
                 />
-                <div className="text-xs text-gray-500 mt-1">
-                  Каждая строка = один материал. Пустые строки будут
-                  игнорироваться.
+                <div className="text-xs text-red-600 font-medium mt-1">
+                  * Обязательно: каждая строка = один материал. Пустые строки
+                  будут игнорироваться.
                 </div>
               </div>
             )}
@@ -530,12 +547,24 @@ export function ServicesHeader({ onAdd, children }) {
               <Button
                 type="primary"
                 htmlType="submit"
+                disabled={
+                  !form.name ||
+                  !form.category ||
+                  !form.status ||
+                  (form.loadingMethod === "manual" && !manualInput.trim()) ||
+                  (form.loadingMethod === "file" && fileList.length === 0) ||
+                  (form.loadingMethod === "api" && !apiConfig.url.trim())
+                }
                 style={{
                   background: "linear-gradient(to right, #3b82f6, #06b6d4)",
                   border: "none",
                 }}
               >
-                Сохранить
+                {(form.loadingMethod === "manual" && !manualInput.trim()) ||
+                (form.loadingMethod === "file" && fileList.length === 0) ||
+                (form.loadingMethod === "api" && !apiConfig.url.trim())
+                  ? "Добавьте материалы"
+                  : "Сохранить"}
               </Button>
             </div>
           </form>
@@ -576,7 +605,7 @@ export function ServicesHeader({ onAdd, children }) {
         {loadingModalType === "file" && (
           <div>
             <p className="mb-4">
-              Выберите файл с материалами (.txt, .csv, .xlsx):
+              Выберите файл с материалами (.txt, .csv, .xlsx) *:
             </p>
             <Upload.Dragger
               fileList={fileList}
@@ -605,23 +634,38 @@ export function ServicesHeader({ onAdd, children }) {
                 </p>
               </div>
             )}
+            {fileList.length === 0 && (
+              <div className="mt-3 p-2 bg-red-50 rounded">
+                <p className="text-red-700 text-sm">
+                  ⚠️ Файл с материалами обязателен для создания услуги
+                </p>
+              </div>
+            )}
           </div>
         )}
 
         {loadingModalType === "api" && (
           <div className="space-y-4">
             <p className="mb-4">
-              Настройте параметры API для загрузки материалов:
+              Настройте параметры API для загрузки материалов *:
             </p>
             <div>
-              <label className="block text-sm font-medium mb-1">URL API:</label>
+              <label className="block text-sm font-medium mb-1">
+                URL API *:
+              </label>
               <Input
                 placeholder="https://api.example.com/materials"
                 value={apiConfig.url}
                 onChange={(e) =>
                   setApiConfig({ ...apiConfig, url: e.target.value })
                 }
+                required
               />
+              {!apiConfig.url.trim() && (
+                <div className="text-xs text-red-600 mt-1">
+                  * URL API обязателен для создания услуги
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Метод:</label>
