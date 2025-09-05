@@ -314,7 +314,7 @@ adminRoute.get('/replacement-settings', authMiddleware, async (req, res) => {
   try {
     const services = await Services.findAll({
       where: { is_deleted: false },
-      attributes: ['id', 'name', 'replacement_type'],
+      attributes: ['id', 'name', 'category', 'replacement_type'],
       order: [['name', 'ASC']]
     });
 
