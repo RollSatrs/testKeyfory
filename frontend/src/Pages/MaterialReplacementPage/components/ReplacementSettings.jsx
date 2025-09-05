@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Table, 
-  Button, 
-  Modal, 
-  message, 
-  Tag, 
-  Space, 
-  Card, 
-  Select, 
-  Input, 
-  Row, 
-  Col 
+import {
+  Table,
+  Button,
+  Modal,
+  message,
+  Tag,
+  Space,
+  Card,
+  Select,
+  Input,
+  Row,
+  Col,
 } from "antd";
 import {
   SettingOutlined,
@@ -255,7 +255,8 @@ const ReplacementSettings = () => {
             size="small"
             style={{
               textAlign: "center",
-              backgroundColor: filters.replacementType === null ? "#e6f7ff" : "#f0f9ff",
+              backgroundColor:
+                filters.replacementType === null ? "#e6f7ff" : "#f0f9ff",
               cursor: "pointer",
               border:
                 filters.replacementType === null
@@ -369,7 +370,9 @@ const ReplacementSettings = () => {
                 placeholder="Все типы"
                 style={{ width: "100%" }}
                 value={filters.replacementType}
-                onChange={(value) => handleFilterChange("replacementType", value)}
+                onChange={(value) =>
+                  handleFilterChange("replacementType", value)
+                }
                 allowClear
                 size="small"
               >
@@ -395,7 +398,9 @@ const ReplacementSettings = () => {
                 placeholder="Все категории"
                 style={{ width: "100%" }}
                 value={filters.category || undefined}
-                onChange={(value) => handleFilterChange("category", value || "")}
+                onChange={(value) =>
+                  handleFilterChange("category", value || "")
+                }
                 allowClear
                 size="small"
                 showSearch
