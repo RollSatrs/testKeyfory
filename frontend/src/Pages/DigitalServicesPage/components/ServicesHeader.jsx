@@ -159,9 +159,7 @@ export function ServicesHeader({ onAdd, children }) {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
+  const handleSubmit = async () => {
     // Проверяем, что есть материалы для добавления
     const hasMaterials =
       (form.loadingMethod === "manual" && manualInput.trim()) ||
@@ -301,271 +299,284 @@ export function ServicesHeader({ onAdd, children }) {
           {children}
         </div>
       </div>
-      {showModal && (
-        <div className="h-full fixed inset-0 flex items-center justify-center z-50 bg-opacity-40 backdrop-blur-sm transition-all overflow-auto py-8">
-          <form
-            className="bg-gradient-to-br from-white via-gray-50 to-blue-50 p-8 rounded-2xl shadow-2xl flex flex-col gap-6 min-w-[340px] animate-fade-in max-h-[80vh] overflow-y-auto"
-            onSubmit={handleSubmit}
-            style={{ boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.37)" }}
+      {/* Модальное окно для добавления услуги */}
+      <Modal
+        title="Добавить услугу"
+        open={showModal}
+        onCancel={() => setShowModal(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setShowModal(false)}>
+            Отмена
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            onClick={handleSubmit}
+            disabled={
+              !form.name ||
+              !form.category ||
+              (form.loadingMethod === "manual" && !manualInput.trim()) ||
+              (form.loadingMethod === "file" && fileList.length === 0) ||
+              (form.loadingMethod === "api" && !apiConfig.url.trim())
+            }
+            style={{
+              background: "linear-gradient(to right, #3b82f6, #06b6d4)",
+              border: "none",
+            }}
           >
-            <h2 className="text-2xl font-bold mb-2 text-blue-700 text-center">
-              Добавить услугу
-            </h2>
-            <Input
-              name="name"
-              value={form.name}
-              onChange={(e) => handleChange("name", e.target.value)}
-              placeholder="Название услуги"
-              required
-            />
-            <Select
-              name="category"
-              value={form.category || undefined} // важно!
-              onChange={(value) => handleChange("category", value)}
-              placeholder="Выберите категорию"
-              className="w-full"
-              required
-            >
-              {categories.map((cat) => (
-                <Select.Option key={cat} value={cat}>
-                  {cat}
-                </Select.Option>
-              ))}
-            </Select>
-            <Input
-              name="price"
-              type="number"
-              min={0}
-              step={0.01}
-              value={form.price}
-              onChange={(e) => handleChange("price", e.target.value)}
-              placeholder="Цена услуги (₽)"
-            />
-            <Select
-              name="loadingMethod"
-              value={form.loadingMethod || undefined}
-              onChange={(value) => handleChange("loadingMethod", value)}
-              placeholder="Способ загрузки ключей *"
-              className="w-full"
-              required
-            >
-              <Select.Option value="manual">Ручная загрузка</Select.Option>
-              <Select.Option value="file">Загрузка из файла</Select.Option>
-              <Select.Option value="api">Через API</Select.Option>
-            </Select>
-            <div className="text-xs text-red-600 font-medium">
-              * Обязательно добавьте материалы для услуги
-            </div>
+            {(form.loadingMethod === "manual" && !manualInput.trim()) ||
+            (form.loadingMethod === "file" && fileList.length === 0) ||
+            (form.loadingMethod === "api" && !apiConfig.url.trim())
+              ? "Добавьте материалы"
+              : "Сохранить"}
+          </Button>,
+        ]}
+        width={600}
+        className="add-service-modal"
+        destroyOnClose
+      >
+        <div className="flex flex-col gap-6">
+          <Input
+            name="name"
+            value={form.name}
+            onChange={(e) => handleChange("name", e.target.value)}
+            placeholder="Название услуги"
+            required
+          />
+          <Select
+            name="category"
+            value={form.category || undefined} // важно!
+            onChange={(value) => handleChange("category", value)}
+            placeholder="Выберите категорию"
+            className="w-full"
+            required
+          >
+            {categories.map((cat) => (
+              <Select.Option key={cat} value={cat}>
+                {cat}
+              </Select.Option>
+            ))}
+          </Select>
+          <Input
+            name="price"
+            type="number"
+            min={0}
+            step={0.01}
+            value={form.price}
+            onChange={(e) => handleChange("price", e.target.value)}
+            placeholder="Цена услуги (₽)"
+          />
+          <Select
+            name="loadingMethod"
+            value={form.loadingMethod || undefined}
+            onChange={(value) => handleChange("loadingMethod", value)}
+            placeholder="Способ загрузки ключей *"
+            className="w-full"
+            required
+          >
+            <Select.Option value="manual">Ручная загрузка</Select.Option>
+            <Select.Option value="file">Загрузка из файла</Select.Option>
+            <Select.Option value="api">Через API</Select.Option>
+          </Select>
+          <div className="text-xs text-red-600 font-medium">
+            * Обязательно добавьте материалы для услуги
+          </div>
 
-            {/* Поле для ручного ввода материалов */}
-            {form.loadingMethod === "manual" && (
-              <div>
-                <label className="block text-sm font-medium mb-2 text-gray-700">
-                  Материалы (каждый с новой строки) *:
-                </label>
-                <TextArea
-                  placeholder="Введите материалы, каждый с новой строки:&#10;material1&#10;material2&#10;material3"
-                  value={manualInput}
-                  onChange={(e) => setManualInput(e.target.value)}
-                  rows={4}
-                  className="w-full"
-                  required
-                />
-                <div className="text-xs text-red-600 font-medium mt-1">
-                  * Обязательно: каждая строка = один материал. Пустые строки
-                  будут игнорироваться.
-                </div>
-              </div>
-            )}
-
-            {/* Исполнители: множественный выбор + быстрые кнопки */}
-            <div className="mt-2">
+          {/* Поле для ручного ввода материалов */}
+          {form.loadingMethod === "manual" && (
+            <div>
               <label className="block text-sm font-medium mb-2 text-gray-700">
-                Исполнители (можно выбрать несколько):
+                Материалы (каждый с новой строки) *:
               </label>
-              <Select
-                mode="multiple"
-                name="executers"
-                value={
-                  selectedExecuters.length > 0 ? selectedExecuters : undefined
-                }
-                onChange={(value) => setSelectedExecuters(value)}
-                placeholder="Выберите исполнителей (опционально)"
+              <TextArea
+                placeholder="Введите материалы, каждый с новой строки:&#10;material1&#10;material2&#10;material3"
+                value={manualInput}
+                onChange={(e) => setManualInput(e.target.value)}
+                rows={4}
                 className="w-full"
-                allowClear
-                showSearch
-                optionFilterProp="children"
-                filterOption={(input, option) =>
-                  String(option.children)
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-              >
-                {executers.map((executer) => {
-                  const executerName =
-                    executer.name || executer.executer_name || "Без имени";
-                  const telegramId =
-                    executer.telegram_id ||
-                    executer.telegramId ||
-                    "ID не указан";
-                  const executerId = executer.id || executer.executer_id;
-                  return (
-                    <Select.Option key={executerId} value={executerId}>
-                      {executerName} (Telegram: {telegramId})
-                    </Select.Option>
-                  );
-                })}
-              </Select>
-
-              <div className="flex gap-2 mt-2">
-                <Button
-                  size="small"
-                  onClick={() => {
-                    if (executers && executers.length > 0) {
-                      const allIds = executers
-                        .map((e) => e.id || e.executer_id)
-                        .filter(Boolean);
-                      setSelectedExecuters(allIds);
-                      message.info("Выбраны все исполнители");
-                    } else {
-                      message.warning("Нет доступных исполнителей");
-                    }
-                  }}
-                >
-                  Добавить всех
-                </Button>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setSelectedExecuters([]);
-                    message.info("Выбор исполнителей очищен");
-                  }}
-                >
-                  Снять всех
-                </Button>
+                required
+              />
+              <div className="text-xs text-red-600 font-medium mt-1">
+                * Обязательно: каждая строка = один материал. Пустые строки
+                будут игнорироваться.
               </div>
             </div>
+          )}
 
-            {/* Секция индивидуального ценообразования */}
-            <div className="border-t pt-4">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-lg font-semibold text-gray-700">
-                  Индивидуальные цены
-                </h3>
-                <Button
-                  type="dashed"
-                  icon={<FaPlus />}
-                  onClick={addCustomPricing}
-                  size="small"
-                >
-                  Добавить исключение
-                </Button>
-              </div>
+          {/* Исполнители: множественный выбор + быстрые кнопки */}
+          <div className="mt-2">
+            <label className="block text-sm font-medium mb-2 text-gray-700">
+              Исполнители (можно выбрать несколько):
+            </label>
+            <Select
+              mode="multiple"
+              name="executers"
+              value={
+                selectedExecuters.length > 0 ? selectedExecuters : undefined
+              }
+              onChange={(value) => setSelectedExecuters(value)}
+              placeholder="Выберите исполнителей (опционально)"
+              className="w-full"
+              allowClear
+              showSearch
+              optionFilterProp="children"
+              filterOption={(input, option) =>
+                String(option.children)
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
+            >
+              {executers.map((executer) => {
+                const executerName =
+                  executer.name || executer.executer_name || "Без имени";
+                const telegramId =
+                  executer.telegram_id || executer.telegramId || "ID не указан";
+                const executerId = executer.id || executer.executer_id;
+                return (
+                  <Select.Option key={executerId} value={executerId}>
+                    {executerName} (Telegram: {telegramId})
+                  </Select.Option>
+                );
+              })}
+            </Select>
 
-              {form.customPricing.map((pricing, index) => (
-                <Card key={index} size="small" className="mb-2">
-                  <div className="flex gap-2 items-center">
-                    <Select
-                      placeholder="Выберите исполнителя"
-                      style={{ flex: 1 }}
-                      value={pricing.executer_id || undefined}
-                      onChange={(value) =>
-                        updateCustomPricing(index, "executer_id", value)
-                      }
-                      showSearch
-                      filterOption={(input, option) =>
-                        option.children
-                          .toLowerCase()
-                          .includes(input.toLowerCase())
-                      }
-                    >
-                      {executers.map((executer) => {
-                        const executerName =
-                          executer.name ||
-                          executer.executer_name ||
-                          "Без имени";
-                        const telegramId =
-                          executer.telegram_id ||
-                          executer.telegramId ||
-                          "ID не указан";
-                        const executerId = executer.id || executer.executer_id;
-
-                        return (
-                          <Select.Option key={executerId} value={executerId}>
-                            {executerName} (Telegram: {telegramId})
-                          </Select.Option>
-                        );
-                      })}
-                    </Select>
-                    <InputNumber
-                      placeholder="Цена"
-                      min={0}
-                      step={0.01}
-                      style={{ width: 120 }}
-                      value={pricing.custom_price}
-                      onChange={(value) =>
-                        updateCustomPricing(index, "custom_price", value)
-                      }
-                      addonAfter="₽"
-                    />
-                    <Button
-                      type="text"
-                      danger
-                      icon={<FaTrash />}
-                      onClick={() => removeCustomPricing(index)}
-                      size="small"
-                    />
-                  </div>
-                </Card>
-              ))}
-
-              {form.customPricing.length === 0 && (
-                <div className="text-gray-500 text-sm text-center py-2">
-                  Индивидуальные цены не заданы. Будет использоваться базовая
-                  цена услуги.
-                </div>
-              )}
-            </div>
-            <div className="flex gap-3 justify-end mt-2">
-              <Button type="default" onClick={() => setShowModal(false)}>
-                Отмена
-              </Button>
+            <div className="flex gap-2 mt-2">
               <Button
-                type="primary"
-                htmlType="submit"
-                disabled={
-                  !form.name ||
-                  !form.category ||
-                  (form.loadingMethod === "manual" && !manualInput.trim()) ||
-                  (form.loadingMethod === "file" && fileList.length === 0) ||
-                  (form.loadingMethod === "api" && !apiConfig.url.trim())
-                }
-                style={{
-                  background: "linear-gradient(to right, #3b82f6, #06b6d4)",
-                  border: "none",
+                size="small"
+                onClick={() => {
+                  if (executers && executers.length > 0) {
+                    const allIds = executers
+                      .map((e) => e.id || e.executer_id)
+                      .filter(Boolean);
+                    setSelectedExecuters(allIds);
+                    message.info("Выбраны все исполнители");
+                  } else {
+                    message.warning("Нет доступных исполнителей");
+                  }
                 }}
               >
-                {(form.loadingMethod === "manual" && !manualInput.trim()) ||
-                (form.loadingMethod === "file" && fileList.length === 0) ||
-                (form.loadingMethod === "api" && !apiConfig.url.trim())
-                  ? "Добавьте материалы"
-                  : "Сохранить"}
+                Добавить всех
+              </Button>
+              <Button
+                size="small"
+                onClick={() => {
+                  setSelectedExecuters([]);
+                  message.info("Выбор исполнителей очищен");
+                }}
+              >
+                Снять всех
               </Button>
             </div>
-          </form>
-          <style>
-            {`
-              .animate-fade-in {
-                animation: fadeIn 0.3s ease;
-              }
-              @keyframes fadeIn {
-                from { opacity: 0; transform: scale(0.97);}
-                to { opacity: 1; transform: scale(1);}
-              }
-            `}
-          </style>
+          </div>
+
+          {/* Секция индивидуального ценообразования */}
+          <div className="border-t pt-4">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-lg font-semibold text-gray-700">
+                Индивидуальные цены
+              </h3>
+              <Button
+                type="dashed"
+                icon={<FaPlus />}
+                onClick={addCustomPricing}
+                size="small"
+              >
+                Добавить исключение
+              </Button>
+            </div>
+
+            {form.customPricing.map((pricing, index) => (
+              <Card key={index} size="small" className="mb-2">
+                <div className="flex gap-2 items-center">
+                  <Select
+                    placeholder="Выберите исполнителя"
+                    style={{ flex: 1 }}
+                    value={pricing.executer_id || undefined}
+                    onChange={(value) =>
+                      updateCustomPricing(index, "executer_id", value)
+                    }
+                    showSearch
+                    filterOption={(input, option) =>
+                      option.children
+                        .toLowerCase()
+                        .includes(input.toLowerCase())
+                    }
+                  >
+                    {executers.map((executer) => {
+                      const executerName =
+                        executer.name || executer.executer_name || "Без имени";
+                      const telegramId =
+                        executer.telegram_id ||
+                        executer.telegramId ||
+                        "ID не указан";
+                      const executerId = executer.id || executer.executer_id;
+
+                      return (
+                        <Select.Option key={executerId} value={executerId}>
+                          {executerName} (Telegram: {telegramId})
+                        </Select.Option>
+                      );
+                    })}
+                  </Select>
+                  <InputNumber
+                    placeholder="Цена"
+                    min={0}
+                    step={0.01}
+                    style={{ width: 120 }}
+                    value={pricing.custom_price}
+                    onChange={(value) =>
+                      updateCustomPricing(index, "custom_price", value)
+                    }
+                    addonAfter="₽"
+                  />
+                  <Button
+                    type="text"
+                    danger
+                    icon={<FaTrash />}
+                    onClick={() => removeCustomPricing(index)}
+                    size="small"
+                  />
+                </div>
+              </Card>
+            ))}
+
+            {form.customPricing.length === 0 && (
+              <div className="text-gray-500 text-sm text-center py-2">
+                Индивидуальные цены не заданы. Будет использоваться базовая цена
+                услуги.
+              </div>
+            )}
+          </div>
+          <div className="flex gap-3 justify-end mt-2">
+            {/* Кнопки перенесены в footer модального окна */}
+          </div>
         </div>
-      )}
+      </Modal>
+
+      <style>{`
+          .add-service-modal .ant-modal-content {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            border-radius: 16px;
+          }
+
+          .add-service-modal .ant-modal-header {
+            background: transparent;
+            border-bottom: 1px solid #f0f0f0;
+            border-radius: 16px 16px 0 0;
+          }
+
+          .add-service-modal .ant-modal-title {
+            color: #1e40af;
+            font-weight: 700;
+            font-size: 18px;
+          }
+
+          .add-service-modal .ant-modal-body {
+            padding: 24px;
+            max-height: 60vh;
+            overflow-y: auto;
+          }
+        `}</style>
 
       {/* Модальные окна для способов загрузки */}
       <Modal
