@@ -1624,18 +1624,18 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
       // Очищаем состояние ожидания при ошибке
       delete waitingStates.orderNumber[chatId];
       console.log(`🧹 Состояние ожидания очищено после ошибки создания`);
-      
+
       ctx.reply(`❌ Ошибка создания заказа: ${response.data.message}`);
     }
 
   } catch (error) {
     console.error('❌ Ошибка создания заказа:', error);
-    
+
     // Очищаем состояние ожидания при любой ошибке
     const chatId = ctx.chat.id;
     delete waitingStates.orderNumber[chatId];
     console.log(`🧹 Состояние ожидания очищено после исключения`);
-    
+
     if (error.response?.data?.message) {
       ctx.reply(`❌ ${error.response.data.message}`);
     } else {

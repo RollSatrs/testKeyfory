@@ -68,12 +68,12 @@ const simulateHandleOrderNumberInput = async (chatId, orderNumber, shouldFail = 
 
   } catch (error) {
     console.error('❌ Ошибка создания заказа:', error);
-    
+
     // Очищаем состояние ожидания при любой ошибке
     delete waitingStates.orderNumber[chatId];
     console.log(`🧹 Состояние ожидания очищено после исключения`);
     console.log(`🔍 Состояние ожидания после очистки: ${!!waitingStates.orderNumber[chatId]}`);
-    
+
     return '❌ Ошибка при создании заказа. Попробуйте еще раз.';
   }
 };
