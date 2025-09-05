@@ -10,16 +10,23 @@ import {
   Card,
   Descriptions,
   Select,
+  Row,
+  Col,
+  DatePicker,
 } from "antd";
 import {
   EyeOutlined,
   CheckOutlined,
   CloseOutlined,
   SwapOutlined,
+  SearchOutlined,
+  ClearOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
 
 const { TextArea } = Input;
 const { Option } = Select;
+const { RangePicker } = DatePicker;
 
 const ReplacementRequestsTable = () => {
   const [requests, setRequests] = useState([]);
@@ -31,6 +38,17 @@ const ReplacementRequestsTable = () => {
   const [availableMaterials, setAvailableMaterials] = useState([]);
   const [selectedNewMaterial, setSelectedNewMaterial] = useState(null);
   const [replaceModalVisible, setReplaceModalVisible] = useState(false);
+
+  // Состояние фильтров
+  const [filters, setFilters] = useState({
+    status: null,
+    serviceName: "",
+    executerName: "",
+    orderNumber: "",
+    reason: "",
+    dateRange: null,
+  });
+  const [filteredRequests, setFilteredRequests] = useState([]);
 
   // Загрузка запросов на замену
   const fetchReplacementRequests = async () => {
@@ -58,6 +76,7 @@ const ReplacementRequestsTable = () => {
 
       const data = await response.json();
       setRequests(data);
+      setFilteredRequests(data); // Инициализируем отфильтрованные данные
     } catch (error) {
       message.error("Ошибка при загрузке запросов на замену");
       console.error("Error fetching replacement requests:", error);
@@ -69,6 +88,100 @@ const ReplacementRequestsTable = () => {
   useEffect(() => {
     fetchReplacementRequests();
   }, []);
+
+  // Применение фильтров
+  useEffect(() => {
+    applyFilters();
+  }, [requests, filters]);
+
+  const applyFilters = () => {
+    let filtered = [...requests];
+
+    // Фильтр по статусу
+    if (filters.status) {
+      filtered = filtered.filter((req) => req.status === filters.status);
+    }
+
+    // Фильтр по названию услуги
+    if (filters.serviceName.trim()) {
+      filtered = filtered.filter((req) =>
+        req.ServiceExecution?.Service?.name
+          ?.toLowerCase()
+          .includes(filters.serviceName.toLowerCase())
+      );
+    }
+
+    // Фильтр по имени исполнителя
+    if (filters.executerName.trim()) {
+      filtered = filtered.filter((req) =>
+        req.Executer?.name
+          ?.toLowerCase()
+          .includes(filters.executerName.toLowerCase())
+      );
+    }
+
+    // Фильтр по номеру заказа
+    if (filters.orderNumber.trim()) {
+      filtered = filtered.filter((req) =>
+        req.ServiceExecution?.order_number
+          ?.toString()
+          .includes(filters.orderNumber)
+      );
+    }
+
+    // Фильтр по причине замены
+    if (filters.reason.trim()) {
+      filtered = filtered.filter((req) =>
+        req.reason?.toLowerCase().includes(filters.reason.toLowerCase())
+      );
+    }
+
+    // Фильтр по диапазону дат
+    if (filters.dateRange && filters.dateRange.length === 2) {
+      const [startDate, endDate] = filters.dateRange;
+      filtered = filtered.filter((req) => {
+        const requestDate = dayjs(req.created_at);
+        return (
+          requestDate.isAfter(startDate.startOf("day")) &&
+          requestDate.isBefore(endDate.endOf("day"))
+        );
+      });
+    }
+
+    setFilteredRequests(filtered);
+  };
+
+  const handleFilterChange = (key, value) => {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      status: null,
+      serviceName: "",
+      executerName: "",
+      orderNumber: "",
+      reason: "",
+      dateRange: null,
+    });
+  };
+
+  // Статистика по статусам
+  const getStatusStats = () => {
+    const stats = {
+      total: requests.length,
+      pending: requests.filter((r) => r.status === "pending").length,
+      approved: requests.filter((r) => r.status === "approved").length,
+      rejected: requests.filter((r) => r.status === "rejected").length,
+      completed: requests.filter((r) => r.status === "completed").length,
+    };
+    return stats;
+  };
+
+  const statusStats = getStatusStats();
 
   // Загрузка доступных материалов для замены
   const fetchAvailableMaterials = async (requestId) => {
@@ -286,9 +399,287 @@ const ReplacementRequestsTable = () => {
 
   return (
     <Card title="Запросы на замену материалов">
+      {/* Статистика */}
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={4}>
+          <Card
+            size="small"
+            style={{
+              textAlign: "center",
+              backgroundColor: filters.status === null ? "#e6f7ff" : "#f0f9ff",
+              cursor: "pointer",
+              border:
+                filters.status === null
+                  ? "2px solid #1890ff"
+                  : "1px solid #d9d9d9",
+            }}
+            onClick={() => handleFilterChange("status", null)}
+            hoverable
+          >
+            <div style={{ fontSize: 20, fontWeight: "bold", color: "#1890ff" }}>
+              {statusStats.total}
+            </div>
+            <div style={{ fontSize: 12, color: "#666" }}>Всего запросов</div>
+          </Card>
+        </Col>
+        <Col span={4}>
+          <Card
+            size="small"
+            style={{
+              textAlign: "center",
+              backgroundColor:
+                filters.status === "pending" ? "#ffe7ba" : "#fff7e6",
+              cursor: "pointer",
+              border:
+                filters.status === "pending"
+                  ? "2px solid #fa8c16"
+                  : "1px solid #d9d9d9",
+            }}
+            onClick={() => handleFilterChange("status", "pending")}
+            hoverable
+          >
+            <div style={{ fontSize: 20, fontWeight: "bold", color: "#fa8c16" }}>
+              {statusStats.pending}
+            </div>
+            <div style={{ fontSize: 12, color: "#666" }}>Ожидают</div>
+          </Card>
+        </Col>
+        <Col span={4}>
+          <Card
+            size="small"
+            style={{
+              textAlign: "center",
+              backgroundColor:
+                filters.status === "approved" ? "#d9f7be" : "#f6ffed",
+              cursor: "pointer",
+              border:
+                filters.status === "approved"
+                  ? "2px solid #52c41a"
+                  : "1px solid #d9d9d9",
+            }}
+            onClick={() => handleFilterChange("status", "approved")}
+            hoverable
+          >
+            <div style={{ fontSize: 20, fontWeight: "bold", color: "#52c41a" }}>
+              {statusStats.approved}
+            </div>
+            <div style={{ fontSize: 12, color: "#666" }}>Одобрены</div>
+          </Card>
+        </Col>
+        <Col span={4}>
+          <Card
+            size="small"
+            style={{
+              textAlign: "center",
+              backgroundColor:
+                filters.status === "rejected" ? "#ffccc7" : "#fff1f0",
+              cursor: "pointer",
+              border:
+                filters.status === "rejected"
+                  ? "2px solid #ff4d4f"
+                  : "1px solid #d9d9d9",
+            }}
+            onClick={() => handleFilterChange("status", "rejected")}
+            hoverable
+          >
+            <div style={{ fontSize: 20, fontWeight: "bold", color: "#ff4d4f" }}>
+              {statusStats.rejected}
+            </div>
+            <div style={{ fontSize: 12, color: "#666" }}>Отклонены</div>
+          </Card>
+        </Col>
+        <Col span={4}>
+          <Card
+            size="small"
+            style={{
+              textAlign: "center",
+              backgroundColor:
+                filters.status === "completed" ? "#bae7ff" : "#e6f7ff",
+              cursor: "pointer",
+              border:
+                filters.status === "completed"
+                  ? "2px solid #1890ff"
+                  : "1px solid #d9d9d9",
+            }}
+            onClick={() => handleFilterChange("status", "completed")}
+            hoverable
+          >
+            <div style={{ fontSize: 20, fontWeight: "bold", color: "#1890ff" }}>
+              {statusStats.completed}
+            </div>
+            <div style={{ fontSize: 12, color: "#666" }}>Выполнены</div>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Панель фильтров */}
+      <Card
+        size="small"
+        title="Фильтры поиска"
+        style={{ marginBottom: 16 }}
+        extra={
+          <Button icon={<ClearOutlined />} onClick={clearFilters} size="small">
+            Очистить фильтры
+          </Button>
+        }
+      >
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: 4,
+                  fontSize: 12,
+                  fontWeight: "bold",
+                }}
+              >
+                Статус:
+              </label>
+              <Select
+                placeholder="Все статусы"
+                style={{ width: "100%" }}
+                value={filters.status}
+                onChange={(value) => handleFilterChange("status", value)}
+                allowClear
+                size="small"
+              >
+                <Option value="pending">Ожидает</Option>
+                <Option value="approved">Одобрен</Option>
+                <Option value="rejected">Отклонён</Option>
+                <Option value="completed">Выполнен</Option>
+              </Select>
+            </div>
+          </Col>
+
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: 4,
+                  fontSize: 12,
+                  fontWeight: "bold",
+                }}
+              >
+                Услуга:
+              </label>
+              <Input
+                placeholder="Поиск по услуге"
+                value={filters.serviceName}
+                onChange={(e) =>
+                  handleFilterChange("serviceName", e.target.value)
+                }
+                prefix={<SearchOutlined />}
+                size="small"
+              />
+            </div>
+          </Col>
+
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: 4,
+                  fontSize: 12,
+                  fontWeight: "bold",
+                }}
+              >
+                Исполнитель:
+              </label>
+              <Input
+                placeholder="Поиск по исполнителю"
+                value={filters.executerName}
+                onChange={(e) =>
+                  handleFilterChange("executerName", e.target.value)
+                }
+                prefix={<SearchOutlined />}
+                size="small"
+              />
+            </div>
+          </Col>
+
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: 4,
+                  fontSize: 12,
+                  fontWeight: "bold",
+                }}
+              >
+                Номер заказа:
+              </label>
+              <Input
+                placeholder="Поиск по заказу"
+                value={filters.orderNumber}
+                onChange={(e) =>
+                  handleFilterChange("orderNumber", e.target.value)
+                }
+                prefix={<SearchOutlined />}
+                size="small"
+              />
+            </div>
+          </Col>
+
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: 4,
+                  fontSize: 12,
+                  fontWeight: "bold",
+                }}
+              >
+                Причина замены:
+              </label>
+              <Input
+                placeholder="Поиск по причине"
+                value={filters.reason}
+                onChange={(e) => handleFilterChange("reason", e.target.value)}
+                prefix={<SearchOutlined />}
+                size="small"
+              />
+            </div>
+          </Col>
+
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: 4,
+                  fontSize: 12,
+                  fontWeight: "bold",
+                }}
+              >
+                Период:
+              </label>
+              <RangePicker
+                style={{ width: "100%" }}
+                value={filters.dateRange}
+                onChange={(dates) => handleFilterChange("dateRange", dates)}
+                format="DD.MM.YYYY"
+                placeholder={["От", "До"]}
+                size="small"
+              />
+            </div>
+          </Col>
+        </Row>
+
+        <div style={{ marginTop: 12, fontSize: 12, color: "#666" }}>
+          <strong>
+            Найдено записей: {filteredRequests.length} из {requests.length}
+          </strong>
+        </div>
+      </Card>
+
       <Table
         columns={columns}
-        dataSource={requests}
+        dataSource={filteredRequests}
         loading={loading}
         rowKey="id"
         scroll={{ x: 1200 }}
