@@ -798,7 +798,7 @@ export function ServicesTable({
       key: "active_orders",
       width: 200,
       render: (active_orders, record) => {
-        // Collect orders from multiple possible fields and always show them
+        // Collect orders from multiple possible fields but filter out failed attempts
         const orders = [];
 
         // Получаем список назначенных исполнителей для поиска по ID
@@ -833,12 +833,71 @@ export function ServicesTable({
           return null;
         };
 
+        // Функция для проверки валидности заказа
+        const isValidOrder = (orderObj) => {
+          // Исключаем заказы с неуспешными статусами
+          const status = (orderObj.status || orderObj.state || "")
+            .toString()
+            .toLowerCase();
+          const failedStatuses = [
+            "failed",
+            "duplicate",
+            "rejected",
+            "invalid",
+            "error",
+            "cancelled",
+            "canceled",
+            "abort",
+          ];
+
+          // Если статус явно указывает на неудачу, исключаем заказ
+          if (
+            failedStatuses.some((failedStatus) => status.includes(failedStatus))
+          ) {
+            return false;
+          }
+
+          // Дополнительная проверка: если есть флаг отмены/ошибки
+          if (
+            orderObj.cancelled ||
+            orderObj.failed ||
+            orderObj.is_duplicate ||
+            orderObj.is_invalid
+          ) {
+            return false;
+          }
+
+          // Проверяем номер заказа - если он пустой или неопределенный, исключаем
+          const orderNumber =
+            orderObj.order_number || orderObj.order || orderObj.id;
+          if (
+            !orderNumber ||
+            orderNumber === null ||
+            orderNumber === undefined ||
+            orderNumber === ""
+          ) {
+            return false;
+          }
+
+          // Дополнительная проверка: если заказ помечен как ошибочный в метаданных
+          if (
+            orderObj.error ||
+            orderObj.duplicate_attempt ||
+            orderObj.creation_failed
+          ) {
+            return false;
+          }
+
+          return true;
+        };
+
         if (
           Array.isArray(record.active_orders) &&
           record.active_orders.length > 0
         ) {
           record.active_orders.forEach((o) => {
             if (!o) return;
+
             if (typeof o === "string" || typeof o === "number") {
               orders.push({
                 order_number: o,
@@ -846,11 +905,14 @@ export function ServicesTable({
                 executer_name: null,
               });
             } else {
-              orders.push({
-                order_number: o.order_number || o.order || o.id,
-                status: o.status || o.state || null,
-                executer_name: getExecuterName(o),
-              });
+              // Проверяем валидность заказа перед добавлением
+              if (isValidOrder(o)) {
+                orders.push({
+                  order_number: o.order_number || o.order || o.id,
+                  status: o.status || o.state || null,
+                  executer_name: getExecuterName(o),
+                });
+              }
             }
           });
         }
@@ -862,23 +924,33 @@ export function ServicesTable({
         ) {
           record.order_numbers.forEach((n) => {
             if (!n) return;
-            if (typeof n === "object") orders.push(n);
-            else
+            if (typeof n === "object") {
+              // Проверяем валидность объекта заказа
+              if (isValidOrder(n)) {
+                orders.push(n);
+              }
+            } else {
               orders.push({
                 order_number: n,
                 status: null,
                 executer_name: null,
               });
+            }
           });
         }
 
         // Also include completed orders so numbers remain visible when status changes
+        // but exclude failed/duplicate attempts
         if (
           Array.isArray(record.completed_orders) &&
           record.completed_orders.length > 0
         ) {
           record.completed_orders.forEach((o) => {
             if (!o) return;
+
+            // Проверяем валидность завершенного заказа
+            if (!isValidOrder(o)) return;
+
             const num =
               typeof o === "string" || typeof o === "number"
                 ? o
@@ -915,9 +987,68 @@ export function ServicesTable({
           return <span style={{ color: "#64748b" }}>Не указан</span>;
         }
 
+        // Финальная дедупликация по номеру заказа - оставляем только уникальные номера
+        // При дублях отдаем приоритет заказам со статусом (они более информативны)
+        const uniqueOrders = [];
+        const seenNumbers = new Set();
+
+        // Дополнительная дедупликация: группируем по исполнителю + номер заказа
+        const executerOrderMap = new Map(); // "executerName:orderNumber" -> order
+
+        // Сначала группируем заказы по исполнителю и номеру
+        orders.forEach((order) => {
+          const executerName = order.executer_name || "unknown";
+          const orderNumber = String(order.order_number);
+          const key = `${executerName}:${orderNumber}`;
+
+          // Если уже есть заказ от этого исполнителя с этим номером
+          if (executerOrderMap.has(key)) {
+            const existing = executerOrderMap.get(key);
+            // Отдаем приоритет заказу со статусом
+            if (order.status && !existing.status) {
+              executerOrderMap.set(key, order);
+            }
+            // Или более новому заказу (если есть timestamps)
+            else if (
+              order.created_at &&
+              existing.created_at &&
+              new Date(order.created_at) > new Date(existing.created_at)
+            ) {
+              executerOrderMap.set(key, order);
+            }
+          } else {
+            executerOrderMap.set(key, order);
+          }
+        });
+
+        // Теперь из дедуплицированного набора формируем финальный список
+        const deduplicatedOrders = Array.from(executerOrderMap.values());
+
+        // Сначала добавляем заказы со статусом
+        deduplicatedOrders
+          .filter((order) => order.status)
+          .forEach((order) => {
+            const orderNumber = String(order.order_number);
+            if (!seenNumbers.has(orderNumber)) {
+              uniqueOrders.push(order);
+              seenNumbers.add(orderNumber);
+            }
+          });
+
+        // Затем добавляем заказы без статуса, если их номеров еще нет
+        deduplicatedOrders
+          .filter((order) => !order.status)
+          .forEach((order) => {
+            const orderNumber = String(order.order_number);
+            if (!seenNumbers.has(orderNumber)) {
+              uniqueOrders.push(order);
+              seenNumbers.add(orderNumber);
+            }
+          });
+
         return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {orders.map((order, idx) => {
+            {uniqueOrders.map((order, idx) => {
               const isCompleted =
                 (order.status || "")
                   .toString()

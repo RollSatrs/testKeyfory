@@ -1,5 +1,5 @@
 import { ServicesHeader } from './components/ServicesHeader';
-import { ServicesTable } from './components/ServicesTable';
+import { ServicesTable } from './components/ServicesTable.jsx';
 import { ServicesStats } from './components/ServicesStats';
 import { ServicesSearch } from './components/ServicesSearch';
 import { useState, useCallback } from 'react';

@@ -58,7 +58,8 @@ const userSessions = {};
 const waitingStates = {
   orderNumber: {},
   cancellationReason: {},
-  replacementReason: {}
+  replacementReason: {},
+  afterDuplicate: {} // Флаг для отслеживания состояния "после ошибки дубликата"
 };
 
 console.log('🤖 Инициализация бота для исполнителей...');
@@ -68,7 +69,7 @@ console.log('🤖 Инициализация бота для исполните�
 // Функция для обновления активности исполнителя в боте
 const updateExecuterBotActivity = async (telegramId, isActive = true) => {
   try {
-    console.log(`🔄 Попытка обновить активность исполнителя ${telegramId} на ${isActive ? 'онлайн' : 'офлайн'}...`);
+    // console.log(`🔄 Попытка обновить активность исполнителя ${telegramId} на ${isActive ? 'онлайн' : 'офлайн'}...`);
 
     const requestData = {
       telegram_id: String(telegramId), // Преобразуем в строку для совместимости с БД
@@ -191,7 +192,7 @@ const calculateTotalEarnings = async (executerId) => {
 // Проверка, заблокирован ли исполнитель
 const isExecuterBlocked = async (telegramId) => {
   try {
-    console.log(`🔍 Проверяем блокировку для telegramId: ${telegramId}`);
+    // console.log(`🔍 Проверяем блокировку для telegramId: ${telegramId}`);
     const response = await fetchAsAxios('GET', `/api/executers-bot/executer/telegram/${telegramId}`);
     const executerData = response.data;
 
@@ -214,7 +215,7 @@ const isExecuterBlocked = async (telegramId) => {
 const isServiceCompletedForExecuter = (s, executerId = null, executerName = null) => {
   try {
     if (DEBUG_BOT_SERVICES) {
-      console.log(`\n🔍 CHECKING COMPLETION: Service ${s.id} "${s.name}" for executer ${executerId} (${executerName})`);
+      // console.log(`\n🔍 CHECKING COMPLETION: Service ${s.id} "${s.name}" for executer ${executerId} (${executerName})`);
     }
 
     // 🆕 НОВЫЙ ПОДХОД: проверяем executionStatus напрямую из API
@@ -344,9 +345,9 @@ const filterVisibleServices = (services, executerId = null, executerName = null)
   return (Array.isArray(services) ? services : []).filter(s => !isServiceCompletedForExecuter(s, executerId, executerName));
 };
 
-// Debug flag — включаем всегда, чтобы бот печатал детали запроса/фильтрации услуг
-// (ранее использовался процесс.env, теперь включён постоянно по требованию пользователя)
-const DEBUG_BOT_SERVICES = true;
+// Debug flag — временно отключен для ускорения загрузки услуг
+// Оставляем только логи для проверки проблемы с дублирующими заказами
+const DEBUG_BOT_SERVICES = false;
 
 // ==================== ФУНКЦИЯ ЛОГИРОВАНИЯ ====================
 
@@ -580,9 +581,8 @@ const showMyServices = async (ctx) => {
       if (DEBUG_BOT_SERVICES) console.log('DEBUG_BOT_SERVICES: failed to load active-executions for executer:', e.message);
     }
 
-    if (DEBUG_BOT_SERVICES) {
-      console.log('DEBUG_BOT_SERVICES: /services response raw:', JSON.stringify(response.data, null, 2));
-    }
+    // Комментируем медленный лог для ускорения
+    // console.log('DEBUG_BOT_SERVICES: /services response raw:', JSON.stringify(response.data, null, 2));
 
     // Исключаем услуги с активными заказами - показываем только те, по которым НЕТ активных заказов
     const servicesWithoutActiveOrders = [];
@@ -601,7 +601,7 @@ const showMyServices = async (ctx) => {
           servicesWithoutActiveOrders.push(s);
         }
       } catch (err) {
-        console.log('DEBUG_SERVICES: error evaluating service', s && s.id, err.message);
+        // console.log('DEBUG_SERVICES: error evaluating service', s && s.id, err.message);
         servicesWithoutActiveOrders.push(s);
       }
     }
@@ -614,7 +614,8 @@ const showMyServices = async (ctx) => {
       console.log(`DEBUG_SERVICES: Without active orders: ${servicesWithoutActiveOrders.length}`);
       console.log(`DEBUG_SERVICES: Final visible (excluding completed): ${visibleServices.length}`);
 
-      // Детальная диагностика: какие услуги отфильтрованы и почему
+      // Комментируем подробную диагностику для ускорения
+      /*
       console.log('\n=== ПОДРОБНАЯ ДИАГНОСТИКА ФИЛЬТРАЦИИ ===');
       servicesWithoutActiveOrders.forEach(service => {
         const isCompleted = isServiceCompletedForExecuter(service, session.executerId, session.executerName);
@@ -625,6 +626,7 @@ const showMyServices = async (ctx) => {
         console.log(`  - assigned_executers: ${JSON.stringify(service.assigned_executers)}`);
       });
       console.log('=== КОНЕЦ ДИАГНОСТИКИ ===\n');
+      */
     }
 
     if (!Array.isArray(visibleServices) || visibleServices.length === 0) {
@@ -733,7 +735,8 @@ const showActiveServices = async (ctx) => {
       // чтобы после назначения услуги админом исполнитель мог её увидеть и создать заказ.
       try {
         const servicesResp = await fetchAsAxios('GET', `/api/executers-bot/services/${session.executerId}`);
-        if (DEBUG_BOT_SERVICES) console.log('DEBUG_BOT_SERVICES: /services fallback raw:', JSON.stringify(servicesResp.data, null, 2));
+        // Комментируем медленный лог fallback
+        // console.log('DEBUG_BOT_SERVICES: /services fallback raw:', JSON.stringify(servicesResp.data, null, 2));
         const services = servicesResp.data || [];
 
         // Получим выполненные заказы для фолбэка тоже
@@ -1476,11 +1479,37 @@ bot.on('text', async (ctx) => {
       break;
 
     default:
-      ctx.reply(
-        '❓ Неизвестная команда.\n\n' +
-        'Используйте кнопки меню для навигации.',
-        getMainMenu()
-      );
+      // Проверяем, был ли пользователь в состоянии "после ошибки дубликата"
+      console.log(`🔍 ПРОВЕРКА ФЛАГА afterDuplicate для chatId ${ctx.chat.id}: ${!!waitingStates.afterDuplicate[ctx.chat.id]}`);
+
+      if (waitingStates.afterDuplicate[ctx.chat.id]) {
+        // НЕ очищаем флаг здесь - он будет очищен при успешном создании заказа
+        // Вместо этого обрабатываем как попытку ввода номера заказа
+        console.log(`🔄 ОБРАБОТКА ПОВТОРНОГО ВВОДА НОМЕРА после дубликата: "${text}"`);
+
+        // Проверяем, что в состоянии ожидания есть данные
+        if (waitingStates.orderNumber[chatId]) {
+          await handleOrderNumberInput(ctx, text);
+          return; // Выходим из default, не показывая сообщение об ошибке
+        } else {
+          // Состояние потеряно, восстанавливаем контекст
+          console.log(`⚠️ Состояние ожидания потеряно, показываем главное меню`);
+          delete waitingStates.afterDuplicate[ctx.chat.id];
+          ctx.reply(
+            '❓ Сессия прервана. Вернитесь к созданию заказа через меню.',
+            getMainMenu()
+          );
+          return;
+        }
+      } else {
+        // Обычное сообщение для неизвестной команды
+        console.log(`📝 DEFAULT CASE: Показываем стандартное сообщение неизвестной команды для: "${text}"`);
+        ctx.reply(
+          '❓ Неизвестная команда.\n\n' +
+          'Используйте кнопки меню для навигации.',
+          getMainMenu()
+        );
+      }
       await logActivity(session.executerId, 'unknown_command', `Неизвестная команда: ${text}`);
   }
 });
@@ -1494,12 +1523,17 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
     const session = userSessions[chatId];
     const waitingData = waitingStates.orderNumber[chatId];
 
+    // Сбрасываем флаг afterDuplicate при новом вводе номера заказа
+    if (waitingStates.afterDuplicate[chatId]) {
+      delete waitingStates.afterDuplicate[chatId];
+      console.log(`🗑️ ОЧИЩЕН ФЛАГ afterDuplicate при новом вводе номера`);
+    }
+
     // Валидация номера заказа
     if (!/^\d+$/.test(orderNumber)) {
       console.log(`❌ Неверный формат номера заказа: ${orderNumber}`);
       // Очищаем состояние ожидания при неверном формате
       delete waitingStates.orderNumber[chatId];
-      console.log(`🧹 Состояние ожидания очищено после ошибки формата`);
       return ctx.reply('❌ Номер заказа должен содержать только цифры. Попробуйте еще раз:');
     }
 
@@ -1511,7 +1545,7 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
 
     // 🚨 АКТИВИРУЕМ УСЛУГУ (включает проверку лимитов)
     try {
-      console.log(`🔍 Активируем услугу для исполнителя...`);
+        // console.log(`🔍 Активируем услугу для исполнителя...`);
       const activationResponse = await fetchAsAxios('POST', `/api/executers-bot/active-services/activate-service`, {
         telegram_id: ctx.from.id.toString(),
         service_id: waitingData.serviceId,
@@ -1587,9 +1621,10 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
 
     if (response.data.success) {
       console.log(`✅ Заказ #${orderNumber} успешно создан`);
-      // Очищаем состояние ожидания
+      // Очищаем состояние ожидания и флаг "после дубликата"
       delete waitingStates.orderNumber[chatId];
-      console.log(`🧹 Состояние ожидания очищено после успешного создания`);
+      delete waitingStates.afterDuplicate[chatId]; // Очищаем флаг при успешном создании
+      console.log(`🧹 Состояние ожидания и флаг afterDuplicate очищены после успешного создания`);
 
       let message;
       if (materialSuccessfullyUsed) {
@@ -1621,11 +1656,45 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
       // Кнопки убраны - исполнитель может продолжить работу через главное меню
     } else {
       console.log(`❌ Ошибка создания заказа: ${response.data.message}`);
+
+      // Проверяем, является ли ошибка "заказ уже существует"
+      const isDuplicateOrder = response.data.message &&
+        (response.data.message.includes('уже существует') ||
+         response.data.message.includes('already exists') ||
+         response.data.message.includes('уже есть') ||
+         response.data.message.includes('duplicate') ||
+         response.data.message.toLowerCase().includes('exists'));
+
+      console.log(`🔍 ДУБЛИКАТ ЗАКАЗА: "${response.data.message}" → isDuplicate: ${isDuplicateOrder}`);
+
       // Очищаем состояние ожидания при ошибке
       delete waitingStates.orderNumber[chatId];
       console.log(`🧹 Состояние ожидания очищено после ошибки создания`);
 
-      ctx.reply(`❌ Ошибка создания заказа: ${response.data.message}`);
+      if (isDuplicateOrder) {
+        // Устанавливаем флаг "после ошибки дубликата"
+        waitingStates.afterDuplicate[chatId] = true;
+        console.log(`🏷️ УСТАНОВЛЕН ФЛАГ afterDuplicate для chatId: ${chatId}`);
+
+        // Восстанавливаем состояние ожидания номера заказа
+        waitingStates.orderNumber[chatId] = waitingData;
+        console.log(`🔄 ВОССТАНОВЛЕНО состояние ожидания номера заказа`);
+
+        ctx.reply(
+          `❌ Заказ с таким номером уже существует!\n\n` +
+          `📝 Пожалуйста, введите другой номер заказа:\n` +
+          `(только цифры, например: 435)`,
+          {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '❌ Отмена', callback_data: 'cancel_input' }
+              ]]
+            }
+          }
+        );
+      } else {
+        ctx.reply(`❌ Ошибка создания заказа: ${response.data.message}`);
+      }
     }
 
   } catch (error) {
@@ -1636,10 +1705,43 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
     delete waitingStates.orderNumber[chatId];
     console.log(`🧹 Состояние ожидания очищено после исключения`);
 
-    if (error.response?.data?.message) {
-      ctx.reply(`❌ ${error.response.data.message}`);
+    // Проверяем, является ли ошибка "заказ уже существует"
+    const errorMessage = error.response?.data?.message || error.message || '';
+    const isDuplicateOrder = errorMessage.includes('уже существует') ||
+                            errorMessage.includes('already exists') ||
+                            errorMessage.includes('уже есть') ||
+                            errorMessage.includes('duplicate') ||
+                            errorMessage.toLowerCase().includes('exists');
+
+    console.log(`🔍 ДУБЛИКАТ В CATCH: "${errorMessage}" → isDuplicate: ${isDuplicateOrder}`);
+
+    if (isDuplicateOrder) {
+      // Устанавливаем флаг "после ошибки дубликата"
+      waitingStates.afterDuplicate[chatId] = true;
+      console.log(`🏷️ УСТАНОВЛЕН ФЛАГ afterDuplicate В CATCH для chatId: ${chatId}`);
+
+      // Восстанавливаем состояние ожидания номера заказа
+      waitingStates.orderNumber[chatId] = waitingData;
+      console.log(`🔄 ВОССТАНОВЛЕНО состояние ожидания номера заказа В CATCH`);
+
+      ctx.reply(
+        `❌ Заказ с таким номером уже существует!\n\n` +
+        `📝 Пожалуйста, введите другой номер заказа:\n` +
+        `(только цифры, например: 435)`,
+        {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '❌ Отмена', callback_data: 'cancel_input' }
+            ]]
+          }
+        }
+      );
     } else {
-      ctx.reply('❌ Ошибка при создании заказа. Попробуйте еще раз.');
+      if (error.response?.data?.message) {
+        ctx.reply(`❌ ${error.response.data.message}`);
+      } else {
+        ctx.reply('❌ Ошибка при создании заказа. Попробуйте еще раз.');
+      }
     }
   }
 };
@@ -2574,6 +2676,7 @@ bot.action('cancel_input', async (ctx) => {
     delete waitingStates.orderNumber[chatId];
     delete waitingStates.cancellationReason[chatId];
     delete waitingStates.replacementReason[chatId];
+    delete waitingStates.afterDuplicate[chatId]; // Очищаем флаг "после дубликата"
 
     ctx.reply('❌ Ввод отменен', getMainMenu());
   } catch (error) {
