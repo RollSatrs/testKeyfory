@@ -11,8 +11,7 @@ import {
     assignExecutersToService,
     removeExecuterFromService,
     getServiceExecuters,
-    updateServicePricing,
-    getServiceExecuterStatuses
+    updateServicePricing
 } from '../../service/ServiceAdmim/adminServicesService.js';
 import dotenv from 'dotenv';
 
@@ -155,16 +154,5 @@ sercesRoute.put('/update-pricing/:id', async (req, res) => {
     } catch (error) {
         console.error('Error updating service pricing:', error);
         res.status(400).json({ error: error.message });
-    }
-});
-
-// GET /services/:id/executer-statuses - получить статусы исполнителей по услуге
-sercesRoute.get('/:id/executer-statuses', async (req, res) => {
-    try {
-        const statuses = await getServiceExecuterStatuses(req.params.id);
-        res.json(statuses);
-    } catch (error) {
-        console.error('Error fetching service executer statuses:', error);
-        res.status(500).json({ error: error.message });
     }
 });

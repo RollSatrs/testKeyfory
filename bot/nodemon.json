@@ -1,16 +1,6 @@
 {
-  "verbose": true,
-  "ignore": ["node_modules/", "*.log", "*.tmp"],
-  "watch": [
-    "*.js",
-    "../backend/api/service/**/*.js",
-    "../backend/database/**/*.js"
-  ],
-  "ext": "js,json",
-  "delay": 2000,
-  "env": {
-    "NODE_ENV": "development"
-  },
-  "signal": "SIGUSR2",
-  "restartable": "rs"
+  "watch": ["executerBot.js", "adminBot.js", "startAdminNotifications.js"],
+  "ext": "js",
+  "ignore": ["node_modules/", "*.log"],
+  "delay": "2000"
 }

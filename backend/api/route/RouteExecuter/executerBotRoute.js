@@ -123,7 +123,7 @@ router.get('/services/:executerId', async (req, res) => {
           let lastExec = null;
           try {
             lastExec = await ServiceExecution.findOne({
-              where: { service_id: service.id, executer_id },
+              where: { service_id: service.id, executer_id: executerId },
               order: [['created_at', 'DESC']]
             });
           } catch (execErr) {

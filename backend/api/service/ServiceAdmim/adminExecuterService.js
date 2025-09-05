@@ -1,4 +1,4 @@
-import { Executer, Order, Services, ServiceAccess, Log, Material, ExecuterPricing } from "../../../database/dbTables.js";
+import { Executer, Order, Services, ServiceAccess, Log, Material } from "../../../database/dbTables.js";
 import { sequelize } from "../../../database/databaseOn.js";
 import { Op, Sequelize } from 'sequelize';
 
@@ -237,28 +237,18 @@ export async function updateExecuterRights(executerId, rights) {
                 const fetch = (await import('node-fetch')).default;
                 const API_BASE_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 
-                // Получаем полную информацию о новых услугах включая индивидуальные цены
+                // Получаем полную информацию о новых услугах
                 const newServicesInfo = [];
                 for (const right of actuallyNewServices) {
                     const service = await Services.findByPk(right.service_id, {
                         attributes: ['id', 'name', 'category', 'price']
                     });
                     if (service) {
-                        // Проверяем индивидуальную цену для этого исполнителя
-                        const individualPricing = await ExecuterPricing.findOne({
-                            where: {
-                                executer_id: executerId,
-                                service_id: service.id
-                            }
-                        });
-
                         newServicesInfo.push({
                             id: service.id,
                             name: service.name,
                             category: service.category,
-                            standardPrice: service.price,
-                            individualPrice: individualPricing?.custom_price || service.price,
-                            price: individualPricing?.custom_price || service.price // для обратной совместимости
+                            price: service.price
                         });
                     }
                 }
