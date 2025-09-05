@@ -243,12 +243,39 @@ export async function updateExecuterRights(executerId, rights) {
                     const service = await Services.findByPk(right.service_id, {
                         attributes: ['id', 'name', 'category', 'price']
                     });
+
                     if (service) {
+                        // Получаем индивидуальную цену из ExecuterPricing
+                        const { ExecuterPricing } = await import('../../../database/dbTables.js');
+
+                        const executerPricing = await ExecuterPricing.findOne({
+                            where: {
+                                service_id: service.id,
+                                executer_id: executerId
+                            }
+                        });
+
+                        const individualPrice = (executerPricing && executerPricing.custom_price !== null && executerPricing.custom_price !== undefined)
+                            ? executerPricing.custom_price
+                            : service.price;
+
+                        // DEBUG: логируем цены для диагностики
+                        console.log(`🔍 DEBUG adminExecuterService - Услуга: ${service.name}`);
+                        console.log(`💰 DEBUG Цены:`, {
+                            serviceName: service.name,
+                            standardPrice: service.price,
+                            individualPrice: individualPrice,
+                            executerPricing: executerPricing ? executerPricing.custom_price : 'НЕТ',
+                            willShowDifferent: service.price !== individualPrice
+                        });
+
                         newServicesInfo.push({
                             id: service.id,
                             name: service.name,
                             category: service.category,
-                            price: service.price
+                            price: individualPrice,              // для обратной совместимости
+                            standardPrice: service.price,        // базовая цена услуги
+                            individualPrice: individualPrice     // индивидуальная цена исполнителя
                         });
                     }
                 }

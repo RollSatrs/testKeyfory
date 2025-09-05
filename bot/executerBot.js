@@ -2831,6 +2831,7 @@ export const notifyExecuterAdded = async (telegramId, executerName, adminName) =
 export const notifyServiceAssigned = async (telegramId, executerName, services, adminName) => {
   try {
     console.log(`📢 Отправляем уведомление о назначении услуг исполнителю: ${telegramId}`);
+    console.log(`🔍 DEBUG: Полученные данные services:`, JSON.stringify(services, null, 2));
 
     let message = `🎯 *Вам назначены новые услуги!*\n\n`;
     message += `👤 Исполнитель: ${executerName}\n\n`;
@@ -2839,12 +2840,50 @@ export const notifyServiceAssigned = async (telegramId, executerName, services, 
     // Добавляем список услуг
     if (Array.isArray(services) && services.length > 0) {
       services.forEach((service, index) => {
+        console.log(`🔍 DEBUG Service ${index + 1}:`, {
+          name: service.name,
+          category: service.category,
+          price: service.price,
+          standardPrice: service.standardPrice,
+          individualPrice: service.individualPrice
+        });
+
         message += `${index + 1}. 🛠️ ${service.name}`;
         if (service.category) {
           message += ` (${service.category})`;
         }
-        if (service.price) {
-          message += ` — ${service.price}₽`;
+
+        // Показываем цены: базовую и индивидуальную (если отличается)
+        if (service.standardPrice !== undefined || service.individualPrice !== undefined || service.price !== undefined) {
+          const standardPrice = service.standardPrice || service.price;
+          const individualPrice = service.individualPrice || service.price;
+
+          // Приводим к числам для корректного сравнения
+          const standardPriceNum = parseFloat(standardPrice);
+          const individualPriceNum = parseFloat(individualPrice);
+
+          console.log(`💰 DEBUG Цены для ${service.name}:`, {
+            standardPrice: standardPrice,
+            individualPrice: individualPrice,
+            standardPriceNum: standardPriceNum,
+            individualPriceNum: individualPriceNum,
+            areEqual: standardPriceNum === individualPriceNum,
+            comparison: standardPriceNum !== individualPriceNum ? 'РАЗНЫЕ' : 'ОДИНАКОВЫЕ'
+          });
+
+          if (standardPrice !== undefined && individualPrice !== undefined) {
+            if (standardPriceNum !== individualPriceNum && !isNaN(standardPriceNum) && !isNaN(individualPriceNum)) {
+              // Есть индивидуальная цена, отличающаяся от базовой
+              message += ` — базовая: ${standardPriceNum}₽ → индивидуальная: ${individualPriceNum}₽`;
+            } else {
+              // Индивидуальная цена равна базовой или не установлена
+              message += ` — ${standardPriceNum || individualPriceNum}₽`;
+            }
+          } else if (standardPrice !== undefined) {
+            message += ` — ${standardPriceNum}₽`;
+          } else if (individualPrice !== undefined) {
+            message += ` — ${individualPriceNum}₽`;
+          }
         }
         message += '\n';
       });

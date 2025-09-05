@@ -553,24 +553,37 @@ export async function assignExecutersToService(serviceId, executerIds) {
 
                     if (executer?.telegram_id) {
                         try {
-                            // Получаем индивидуальную цену для этого исполнителя
-                            const serviceAccess = await ServiceAccess.findOne({
+                            console.log(`🔍 Ищем индивидуальную цену для исполнителя ${executerId}, услуга ${service.id}`);
+
+                            // Получаем индивидуальную цену из таблицы ExecuterPricing
+                            const executerPricing = await ExecuterPricing.findOne({
                                 where: {
                                     service_id: service.id,
                                     executer_id: executerId
                                 }
                             });
 
-                            // Используем индивидуальную цену, если она установлена, иначе стандартную
-                            const individualPrice = (serviceAccess && serviceAccess.price !== null && serviceAccess.price !== undefined)
-                                ? serviceAccess.price
+                            console.log(`💰 ExecuterPricing результат:`, executerPricing ? {
+                                id: executerPricing.id,
+                                custom_price: executerPricing.custom_price,
+                                service_id: executerPricing.service_id,
+                                executer_id: executerPricing.executer_id
+                            } : null);
+
+                            // Используем индивидуальную цену из ExecuterPricing, если она установлена, иначе стандартную
+                            const individualPrice = (executerPricing && executerPricing.custom_price !== null && executerPricing.custom_price !== undefined)
+                                ? executerPricing.custom_price
                                 : service.price;
+
+                            console.log(`💵 Цены для исполнителя ${executer.name}: стандартная=${service.price}₽, индивидуальная=${individualPrice}₽`);
 
                             const serviceInfoForExecuter = {
                                 id: service.id,
                                 name: service.name,
                                 category: service.category,
-                                price: individualPrice
+                                price: individualPrice,              // для обратной совместимости
+                                standardPrice: service.price,        // базовая цена услуги
+                                individualPrice: individualPrice     // индивидуальная цена исполнителя
                             };
 
                             const notificationResponse = await fetch(`${API_BASE_URL}/api/executers-bot/notify-service-assigned`, {
