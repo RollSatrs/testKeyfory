@@ -3133,4 +3133,37 @@ router.get('/all-executers', async (req, res) => {
   }
 });
 
+// GET /service-materials-count/:serviceId - Проверить количество доступных материалов для услуги
+router.get('/service-materials-count/:serviceId', async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+
+    console.log(`\n📊 === API: ПРОВЕРКА КОЛИЧЕСТВА МАТЕРИАЛОВ ===`);
+    console.log(`🛠️ Service ID: ${serviceId}`);
+
+    // Подсчитываем доступные материалы
+    const availableCount = await Material.count({
+      where: {
+        service_id: serviceId,
+        status: MATERIAL_STATUS.AVAILABLE
+      }
+    });
+
+    console.log(`📦 Доступных материалов: ${availableCount}`);
+
+    res.json({
+      success: true,
+      serviceId: parseInt(serviceId),
+      availableCount
+    });
+
+  } catch (error) {
+    console.error('❌ Ошибка проверки количества материалов:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка проверки материалов'
+    });
+  }
+});
+
 export default router;

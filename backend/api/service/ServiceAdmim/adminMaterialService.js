@@ -490,6 +490,15 @@ export async function uploadMaterialsFromFile(file, serviceId) {
         // Сохраняем материалы в базу данных
         if (materials.length > 0) {
             await Material.bulkCreate(materials);
+
+            // 🆕 УВЕДОМЛЕНИЯ: Отправляем уведомление исполнителям о появлении материалов
+            try {
+                const { notifyMaterialsAvailable } = await import('../../../../bot/executerBot.js');
+                await notifyMaterialsAvailable(serviceId, service.name, materials.length);
+            } catch (notificationError) {
+                console.error('❌ Ошибка отправки уведомлений о материалах:', notificationError.message);
+                // Не прерываем выполнение из-за ошибки уведомлений
+            }
         }
 
         // Удаляем временный файл
@@ -532,6 +541,15 @@ export async function addSingleMaterial(serviceId, contents, typeKey = null) {
         }
 
         const material = await Material.create(materialData);
+
+        // 🆕 УВЕДОМЛЕНИЯ: Отправляем уведомление исполнителям о появлении материала
+        try {
+            const { notifyMaterialsAvailable } = await import('../../../../bot/executerBot.js');
+            await notifyMaterialsAvailable(serviceId, service.name, 1);
+        } catch (notificationError) {
+            console.error('❌ Ошибка отправки уведомлений о новом материале:', notificationError.message);
+            // Не прерываем выполнение из-за ошибки уведомлений
+        }
 
         return {
             success: true,

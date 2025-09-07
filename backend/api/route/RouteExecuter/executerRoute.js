@@ -367,6 +367,32 @@ executerRoute.post('/service-execution', async (req, res) => {
           const wasReserved = assignedMaterial.reserved_for ? '(зарезервированный)' : '(обычный)';
           console.log(`✅ Материал ${assignedMaterial.id} ${wasReserved} автоматически назначен к заказу ${orderNumber} для исполнителя ${executerName}`);
           console.log(`📅 Дата использования материала: ${materialUseDate.toISOString()}`);
+
+          // 🆕 ПРОВЕРЯЕМ: Закончились ли материалы для этой услуги?
+          try {
+            const remainingMaterials = await Material.count({
+              where: {
+                service_id: serviceId,
+                status: MATERIAL_STATUS.AVAILABLE
+              }
+            });
+
+            console.log(`📊 Осталось доступных материалов для услуги ${serviceId}: ${remainingMaterials}`);
+
+            if (remainingMaterials === 0) {
+              console.log(`⚠️ Материалы для услуги ${serviceId} закончились! Отправляем уведомления...`);
+
+              // Получаем название услуги для уведомления
+              const serviceInfo = await Services.findByPk(serviceId, { attributes: ['name'] });
+              const serviceName = serviceInfo ? serviceInfo.name : 'Неизвестная услуга';
+
+              // Отправляем уведомление о том, что материалы закончились
+              const { notifyMaterialsOutOfStock } = await import('../../../../bot/executerBot.js');
+              await notifyMaterialsOutOfStock(serviceId, serviceName);
+            }
+          } catch (stockCheckError) {
+            console.error('❌ Ошибка проверки остатка материалов:', stockCheckError.message);
+          }
         } else {
           console.log(`⚠️ Нет доступных материалов для услуги ${serviceId}`);
         }
@@ -453,6 +479,32 @@ executerRoute.post('/assign-material-to-order', async (req, res) => {
 
     console.log(`✅ Материал ${availableMaterial.id} назначен к заказу ${orderNumber}`);
     console.log(`📅 Дата использования при ручном назначении: ${assignmentDate.toISOString()}`);
+
+    // 🆕 ПРОВЕРЯЕМ: Закончились ли материалы для этой услуги?
+    try {
+      const remainingMaterials = await Material.count({
+        where: {
+          service_id: serviceId,
+          status: MATERIAL_STATUS.AVAILABLE
+        }
+      });
+
+      console.log(`📊 Осталось доступных материалов для услуги ${serviceId}: ${remainingMaterials}`);
+
+      if (remainingMaterials === 0) {
+        console.log(`⚠️ Материалы для услуги ${serviceId} закончились! Отправляем уведомления...`);
+
+        // Получаем название услуги для уведомления
+        const serviceInfo = await Services.findByPk(serviceId, { attributes: ['name'] });
+        const serviceName = serviceInfo ? serviceInfo.name : 'Неизвестная услуга';
+
+        // Отправляем уведомление о том, что материалы закончились
+        const { notifyMaterialsOutOfStock } = await import('../../../../bot/executerBot.js');
+        await notifyMaterialsOutOfStock(serviceId, serviceName);
+      }
+    } catch (stockCheckError) {
+      console.error('❌ Ошибка проверки остатка материалов:', stockCheckError.message);
+    }
 
     res.json({
       success: true,

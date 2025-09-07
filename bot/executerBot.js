@@ -1275,7 +1275,21 @@ const showMaterialsText = async (ctx, orderNumber) => {
         balanceToShow = session.balance || 0;
       }
 
-      return ctx.reply(`📝 *Материалы для заказа #${orderNumber}*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n📦 Материалы для этого заказа не назначены`, { parse_mode: 'Markdown' });
+      // Проверяем, есть ли активный заказ с этим номером
+      let hasActiveOrder = false;
+      try {
+        const orderCheckResponse = await fetchAsAxios('GET', `/api/executers-bot/execution-by-order/${orderNumber}`);
+        hasActiveOrder = orderCheckResponse?.data?.success && orderCheckResponse.data.data;
+      } catch (err) {
+        console.warn('Ошибка проверки активного заказа:', err.message);
+      }
+
+      // Если заказ существует и активен, но материалы не назначены - значит они закончились
+      const messageText = hasActiveOrder
+        ? `📝 *Материалы для заказа #${orderNumber}*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n📦 Материалы для этого заказа не назначены`
+        : `📝 *Материалы для заказа #${orderNumber}*\n\n💰 Общий заработок: ${balanceToShow}₽\n\n📦 Материалы для этой услуги не назначены`;
+
+      return ctx.reply(messageText, { parse_mode: 'Markdown' });
     }
 
     const materials = response.data.data;
@@ -1608,6 +1622,45 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
         }
       } catch (reserveError) {
         console.warn('⚠️ Ошибка при использовании зарезервированного материала:', reserveError.message);
+      }
+    }
+
+    // 🆕 ПРОВЕРЯЕМ НАЛИЧИЕ МАТЕРИАЛОВ перед созданием заказа
+    if (!materialSuccessfullyUsed) {
+      try {
+        console.log(`🔍 Проверяем наличие доступных материалов для услуги ${waitingData.serviceId}`);
+
+        const materialsCheckResponse = await fetchAsAxios('GET', `/api/executers-bot/service-materials-count/${waitingData.serviceId}`);
+        const availableCount = materialsCheckResponse.data?.availableCount || 0;
+
+        console.log(`📊 Доступных материалов для услуги: ${availableCount}`);
+
+        if (availableCount === 0) {
+          console.log(`❌ Нет доступных материалов для услуги ${waitingData.serviceName}`);
+
+          // Очищаем состояние ожидания
+          delete waitingStates.orderNumber[chatId];
+
+          await ctx.reply(
+            `❌ *Материалы для услуги "${waitingData.serviceName}" закончились*\n\n` +
+            `📦 К сожалению, все материалы для этой услуги уже использованы.\n\n` +
+            `⏳ *Обратитесь к администратору* для пополнения материалов или попробуйте позже.`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [[
+                  { text: '🔙 Главное меню', callback_data: 'main_menu' }
+                ]]
+              }
+            }
+          );
+
+          await logActivity(session.executerId, 'materials_unavailable', `Попытка создать заказ #${orderNumber} для услуги "${waitingData.serviceName}", но материалы закончились`);
+          return;
+        }
+      } catch (materialsCheckError) {
+        console.warn('⚠️ Ошибка проверки материалов, продолжаем создание заказа:', materialsCheckError.message);
+        // Если проверка не удалась, продолжаем создание заказа (для совместимости)
       }
     }
 
@@ -3446,5 +3499,128 @@ setTimeout(checkAndUpdateInactiveExecuters, 30000);
 
 // Регулярные проверки - сохраняем ID интервала
 intervalId = setInterval(checkAndUpdateInactiveExecuters, AUTO_CHECK_INTERVAL);
+
+// ==================== УВЕДОМЛЕНИЯ О МАТЕРИАЛАХ ====================
+
+// Функция уведомления о появлении материалов для услуги
+export const notifyMaterialsAvailable = async (serviceId, serviceName, materialCount = 1) => {
+  try {
+    console.log(`📦 Отправляем уведомления о появлении материалов для услуги: ${serviceName}`);
+
+    // Получаем всех активных исполнителей этой услуги
+    const { Executer, ServiceAccess } = await import('../backend/database/dbTables.js');
+
+    const executersWithAccess = await Executer.findAll({
+      include: [{
+        model: ServiceAccess,
+        where: { service_id: serviceId },
+        required: true
+      }],
+      where: {
+        status: { [Op.ne]: 'blocked' },
+        is_bot_active: true
+      }
+    });
+
+    console.log(`📤 Найдено ${executersWithAccess.length} активных исполнителей для уведомления`);
+
+    // Отправляем уведомления всем подходящим исполнителям
+    const notifications = executersWithAccess.map(async (executer) => {
+      if (!executer.telegram_id) return null;
+
+      const message = `🎉 *Появились новые материалы!*\n\n` +
+        `🛠️ **Услуга:** ${serviceName}\n` +
+        `📦 **Добавлено:** ${materialCount} материал${materialCount > 1 ? 'ов' : ''}\n\n` +
+        `✨ Теперь вы можете создавать новые заказы по этой услуге!`;
+
+      try {
+        await bot.telegram.sendMessage(executer.telegram_id, message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🛠️ Мои услуги', callback_data: 'view_services' },
+              { text: '📋 Активные услуги', callback_data: 'active_services' }
+            ]]
+          }
+        });
+
+        console.log(`✅ Уведомление о материалах отправлено исполнителю ${executer.name} (${executer.telegram_id})`);
+        return { success: true, executerId: executer.id };
+      } catch (error) {
+        console.error(`❌ Ошибка отправки уведомления исполнителю ${executer.name}:`, error.message);
+        return { success: false, executerId: executer.id, error: error.message };
+      }
+    });
+
+    const results = await Promise.allSettled(notifications);
+    const successful = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+
+    console.log(`📊 Уведомления о материалах: отправлено ${successful} из ${executersWithAccess.length}`);
+
+  } catch (error) {
+    console.error('❌ Критическая ошибка уведомлений о материалах:', error);
+  }
+};
+
+// Функция уведомления о том что материалы закончились
+export const notifyMaterialsOutOfStock = async (serviceId, serviceName) => {
+  try {
+    console.log(`📭 Отправляем уведомления о том что материалы закончились для услуги: ${serviceName}`);
+
+    // Получаем всех активных исполнителей этой услуги
+    const { Executer, ServiceAccess } = await import('../backend/database/dbTables.js');
+    const { Op } = await import('sequelize');
+
+    const executersWithAccess = await Executer.findAll({
+      include: [{
+        model: ServiceAccess,
+        where: { service_id: serviceId },
+        required: true
+      }],
+      where: {
+        status: { [Op.ne]: 'blocked' },
+        is_bot_active: true
+      }
+    });
+
+    console.log(`📤 Найдено ${executersWithAccess.length} активных исполнителей для уведомления о нехватке материалов`);
+
+    // Отправляем уведомления всем подходящим исполнителям
+    const notifications = executersWithAccess.map(async (executer) => {
+      if (!executer.telegram_id) return null;
+
+      const message = `⚠️ *Материалы закончились!*\n\n` +
+        `🛠️ **Услуга:** ${serviceName}\n` +
+        `📦 **Статус:** Нет доступных материалов\n\n` +
+        `🔄 Администратор уже уведомлен. Ожидайте пополнения материалов.`;
+
+      try {
+        await bot.telegram.sendMessage(executer.telegram_id, message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '📞 Связаться с админом', url: 'https://t.me/support' },
+              { text: '📊 Статистика', callback_data: 'main_menu' }
+            ]]
+          }
+        });
+
+        console.log(`✅ Уведомление о нехватке материалов отправлено исполнителю ${executer.name} (${executer.telegram_id})`);
+        return { success: true, executerId: executer.id };
+      } catch (error) {
+        console.error(`❌ Ошибка отправки уведомления исполнителю ${executer.name}:`, error.message);
+        return { success: false, executerId: executer.id, error: error.message };
+      }
+    });
+
+    const results = await Promise.allSettled(notifications);
+    const successful = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+
+    console.log(`📊 Уведомления о нехватке материалов: отправлено ${successful} из ${executersWithAccess.length}`);
+
+  } catch (error) {
+    console.error('❌ Критическая ошибка уведомлений о нехватке материалов:', error);
+  }
+};
 
 console.log('🤖 Бот для исполнителей готов к работе!');
