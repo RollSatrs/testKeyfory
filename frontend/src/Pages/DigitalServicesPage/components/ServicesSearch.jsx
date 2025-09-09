@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FiFilter } from "react-icons/fi";
-import { Select, Input, Button } from 'antd';
+import { Select, Input, Button } from "antd";
 
 const categories = [
   "Все категории",
@@ -35,7 +35,7 @@ const categories = [
   "Технологии",
   "Криптовалюты",
   "Маркетинг",
-  "Общение и знакомства"
+  "Общение и знакомства",
 ];
 
 export function ServicesSearch({
@@ -44,7 +44,7 @@ export function ServicesSearch({
   statusFilter,
   setStatusFilter,
   categoryFilter,
-  setCategoryFilter
+  setCategoryFilter,
 }) {
   const [showFilters, setShowFilters] = useState(false);
 
@@ -56,7 +56,7 @@ export function ServicesSearch({
           placeholder="Поиск услуги..."
           className="flex-1"
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
           style={{ minWidth: 0 }}
         />
         <Button
@@ -65,9 +65,9 @@ export function ServicesSearch({
           className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-400 text-white rounded-xl shadow hover:from-blue-600 hover:to-cyan-500 transition font-semibold border-0"
           style={{
             background: "linear-gradient(to right, #3b82f6, #06b6d4)",
-            border: "none"
+            border: "none",
           }}
-          onClick={() => setShowFilters(f => !f)}
+          onClick={() => setShowFilters((f) => !f)}
         >
           Фильтры
         </Button>
@@ -77,26 +77,30 @@ export function ServicesSearch({
           <Select
             className="w-full"
             value={statusFilter}
-            onChange={value => setStatusFilter(value)}
+            onChange={(value) => setStatusFilter(value)}
             placeholder="Все статусы"
             options={[
-              { value: '', label: 'Все статусы' },
-              { value: 'active', label: 'Активна' },
-              { value: 'inactive', label: 'Неактивна' }
+              { value: "", label: "Все статусы" },
+              { value: "active", label: "🟢 Активна" },
+              { value: "inactive", label: "🟠 Неактивна" },
+              { value: "completed", label: "🔵 Выполнена" },
+              { value: "no_executers", label: "🔴 Нет исполнителей" },
             ]}
             allowClear
           />
           <Select
             className="w-full"
             value={categoryFilter}
-            onChange={value => setCategoryFilter(value)}
+            onChange={(value) => setCategoryFilter(value)}
             placeholder="Все категории"
             options={[
-              { value: '', label: 'Все категории' },
-              ...categories.filter(c => c !== "Все категории").map(cat => ({
-                value: cat,
-                label: cat
-              }))
+              { value: "", label: "Все категории" },
+              ...categories
+                .filter((c) => c !== "Все категории")
+                .map((cat) => ({
+                  value: cat,
+                  label: cat,
+                })),
             ]}
             allowClear
           />

@@ -28,6 +28,7 @@ export function Review() {
           activeExecuters: statsData.executers?.active || 0,
           completedOrdersPercent: statsData.orders?.conversion || 0,
           revenueGrowth: statsData.revenue?.growth || 0,
+          cancelledOrders: statsData.orders?.cancelled || 0, // ✨ ДОБАВЛЯЕМ ОТМЕНЕННЫЕ ЗАКАЗЫ
         });
       } catch (error) {
         console.error("Ошибка загрузки данных дашборда:", error);

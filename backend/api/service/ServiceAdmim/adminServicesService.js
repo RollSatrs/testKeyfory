@@ -81,7 +81,7 @@ export async function getAllServices(includeDeleted = false) {
                             'active',
                             'pending_approval'
                         ],
-                        [Op.not]: ORDER_STATUS.COMPLETED // Явно исключаем completed
+                        [Op.not]: [ORDER_STATUS.COMPLETED, 'cancelled'] // ✨ ИСКЛЮЧАЕМ И COMPLETED И CANCELLED
                     }
                 },
                 include: [{
@@ -109,6 +109,15 @@ export async function getAllServices(includeDeleted = false) {
                 limit: 20
             });
 
+            // ✨ ПОЛУЧАЕМ ОТМЕНЕННЫЕ ЗАКАЗЫ ДЛЯ ИСКЛЮЧЕНИЯ ИЗ АКТИВНЫХ
+            const cancelledOrders = await ServiceExecution.findAll({
+                where: {
+                    service_id: service.id,
+                    status: 'cancelled'
+                },
+                attributes: ['order_number'],
+            });
+
             // Build a deduplicated list of order entries combining ServiceExecution and Material.order_number
             const ordersMap = new Map();
 
@@ -127,18 +136,21 @@ export async function getAllServices(includeDeleted = false) {
             }
 
             // Then add any order_numbers present directly on materials (fallback)
-            // НО ИСКЛЮЧАЕМ завершённые заказы из материалов
+            // НО ИСКЛЮЧАЕМ завершённые И ОТМЕНЕННЫЕ заказы из материалов
             for (const m of materials) {
                 if (m.order_number) {
                     const num = m.order_number;
 
-                    // Проверяем, не является ли этот заказ завершённым
+                    // Проверяем, не является ли этот заказ завершённым или отмененным
                     const isCompletedOrder = completedOrders.some(co =>
                         (co.order_number && String(co.order_number) === String(num))
                     );
+                    const isCancelledOrder = cancelledOrders.some(co =>
+                        (co.order_number && String(co.order_number) === String(num))
+                    );
 
-                    // Добавляем только если заказ НЕ завершён и ещё не добавлен
-                    if (!isCompletedOrder && !ordersMap.has(num)) {
+                    // Добавляем только если заказ НЕ завершён, НЕ отменен и ещё не добавлен
+                    if (!isCompletedOrder && !isCancelledOrder && !ordersMap.has(num)) {
                         ordersMap.set(num, {
                             order_number: num,
                             executer_id: m.executer_id || null,

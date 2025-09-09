@@ -422,15 +422,44 @@ export function ServicesTable({
     }
   };
 
+  // Функция для определения реального статуса услуги на основе статусов исполнителей
+  const getServiceRealStatus = (service) => {
+    const executerStatuses = service.executer_statuses || [];
+
+    // Если нет исполнителей
+    if (executerStatuses.length === 0) {
+      return "no_executers";
+    }
+
+    // Определяем статусы всех исполнителей
+    const serviceStatuses = executerStatuses.map((es) => es.service_status);
+
+    // Если есть хотя бы один активный - услуга активна
+    if (serviceStatuses.includes("active")) {
+      return "active";
+    }
+
+    // Если все выполнены - услуга выполнена
+    if (serviceStatuses.every((status) => status === "completed")) {
+      return "completed";
+    }
+
+    // Иначе - неактивна
+    return "inactive";
+  };
+
   // Фильтрация перед отображением
   const filteredServices = services.filter((s) => {
     // Фильтр по архивности - если showDeleted=true, показываем только архивные, иначе только активные
     const archiveFilter = showDeleted ? s.is_deleted : !s.is_deleted;
 
+    // Определяем реальный статус услуги
+    const realStatus = getServiceRealStatus(s);
+
     return (
       archiveFilter &&
       s.name.toLowerCase().includes(search.toLowerCase()) &&
-      (statusFilter ? s.status === statusFilter : true) &&
+      (statusFilter ? realStatus === statusFilter : true) &&
       (categoryFilter ? s.category === categoryFilter : true)
     );
   });

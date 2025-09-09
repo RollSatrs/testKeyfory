@@ -57,7 +57,6 @@ const userSessions = {};
 // Состояния ожидания ввода
 const waitingStates = {
   orderNumber: {},
-  cancellationReason: {},
   replacementReason: {},
   afterDuplicate: {} // Флаг для отслеживания состояния "после ошибки дубликата"
 };
@@ -1432,10 +1431,6 @@ bot.on('text', async (ctx) => {
     return handleOrderNumberInput(ctx, text);
   }
 
-  if (waitingStates.cancellationReason[chatId]) {
-    return handleCancellationReasonInput(ctx, text);
-  }
-
   if (waitingStates.replacementReason[chatId]) {
     return handleReplacementReasonInput(ctx, text);
   }
@@ -2621,29 +2616,39 @@ bot.action(/^cancel_order_(.+)$/, async (ctx) => {
     console.log(`\n❌ === НЕ ВЫПОЛНИЛ УСЛУГУ ===`);
     console.log(`📋 Order Number: ${orderNumber}`);
 
-    // Устанавливаем состояние ожидания причины отмены
-    waitingStates.cancellationReason[chatId] = {
-      orderNumber: orderNumber
-    };
+    // Сразу отменяем заказ без запроса причины
+    const response = await fetchAsAxios('POST', '/api/executers-bot/bot-cancel-order', {
+      orderNumber: orderNumber,
+      telegramId: session.telegramId,
+      reason: 'Не выполнил услугу' // Стандартная причина
+    });
 
-    await ctx.reply(
-      `❌ *Не выполнил услугу #${orderNumber}*\n\n` +
-      `📝 **Укажите причину невыполнения услуги:**\n` +
-      `Например: "Нет нужных материалов", "Технические проблемы", "Не смог связаться с клиентом"`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🔙 К управлению заказом', callback_data: `manage_order_${orderNumber}` }
-          ]]
-        }
-      }
-    );
+    if (response.data.success) {
+      await ctx.reply(
+        `❌ *Услуга #${orderNumber} не выполнена*\n\n` +
+        `� Материалы возвращены в статус "Доступны"\n` +
+        `📂 Заказ перемещен в историю\n\n` +
+        `Заказ больше не отображается в активных услугах, но остается в "Моих услугах".`,
+        { parse_mode: 'Markdown' }
+      );
+
+      await logActivity(session.executerId, 'cancel_order', `Не выполнил услугу #${orderNumber}. Материалы возвращены.`, orderNumber);
+
+      // Показываем обновленный список активных услуг
+      await showActiveServices(ctx);
+    } else {
+      ctx.reply(`❌ Ошибка отмены заказа: ${response.data.message}`);
+      await logActivity(session.executerId, 'cancel_order_failed', `Ошибка отмены заказа #${orderNumber}: ${response.data.message}`, orderNumber);
+    }
 
   } catch (error) {
     console.error('❌ Ошибка отмены заказа:', error);
     await ctx.answerCbQuery();
-    ctx.reply('❌ Ошибка при отмене заказа');
+    ctx.reply('❌ Ошибка при отмене заказа. Попробуйте еще раз.');
+
+    if (session?.executerId) {
+      await logActivity(session.executerId, 'cancel_order_error', `Системная ошибка при отмене заказа: ${error.message}`);
+    }
   }
 });
 
@@ -2677,7 +2682,6 @@ bot.action('cancel_input', async (ctx) => {
 
     // Очищаем все состояния ожидания
     delete waitingStates.orderNumber[chatId];
-    delete waitingStates.cancellationReason[chatId];
     delete waitingStates.replacementReason[chatId];
     delete waitingStates.afterDuplicate[chatId]; // Очищаем флаг "после дубликата"
 

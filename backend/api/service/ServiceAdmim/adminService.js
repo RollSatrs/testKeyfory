@@ -376,6 +376,11 @@ export async function getAdminStats() {
             where: { status: 'in_progress' }
         });
 
+        // ✨ ДОБАВЛЯЕМ СТАТИСТИКУ ОТМЕНЕННЫХ ЗАКАЗОВ ИЗ SERVICEEXECUTION
+        const cancelledOrdersFromExecutions = await ServiceExecution.count({
+            where: { status: 'cancelled' }
+        });
+
         // Средний чек
         const averageCheck = completedOrders > 0 ? Math.round(totalRevenue / completedOrders) : 0;
 
@@ -390,6 +395,22 @@ export async function getAdminStats() {
             where: {
                 last_activity: {
                     [Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000)
+                }
+            }
+        });
+
+        // Общее количество услуг
+        const totalServices = await Services.count({
+            where: { is_deleted: false }
+        });
+
+        // Новые услуги (за последний месяц)
+        const oneMonthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const newServices = await Services.count({
+            where: {
+                is_deleted: false,
+                created_at: {
+                    [Op.gte]: oneMonthAgo
                 }
             }
         });
@@ -427,7 +448,12 @@ export async function getAdminStats() {
                 total: totalOrders,
                 completed: completedOrders,
                 active: activeOrders,
+                cancelled: cancelledOrdersFromExecutions, // ✨ ДОБАВЛЯЕМ ОТМЕНЕННЫЕ ЗАКАЗЫ
                 conversion: conversionRate
+            },
+            services: { // ✨ ДОБАВЛЯЕМ СТАТИСТИКУ УСЛУГ
+                total: totalServices,
+                new: newServices
             },
             executers: {
                 total: totalExecuters,
