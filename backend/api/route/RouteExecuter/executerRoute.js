@@ -1,4 +1,5 @@
 ﻿import express from 'express'
+import dotenv from 'dotenv'
 import { MATERIAL_STATUS } from '../../../constants/statusConstants.js'
 import {
   addExecuter,
@@ -28,7 +29,6 @@ import {
 } from '../../service/ServiceExecuter/executerService.js'
 import { Services, ServiceExecution, Material, Executer } from '../../../database/dbTables.js';
 import { Op } from 'sequelize';
-import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken'
 import { authExecuterMiddleware } from '../../middleware.js';
 
@@ -380,8 +380,6 @@ executerRoute.post('/service-execution', async (req, res) => {
             console.log(`📊 Осталось доступных материалов для услуги ${serviceId}: ${remainingMaterials}`);
 
             if (remainingMaterials === 0) {
-              console.log(`⚠️ Материалы для услуги ${serviceId} закончились! Отправляем уведомления...`);
-
               // Получаем название услуги для уведомления
               const serviceInfo = await Services.findByPk(serviceId, { attributes: ['name'] });
               const serviceName = serviceInfo ? serviceInfo.name : 'Неизвестная услуга';
@@ -492,8 +490,6 @@ executerRoute.post('/assign-material-to-order', async (req, res) => {
       console.log(`📊 Осталось доступных материалов для услуги ${serviceId}: ${remainingMaterials}`);
 
       if (remainingMaterials === 0) {
-        console.log(`⚠️ Материалы для услуги ${serviceId} закончились! Отправляем уведомления...`);
-
         // Получаем название услуги для уведомления
         const serviceInfo = await Services.findByPk(serviceId, { attributes: ['name'] });
         const serviceName = serviceInfo ? serviceInfo.name : 'Неизвестная услуга';

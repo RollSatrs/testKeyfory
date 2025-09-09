@@ -1014,12 +1014,10 @@ const createServiceExecutionHandler = async (req, res) => {
       return res.status(400).json({ message: 'Услуга не найдена' });
     }
 
-    // Блокировка дубликатов: запрещаем дубли для того же исполнителя,
-    // но разрешаем создание попыток другими исполнителями — это позволит
-    // отображать в админке статусы по каждому исполнителю отдельно.
-    const existingForExecuter = await ServiceExecution.findOne({ where: { order_number, executer_id } });
-    if (existingForExecuter) {
-      return res.status(400).json({ success: false, message: `Заказ с номером ${order_number} уже существует для этого исполнителя` });
+    // 🔒 ГЛОБАЛЬНАЯ проверка дубликатов: номера заказов должны быть уникальными во всей системе
+    const existingGlobal = await ServiceExecution.findOne({ where: { order_number } });
+    if (existingGlobal) {
+      return res.status(400).json({ success: false, message: `Заказ с номером ${order_number} уже существует` });
     }
 
     // Создаем выполнение услуги и пытаемся атомарно присвоить материал (если есть)
@@ -2736,8 +2734,6 @@ router.post('/notify-service-assigned', async (req, res) => {
         error: 'telegram_id обязателен'
       });
     }
-
-    console.log(`📢 Запрос на уведомление о назначении услуг исполнителю: ${telegram_id}, услуг: ${services?.length || 0}`);
 
     try {
       // Импортируем функцию уведомления из бота

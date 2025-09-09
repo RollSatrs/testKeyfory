@@ -359,16 +359,15 @@ export const getAllExecuters = async (filters = {}) => {
 // Создать выполнение услуги (заменяет создание заказа)
 export const createServiceExecution = async (serviceId, executerId, orderNumber) => {
   try {
-    // Проверяем, есть ли уже такой номер заказа у этого исполнителя
+    // 🔒 ГЛОБАЛЬНАЯ проверка дубликатов: номера заказов должны быть уникальными во всей системе
     const existingExecution = await ServiceExecution.findOne({
       where: {
-        executer_id: executerId,
         order_number: orderNumber
       }
     });
 
     if (existingExecution) {
-      throw new Error('У вас уже есть заказ с таким номером');
+      throw new Error('Заказ с таким номером уже существует');
     }
 
     // Проверяем доступ к услуге (новая система - прямое назначение)

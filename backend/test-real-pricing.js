@@ -19,7 +19,7 @@ import('node-fetch').then(({ default: fetch }) => {
     console.log('🧪 Тестируем с исправленными данными:');
     console.table(testData.services);
 
-    fetch('http://localhost:3000/api/executers-bot/notify-service-assigned', {
+    fetch(`${process.env.BACKEND_URL || 'http://localhost:3000'}/api/executers-bot/notify-service-assigned`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'

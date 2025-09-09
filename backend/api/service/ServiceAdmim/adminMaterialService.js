@@ -5,6 +5,9 @@ import csv from 'csv-parser';
 import * as XLSX from 'xlsx';
 import { Sequelize, Op } from 'sequelize';
 import { MATERIAL_STATUS } from '../../../constants/statusConstants.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 export async function getAllMaterials() {
     try {
@@ -496,7 +499,6 @@ export async function uploadMaterialsFromFile(file, serviceId) {
                 const { notifyMaterialsAvailable } = await import('../../../../bot/executerBot.js');
                 await notifyMaterialsAvailable(serviceId, service.name, materials.length);
             } catch (notificationError) {
-                console.error('❌ Ошибка отправки уведомлений о материалах:', notificationError.message);
                 // Не прерываем выполнение из-за ошибки уведомлений
             }
         }
@@ -547,7 +549,6 @@ export async function addSingleMaterial(serviceId, contents, typeKey = null) {
             const { notifyMaterialsAvailable } = await import('../../../../bot/executerBot.js');
             await notifyMaterialsAvailable(serviceId, service.name, 1);
         } catch (notificationError) {
-            console.error('❌ Ошибка отправки уведомлений о новом материале:', notificationError.message);
             // Не прерываем выполнение из-за ошибки уведомлений
         }
 
@@ -728,7 +729,7 @@ async function sendMaterialEditNotifications(material) {
                 };
 
                 // Отправляем POST запрос к боту
-                const response = await fetch('http://localhost:3000/api/executers-bot/notify-material-edited', {
+                const response = await fetch(`${process.env.BACKEND_URL}/api/executers-bot/notify-material-edited`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

@@ -1692,8 +1692,7 @@ const handleOrderNumberInput = async (ctx, orderNumber) => {
         const cleanWaitingData = {
           serviceId: waitingData.serviceId,
           serviceName: waitingData.serviceName,
-          servicePrice: waitingData.servicePrice,
-          serviceDescription: waitingData.serviceDescription
+          reservedMaterial: waitingData.reservedMaterial
           // НЕ передаем старые номера заказов и другие данные, которые могут накапливаться
         };
         waitingStates.orderNumber[chatId] = cleanWaitingData;

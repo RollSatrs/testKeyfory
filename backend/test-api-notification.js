@@ -22,7 +22,7 @@ console.table(testPayload.services);
 
 // Отправляем POST запрос к API endpoint
 import('node-fetch').then(({ default: fetch }) => {
-    fetch('http://localhost:3000/api/executers-bot/notify-service-assigned', {
+    fetch(`${process.env.BACKEND_URL || 'http://localhost:3000'}/api/executers-bot/notify-service-assigned`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'

@@ -178,7 +178,13 @@ export async function getAllServices(includeDeleted = false) {
                 active_orders: active_orders_array,
                 // Количество и пример завершённых заказов для отображения статуса
                 completed_count: completedOrders.length,
-                completed_orders: completedOrders.map(co => ({ order_number: co.order_number, executer_name: co.Executer?.name || null, completed_at: co.completed_at })),
+                completed_orders: completedOrders.map(co => ({
+                    order_number: co.order_number,
+                    executer_name: co.Executer?.name || null,
+                    completed_at: co.completed_at,
+                    status: 'completed', // 🔧 Добавляем явный статус для завершённых заказов
+                    executer_id: co.executer_id // 🔧 Добавляем ID исполнителя
+                })),
                 custom_pricing: customPricing.map(pricing => ({
                     executer_id: pricing.executer_id,
                     executer_name: pricing.Executer?.name || `Исполнитель ${pricing.executer_id}`,
@@ -485,15 +491,36 @@ export async function assignExecutersToService(serviceId, executerIds) {
                 await Services.update({ executer_id: null }, { where: { id: serviceId }, transaction: t });
             }
 
-            // 🔄 НОВОЕ: Создаем записи индивидуальных статусов для всех назначенных исполнителей
-            console.log(`📋 Создаю записи статусов для ${executerIds.length} исполнителей`);
+            // 🔄 УЛУЧШЕННОЕ: Создаем записи статусов ТОЛЬКО для новых исполнителей или тех, у кого нет статуса 'completed'
+            console.log(`📋 Проверяю статусы для ${executerIds.length} исполнителей`);
             for (const executerId of executerIds) {
-                await createOrUpdateExecuterServiceStatus(
-                    serviceId,
-                    executerId,
-                    'inactive',
-                    { transaction: t }
-                );
+                // Проверяем существующий статус
+                const existingStatus = await ExecuterServiceStatus.findOne({
+                    where: {
+                        service_id: serviceId,
+                        executer_id: executerId
+                    },
+                    transaction: t
+                });
+
+                // Если статуса нет, создаем 'inactive'
+                if (!existingStatus) {
+                    await createOrUpdateExecuterServiceStatus(
+                        serviceId,
+                        executerId,
+                        'inactive',
+                        { transaction: t }
+                    );
+                    console.log(`✅ Создан статус 'inactive' для нового исполнителя ${executerId}`);
+                }
+                // Если статус 'completed' - НЕ ТРОГАЕМ!
+                else if (existingStatus.status === 'completed') {
+                    console.log(`🏆 Исполнитель ${executerId} имеет статус 'completed' - оставляем без изменений`);
+                }
+                // Для остальных статусов можем обновить при необходимости
+                else {
+                    console.log(`📋 Исполнитель ${executerId} имеет статус '${existingStatus.status}' - оставляем без изменений`);
+                }
             }
 
             // 🗑️ НОВОЕ: Удаляем записи статусов для исполнителей, которые больше не назначены

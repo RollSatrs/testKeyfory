@@ -834,7 +834,7 @@ export function ServicesTable({
         };
 
         // Функция для проверки валидности заказа
-        const isValidOrder = (orderObj) => {
+        const isValidOrder = (orderObj, isCompletedOrder = false) => {
           // Исключаем заказы с неуспешными статусами
           const status = (orderObj.status || orderObj.state || "")
             .toString()
@@ -885,6 +885,36 @@ export function ServicesTable({
             orderObj.duplicate_attempt ||
             orderObj.creation_failed
           ) {
+            return false;
+          }
+
+          // 🆕 ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: исключаем заказы с сообщениями об ошибках
+          if (orderObj.message && typeof orderObj.message === "string") {
+            const errorMessage = orderObj.message.toLowerCase();
+            if (
+              errorMessage.includes("уже существует") ||
+              errorMessage.includes("already exists") ||
+              errorMessage.includes("duplicate") ||
+              errorMessage.includes("failed")
+            ) {
+              return false;
+            }
+          }
+
+          // 🆕 СМЯГЧЕННАЯ ПРОВЕРКА: для завершённых заказов проверяем только наличие номера заказа
+          if (isCompletedOrder) {
+            // Для завершённых заказов достаточно наличия номера заказа
+            return true;
+          }
+
+          // 🆕 ПРОВЕРКА НА НЕУДАЧНЫЕ ПОПЫТКИ: если нет valid статуса или создания (только для активных заказов)
+          if (
+            !orderObj.created_at &&
+            !orderObj.status &&
+            !orderObj.state &&
+            orderObj.order_number
+          ) {
+            // Это может быть неудачная попытка без полных данных
             return false;
           }
 
@@ -945,32 +975,49 @@ export function ServicesTable({
           Array.isArray(record.completed_orders) &&
           record.completed_orders.length > 0
         ) {
+          console.log(
+            `🔍 Обрабатываем завершённые заказы для услуги "${record.name}":`,
+            record.completed_orders
+          );
+
           record.completed_orders.forEach((o) => {
             if (!o) return;
 
-            // Проверяем валидность завершенного заказа
-            if (!isValidOrder(o)) return;
+            console.log(`  📋 Проверяем завершённый заказ:`, o);
+
+            // Проверяем валидность завершенного заказа (смягчённая проверка)
+            if (!isValidOrder(o, true)) {
+              console.log(`  ❌ Завершённый заказ не прошёл валидацию:`, o);
+              return;
+            }
 
             const num =
               typeof o === "string" || typeof o === "number"
                 ? o
                 : o.order_number || o.order || o.id;
             // avoid duplicates
-            if (orders.some((ex) => String(ex.order_number) === String(num)))
+            if (orders.some((ex) => String(ex.order_number) === String(num))) {
+              console.log(
+                `  🔄 Завершённый заказ ${num} уже существует в списке`
+              );
               return;
+            }
 
             if (typeof o === "string" || typeof o === "number") {
+              console.log(`  ✅ Добавляем простой завершённый заказ: ${o}`);
               orders.push({
                 order_number: o,
                 status: "completed",
                 executer_name: null,
               });
             } else {
-              orders.push({
+              const newOrder = {
                 order_number: num,
                 status: o.status || o.state || "completed",
                 executer_name: getExecuterName(o),
-              });
+              };
+              console.log(`  ✅ Добавляем завершённый заказ:`, newOrder);
+              orders.push(newOrder);
             }
           });
         }
@@ -1004,17 +1051,43 @@ export function ServicesTable({
           // Если уже есть заказ от этого исполнителя с этим номером
           if (executerOrderMap.has(key)) {
             const existing = executerOrderMap.get(key);
-            // Отдаем приоритет заказу со статусом
-            if (order.status && !existing.status) {
+
+            // 🔧 НОВАЯ ЛОГИКА: отдаём приоритет завершённому заказу перед активным
+            const orderIsCompleted = (order.status || "")
+              .toString()
+              .toLowerCase()
+              .includes("completed");
+            const existingIsCompleted = (existing.status || "")
+              .toString()
+              .toLowerCase()
+              .includes("completed");
+
+            if (orderIsCompleted && !existingIsCompleted) {
+              // Завершённый заказ заменяет активный
               executerOrderMap.set(key, order);
-            }
-            // Или более новому заказу (если есть timestamps)
-            else if (
-              order.created_at &&
-              existing.created_at &&
-              new Date(order.created_at) > new Date(existing.created_at)
-            ) {
-              executerOrderMap.set(key, order);
+            } else if (!orderIsCompleted && existingIsCompleted) {
+              // Активный не заменяет завершённый
+              // оставляем existing
+            } else {
+              // Оба одного типа - отдаём приоритет заказу со статусом
+              if (order.status && !existing.status) {
+                executerOrderMap.set(key, order);
+              }
+              // Или более новому заказу (если есть timestamps)
+              else if (
+                order.created_at &&
+                existing.created_at &&
+                new Date(order.created_at) > new Date(existing.created_at)
+              ) {
+                executerOrderMap.set(key, order);
+              } else if (
+                order.completed_at &&
+                existing.completed_at &&
+                new Date(order.completed_at) > new Date(existing.completed_at)
+              ) {
+                // Или более новому завершённому заказу
+                executerOrderMap.set(key, order);
+              }
             }
           } else {
             executerOrderMap.set(key, order);
@@ -1024,27 +1097,42 @@ export function ServicesTable({
         // Теперь из дедуплицированного набора формируем финальный список
         const deduplicatedOrders = Array.from(executerOrderMap.values());
 
-        // Сначала добавляем заказы со статусом
-        deduplicatedOrders
-          .filter((order) => order.status)
-          .forEach((order) => {
-            const orderNumber = String(order.order_number);
-            if (!seenNumbers.has(orderNumber)) {
-              uniqueOrders.push(order);
-              seenNumbers.add(orderNumber);
-            }
-          });
+        // 🔧 НОВАЯ СОРТИРОВКА: сначала завершённые заказы, потом активные
+        const completedOrders = deduplicatedOrders.filter(
+          (order) =>
+            (order.status || "")
+              .toString()
+              .toLowerCase()
+              .includes("completed") ||
+            (order.status || "").toString().toLowerCase().includes("выполн")
+        );
 
-        // Затем добавляем заказы без статуса, если их номеров еще нет
-        deduplicatedOrders
-          .filter((order) => !order.status)
-          .forEach((order) => {
-            const orderNumber = String(order.order_number);
-            if (!seenNumbers.has(orderNumber)) {
-              uniqueOrders.push(order);
-              seenNumbers.add(orderNumber);
-            }
-          });
+        const activeOrders = deduplicatedOrders.filter(
+          (order) =>
+            !(order.status || "")
+              .toString()
+              .toLowerCase()
+              .includes("completed") &&
+            !(order.status || "").toString().toLowerCase().includes("выполн")
+        );
+
+        // Добавляем завершённые заказы
+        completedOrders.forEach((order) => {
+          const orderNumber = String(order.order_number);
+          if (!seenNumbers.has(orderNumber)) {
+            uniqueOrders.push(order);
+            seenNumbers.add(orderNumber);
+          }
+        });
+
+        // Затем добавляем активные заказы
+        activeOrders.forEach((order) => {
+          const orderNumber = String(order.order_number);
+          if (!seenNumbers.has(orderNumber)) {
+            uniqueOrders.push(order);
+            seenNumbers.add(orderNumber);
+          }
+        });
 
         return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
