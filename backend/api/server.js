@@ -3,6 +3,8 @@ import dotenv from 'dotenv'
 import cors from 'cors'
 import { fileURLToPath } from 'url'
 import path from 'path'
+import http from 'http'
+import websocketServer from '../websocket/websocketServer.js'
 import { adminRoute } from './route/RouteAdmin/adminRoute.js'
 import { sercesRoute } from './route/RouteAdmin/adminServicesRoute.js'
 import { materialRoute } from './route/RouteAdmin/adminMaterialRoute.js'
@@ -133,9 +135,15 @@ const startServer = async () => {
     }
 
   // Запускаем сервер (слушаем на 0.0.0.0 чтобы принимать подключения с любых интерфейсов)
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = http.createServer(app);
+
+  // Инициализируем WebSocket сервер
+  websocketServer.initialize(server);
+
+  server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Сервер запущен на порту ${PORT}`);
-      console.log(`📋 Публичные роуты:`);
+      console.log(`� WebSocket сервер готов к соединениям`);
+      console.log(`�📋 Публичные роуты:`);
       console.log(`   - Admin: ${BASE_URL}/api/admin/* (login/check/register)`);
       console.log(`   - Executer: ${BASE_URL}/api/executer/* (login/check/register/profile)`);
       console.log(`🔒 Защищённые роуты для админов:`);

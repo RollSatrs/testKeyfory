@@ -1,5 +1,6 @@
 import express from 'express';
 import { Op } from 'sequelize';
+import websocketServer from '../../../websocket/websocketServer.js';
 import { Services, Material, ServiceAccess, Executer, ServiceExecution, MaterialReplacement, ExecuterPricing, Order, ExecuterServiceStatus } from '../../../database/dbTables.js';
 import { sequelize } from '../../../database/databaseOn.js';
 import { updateExecuterActivity } from '../../service/ServiceExecuter/executerService.js';
@@ -1108,6 +1109,23 @@ const createServiceExecutionHandler = async (req, res) => {
 
       console.log(`✅ Выполнение услуги создано с ID: ${serviceExecution.id}`);
 
+      // 🔄 УВЕДОМЛЕНИЕ WEBSOCKET О СОЗДАНИИ ЗАКАЗА
+      websocketServer.notifyOrderUpdate(serviceExecution.order_number, {
+        action: 'created',
+        executerId: executer_id,
+        serviceId: service_id,
+        orderNumber: serviceExecution.order_number,
+        serviceName: service.name,
+        executerName: executer.name,
+        status: 'in_progress'
+      });
+
+      // 🔄 УВЕДОМЛЕНИЕ WEBSOCKET ОБ ОБНОВЛЕНИИ ИСПОЛНИТЕЛЯ
+      websocketServer.notifyExecuterUpdate(executer_id, {
+        action: 'order_assigned',
+        activeOrdersCount: 'increased'
+      });
+
       res.json({
         success: true,
         id: serviceExecution.id,
@@ -1630,11 +1648,30 @@ router.post('/bot-cancel-order', async (req, res) => {
       }
 
       // Если есть WebSocket подключения админской панели, уведомляем их
-      // Пока что просто логируем событие для будущей реализации WebSocket
       console.log(`📢 СОБЫТИЕ ДЛЯ АДМИНСКОЙ ПАНЕЛИ:`, eventData);
 
-      // TODO: В будущем здесь будет отправка через WebSocket
-      // websocket.broadcast('admin_panel_update', eventData);
+      // 🔄 УВЕДОМЛЕНИЕ WEBSOCKET О ОТМЕНЕ ЗАКАЗА
+      websocketServer.notifyOrderUpdate(orderNumber, {
+        action: 'cancelled',
+        executerId: executer.id,
+        serviceId: execution.service_id,
+        orderNumber: orderNumber,
+        reason: 'Не выполнил услугу',
+        status: 'cancelled'
+      });
+
+      // 🔄 УВЕДОМЛЕНИЕ WEBSOCKET ОБ ОБНОВЛЕНИИ ИСПОЛНИТЕЛЯ
+      websocketServer.notifyExecuterUpdate(executer.id, {
+        action: 'order_cancelled',
+        activeOrdersCount: 'decreased'
+      });
+
+      // 🔄 УВЕДОМЛЕНИЕ WEBSOCKET О РАЗБЛОКИРОВКЕ УСЛУГИ
+      websocketServer.notifyServiceUpdate(execution.service_id, {
+        action: 'executer_unassigned',
+        executerId: executer.id,
+        executerName: executer.name
+      });
 
     } catch (notifyError) {
       console.warn('⚠️ Ошибка уведомления админской панели:', notifyError.message);
@@ -1853,6 +1890,23 @@ router.post('/bot-complete-order', async (req, res) => {
       await t.commit();
 
       console.log(`✅ Заказ ${orderNumber} завершен через бота с ценой ${finalPrice}₽`);
+
+      // 🔄 УВЕДОМЛЕНИЕ WEBSOCKET О ЗАВЕРШЕНИИ ЗАКАЗА
+      websocketServer.notifyOrderUpdate(orderNumber, {
+        action: 'completed',
+        executerId: executer.id,
+        serviceId: execution.service_id,
+        orderNumber: orderNumber,
+        status: 'completed',
+        price: finalPrice
+      });
+
+      // 🔄 УВЕДОМЛЕНИЕ WEBSOCKET ОБ ОБНОВЛЕНИИ ИСПОЛНИТЕЛЯ
+      websocketServer.notifyExecuterUpdate(executer.id, {
+        action: 'order_completed',
+        activeOrdersCount: 'decreased',
+        earnings: finalPrice
+      });
 
       res.json({
         success: true,

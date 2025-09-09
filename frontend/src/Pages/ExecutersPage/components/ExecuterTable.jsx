@@ -14,6 +14,7 @@ import {
 } from "antd";
 import { apiFetch } from "../../../lib/api";
 import { useNavigate } from "react-router-dom";
+import { useWebSocket } from "../../../lib/useWebSocket";
 
 export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
   const [loading, setLoading] = useState(false);
@@ -24,6 +25,43 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
     telegram_id: "",
     active_services_limit: null,
   });
+
+  // 🔄 WEBSOCKET ДЛЯ ОБНОВЛЕНИЙ В РЕАЛЬНОМ ВРЕМЕНИ
+  const handleWebSocketMessage = (data) => {
+    console.log("📨 WebSocket событие получено в ExecuterTable:", data);
+
+    // Обновляем данные при любом изменении заказов или исполнителей
+    if (
+      data.type === "order_update" ||
+      data.type === "executer_update" ||
+      data.type === "service_assignment" ||
+      data.type === "order_status_change"
+    ) {
+      console.log(
+        "🔄 Автоматическое обновление данных из-за WebSocket события"
+      );
+      fetchExecutors();
+
+      // Показываем уведомление пользователю
+      if (data.type === "order_update") {
+        const action =
+          data.action === "created"
+            ? "создан"
+            : data.action === "completed"
+            ? "завершен"
+            : data.action === "cancelled"
+            ? "отменен"
+            : data.action;
+        message.info(`Заказ ${data.orderNumber} ${action}`, 3);
+      }
+
+      if (data.type === "executer_update") {
+        message.info("Данные исполнителя обновлены", 2);
+      }
+    }
+  };
+
+  const { isConnected } = useWebSocket(handleWebSocketMessage);
 
   // Получение данных из API
   async function fetchExecutors() {
@@ -141,13 +179,13 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
     fetchExecutors();
 
     // 🔄 ПРИНУДИТЕЛЬНОЕ ПЕРИОДИЧЕСКОЕ ОБНОВЛЕНИЕ ДАННЫХ
-    // Обновляем данные каждые 10 секунд для синхронизации с изменениями от бота
+    // Обновляем данные каждые 30 секунд как fallback (основные обновления через WebSocket)
     const autoRefreshInterval = setInterval(() => {
       console.log(
-        `🔄 Автоматическое обновление данных исполнителей (${new Date().toLocaleTimeString()})`
+        `🔄 Fallback обновление данных исполнителей (${new Date().toLocaleTimeString()})`
       );
       fetchExecutors();
-    }, 10000); // 10 секунд
+    }, 30000); // 30 секунд вместо 10
 
     // Очищаем интервал при размонтировании компонента
     return () => {
@@ -508,9 +546,31 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
   return (
     <div className="bg-white rounded-2xl shadow p-6">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-gray-800">
-          Исполнители ({executors.length})
-        </h3>
+        <div className="flex items-center gap-3">
+          <h3 className="text-lg font-semibold text-gray-800">
+            Исполнители ({executors.length})
+          </h3>
+          {/* Индикатор WebSocket соединения */}
+          <div className="flex items-center gap-1">
+            <div
+              className={`w-2 h-2 rounded-full ${
+                isConnected ? "bg-green-500" : "bg-red-500"
+              }`}
+              title={
+                isConnected
+                  ? "WebSocket подключен - обновления в реальном времени"
+                  : "WebSocket отключен"
+              }
+            />
+            <span
+              className={`text-xs ${
+                isConnected ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {isConnected ? "В реальном времени" : "Без обновлений"}
+            </span>
+          </div>
+        </div>
         <Button
           icon={<FaSyncAlt />}
           onClick={() => {
