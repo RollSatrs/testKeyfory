@@ -158,15 +158,18 @@ const formatPrice = (value) => {
 // Универсальная функция расчета общего заработка исполнителя
 const calculateTotalEarnings = async (executerId) => {
   try {
-    // Получаем выполненные заказы
+    // Получаем выполненные заказы (API возвращает и completed, и cancelled)
     const completedResponse = await fetchAsAxios('GET', `/api/executers-bot/completed-orders/${executerId}`);
-    const completedOrdersData = completedResponse.data || [];
+    const allOrdersData = completedResponse.data || [];
+
+    // 🎯 ФИЛЬТРУЕМ ТОЛЬКО ВЫПОЛНЕННЫЕ ЗАКАЗЫ (НЕ ОТМЕНЕННЫЕ)
+    const completedOrdersData = allOrdersData.filter(order => order.status === 'completed');
 
     // Получаем индивидуальные цены исполнителя
     const servicesResponse = await fetchAsAxios('GET', `/api/executers-bot/services/${executerId}`);
     const executerServices = servicesResponse.data || [];
 
-    // Рассчитываем общий заработок
+    // Рассчитываем общий заработок ТОЛЬКО с выполненных заказов
     const totalEarnings = completedOrdersData.reduce((sum, order) => {
       const executerService = executerServices.find(es => es.id === order.service_id);
 
@@ -180,7 +183,7 @@ const calculateTotalEarnings = async (executerId) => {
       return sum + orderPrice;
     }, 0);
 
-    console.log(`💰 Calculated total earnings: ${totalEarnings}₽ from ${completedOrdersData.length} orders (executerId: ${executerId})`);
+    console.log(`💰 Calculated total earnings: ${totalEarnings}₽ from ${completedOrdersData.length} COMPLETED orders (total fetched: ${allOrdersData.length}, executerId: ${executerId})`);
     return totalEarnings;
   } catch (error) {
     console.error('❌ Ошибка расчета общего заработка:', error.message);
@@ -2632,7 +2635,7 @@ bot.action(/^cancel_order_(.+)$/, async (ctx) => {
         { parse_mode: 'Markdown' }
       );
 
-      await logActivity(session.executerId, 'cancel_order', `Не выполнил услугу #${orderNumber}. Материалы возвращены.`, orderNumber);
+      await logActivity(session.executerId, 'cancel_order', `Не выполнил услугу #${orderNumber}. Отвязан от услуги. Материалы возвращены.`, orderNumber);
 
       // Показываем обновленный список активных услуг
       await showActiveServices(ctx);

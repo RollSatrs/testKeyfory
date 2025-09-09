@@ -396,10 +396,14 @@ export async function permanentDeleteService(id) {
                 throw new Error('Service not found');
             }
 
-            // Удаляем связанные данные
+            // Удаляем связанные данные (КРОМЕ ExecuterEarnings - заработки должны сохраняться!)
             await Material.destroy({ where: { service_id: id }, transaction: t });
             await ServiceAccess.destroy({ where: { service_id: id }, transaction: t });
             await ExecuterPricing.destroy({ where: { service_id: id }, transaction: t });
+
+            // ВАЖНО: НЕ удаляем ExecuterEarnings - заработки исполнителей должны сохраняться!
+            // await ExecuterEarnings.destroy({ where: { service_id: id }, transaction: t }); // <- НЕ ДЕЛАЕМ ЭТО!
+            console.log(`💰 Заработки исполнителей за услугу "${service.name}" сохранены при удалении`);
 
             // Физически удаляем услугу
             await service.destroy({ transaction: t });

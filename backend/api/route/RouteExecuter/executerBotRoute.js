@@ -1494,28 +1494,152 @@ router.post('/bot-cancel-order', async (req, res) => {
       cancel_reason: reason
     });
 
-    // 🆕 ПРОВЕРЯЕМ И ОБНОВЛЯЕМ СТАТУС УСЛУГИ ПРИ ОТМЕНЕ
-    // Если у исполнителя больше нет активных заказов по этой услуге, переводим статус в "inactive"
-    const remainingActiveOrders = await ServiceExecution.count({
+    // 🗑️ ПОЛНОЕ ОТВЯЗЫВАНИЕ ИСПОЛНИТЕЛЯ ОТ УСЛУГИ
+    console.log(`🗑️ Отвязываем исполнителя ${executer.id} от услуги ${execution.service_id}`);
+
+    // 1. Удаляем запись из ExecuterServiceStatus (статус услуги для исполнителя)
+    const deletedStatus = await ExecuterServiceStatus.destroy({
+      where: {
+        executer_id: executer.id,
+        service_id: execution.service_id
+      }
+    });
+    console.log(`🔄 Удалено записей статуса услуги: ${deletedStatus}`);
+
+    // 2. Удаляем запись из ServiceAccess (доступ исполнителя к услуге)
+    const { ServiceAccess } = await import('../../../database/dbTables.js');
+    const deletedAccess = await ServiceAccess.destroy({
+      where: {
+        executer_id: executer.id,
+        service_id: execution.service_id
+      }
+    });
+    console.log(`🔄 Удалено записей доступа к услуге: ${deletedAccess}`);
+
+    // 3. 🆕 ОЧИЩАЕМ ПРЯМОЕ НАЗНАЧЕНИЕ ИСПОЛНИТЕЛЯ В ТАБЛИЦЕ SERVICES
+    const { Services } = await import('../../../database/dbTables.js');
+    const updatedServices = await Services.update(
+      { executer_id: null }, // Убираем прямое назначение
+      {
+        where: {
+          id: execution.service_id,
+          executer_id: executer.id
+        }
+      }
+    );
+    console.log(`🔄 Очищено прямых назначений услуги: ${updatedServices[0]}`);
+
+    // 4. 🆕 ОТМЕНЯЕМ АКТИВНУЮ УСЛУГУ В ТАБЛИЦЕ EXECUTER_ACTIVE_SERVICES
+    const { ExecuterActiveServices } = await import('../../../database/dbTables.js');
+    const updatedActiveServices = await ExecuterActiveServices.update(
+      {
+        status: 'cancelled',
+        updated_at: new Date()
+      },
+      {
+        where: {
+          executer_id: executer.id,
+          order_number: orderNumber,
+          status: 'active'
+        }
+      }
+    );
+    console.log(`🔄 Отменено активных услуг в ExecuterActiveServices: ${updatedActiveServices[0]}`);
+
+    // 5. Отменяем все остальные активные заказы этого исполнителя по данной услуге
+    const otherActiveOrders = await ServiceExecution.findAll({
       where: {
         executer_id: executer.id,
         service_id: execution.service_id,
-        status: 'in_progress'
+        status: {
+          [Op.in]: ['pending', 'in_progress', 'active']
+        },
+        id: { [Op.ne]: execution.id } // Исключаем текущий заказ
       }
     });
 
-    if (remainingActiveOrders === 0) {
-      await ExecuterServiceStatus.upsert({
-        executer_id: executer.id,
-        service_id: execution.service_id,
-        status: 'inactive',
-        updated_at: new Date()
+    for (const otherOrder of otherActiveOrders) {
+      await otherOrder.update({
+        status: 'cancelled',
+        cancelled_at: new Date(),
+        cancel_reason: 'Отменен при отвязке исполнителя от услуги'
       });
 
-      console.log(`🔄 Статус услуги ${execution.service_id} для исполнителя ${executer.id} обновлен на "inactive" (нет активных заказов)`);
+      // Отменяем соответствующую запись в ExecuterActiveServices
+      await ExecuterActiveServices.update(
+        {
+          status: 'cancelled',
+          updated_at: new Date()
+        },
+        {
+          where: {
+            executer_id: executer.id,
+            order_number: otherOrder.order_number,
+            status: 'active'
+          }
+        }
+      );
+
+      // Возвращаем материалы других заказов
+      await Material.update({
+        status: MATERIAL_STATUS.AVAILABLE,
+        order_number: null,
+        executer_id: null,
+        executer_name: null
+      }, {
+        where: { order_number: otherOrder.order_number }
+      });
     }
 
+    console.log(`�️ Отменено дополнительных заказов: ${otherActiveOrders.length}`);
+    console.log(`✅ Исполнитель ${executer.name} (${executer.telegram_id}) полностью отвязан от услуги ${execution.service_id}`);
+
     console.log(`✅ Заказ ${orderNumber} отменен через бота`);
+
+    // 🔄 УВЕДОМЛЯЕМ АДМИНСКУЮ ПАНЕЛЬ ОБ ИЗМЕНЕНИЯХ
+    try {
+      // Создаем событие для обновления админской панели
+      const eventData = {
+        type: 'executer_service_unassigned',
+        executer_id: executer.id,
+        service_id: execution.service_id,
+        order_number: orderNumber,
+        timestamp: new Date()
+      };
+
+      // Принудительно обновляем кэш админской панели
+      const fetch = (await import('node-fetch')).default;
+      const API_BASE_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+
+      try {
+        const refreshResponse = await fetch(`${API_BASE_URL}/api/admin/executers/refresh-cache`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(eventData)
+        });
+
+        if (refreshResponse.ok) {
+          console.log(`✅ Кэш админской панели успешно обновлен после отмены заказа ${orderNumber}`);
+        } else {
+          console.warn(`⚠️ Не удалось обновить кэш админской панели: ${refreshResponse.status}`);
+        }
+      } catch (cacheError) {
+        console.warn('⚠️ Ошибка обновления кэша админской панели:', cacheError.message);
+      }
+
+      // Если есть WebSocket подключения админской панели, уведомляем их
+      // Пока что просто логируем событие для будущей реализации WebSocket
+      console.log(`📢 СОБЫТИЕ ДЛЯ АДМИНСКОЙ ПАНЕЛИ:`, eventData);
+
+      // TODO: В будущем здесь будет отправка через WebSocket
+      // websocket.broadcast('admin_panel_update', eventData);
+
+    } catch (notifyError) {
+      console.warn('⚠️ Ошибка уведомления админской панели:', notifyError.message);
+      // Не прерываем основной процесс, если уведомление не удалось
+    }
 
     res.json({
       success: true,
@@ -1750,20 +1874,18 @@ router.post('/bot-complete-order', async (req, res) => {
   }
 });
 
-// GET /api/executers/completed-orders/:executerId - Получить выполненные и отмененные заказы
+// GET /api/executers/completed-orders/:executerId - Получить ТОЛЬКО выполненные заказы (НЕ отмененные)
 router.get('/completed-orders/:executerId', async (req, res) => {
   try {
     const { executerId } = req.params;
 
-    console.log(`\n✅ === API: ПОЛУЧЕНИЕ ВЫПОЛНЕННЫХ И ОТМЕНЕННЫХ ЗАКАЗОВ ===`);
+    console.log(`\n✅ === API: ПОЛУЧЕНИЕ ВЫПОЛНЕННЫХ ЗАКАЗОВ ===`);
     console.log(`👤 Executer ID: ${executerId}`);
 
     const executions = await ServiceExecution.findAll({
       where: {
         executer_id: executerId,
-        status: {
-          [Op.in]: ['completed', 'cancelled']
-        }
+        status: 'completed' // Только выполненные заказы блокируют повторное назначение
       },
       include: [{
         model: Services,
@@ -1784,7 +1906,7 @@ router.get('/completed-orders/:executerId', async (req, res) => {
       return executionData;
     });
 
-    console.log(`✅ Найдено заказов в истории: ${executions.length} (выполненные и отмененные, с индивидуальными ценами)`);
+    console.log(`✅ Найдено заказов в истории: ${executions.length} (только выполненные, с индивидуальными ценами)`);
 
     res.json(ordersWithPrices);
   } catch (error) {

@@ -1,4 +1,4 @@
-import { FaEdit, FaTrash, FaBan, FaCheck } from "react-icons/fa";
+import { FaEdit, FaTrash, FaBan, FaCheck, FaSyncAlt } from "react-icons/fa";
 import { useEffect, useState } from "react";
 import {
   Table,
@@ -39,12 +39,30 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
         "записей"
       );
 
-      // Логируем статусы всех исполнителей
+      // 🔍 ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ НАЗНАЧЕННЫХ УСЛУГ
       if (Array.isArray(data)) {
         data.forEach((executor) => {
           console.log(
-            `👤 Исполнитель ${executor.id} (${executor.name}): статус = ${executor.status}`
+            `👤 Исполнитель ${executor.id} (${executor.name}): статус = ${
+              executor.status
+            }, назначенных услуг = ${executor.assigned_services?.length || 0}`
           );
+
+          // Логируем все назначенные услуги для отладки
+          if (
+            executor.assigned_services &&
+            executor.assigned_services.length > 0
+          ) {
+            executor.assigned_services.forEach((service, index) => {
+              console.log(
+                `  📋 Услуга ${index + 1}: ID=${
+                  service.service_id
+                }, Название="${service.service_name}"`
+              );
+            });
+          } else {
+            console.log(`  📭 У исполнителя нет назначенных услуг`);
+          }
         });
       }
 
@@ -121,6 +139,23 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
 
   useEffect(() => {
     fetchExecutors();
+
+    // 🔄 ПРИНУДИТЕЛЬНОЕ ПЕРИОДИЧЕСКОЕ ОБНОВЛЕНИЕ ДАННЫХ
+    // Обновляем данные каждые 10 секунд для синхронизации с изменениями от бота
+    const autoRefreshInterval = setInterval(() => {
+      console.log(
+        `🔄 Автоматическое обновление данных исполнителей (${new Date().toLocaleTimeString()})`
+      );
+      fetchExecutors();
+    }, 10000); // 10 секунд
+
+    // Очищаем интервал при размонтировании компонента
+    return () => {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        console.log("🛑 Автоматическое обновление данных остановлено");
+      }
+    };
     // eslint-disable-next-line
   }, [refresh]); // <--- добавьте refresh сюда
 
@@ -472,13 +507,34 @@ export function ExecuterTable({ onChanged, setExecutors, executors, refresh }) {
 
   return (
     <div className="bg-white rounded-2xl shadow p-6">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-gray-800">
+          Исполнители ({executors.length})
+        </h3>
+        <Button
+          icon={<FaSyncAlt />}
+          onClick={() => {
+            console.log("🔄 Принудительное обновление данных исполнителей");
+            fetchExecutors();
+          }}
+          loading={loading}
+          size="small"
+          type="primary"
+          title="Обновить данные исполнителей"
+        >
+          Обновить
+        </Button>
+      </div>
+
       {(() => {
         console.log(`🗂️ Рендерим таблицу с ${executors.length} исполнителями:`);
         executors.forEach((executor, index) => {
           console.log(
             `  ${index + 1}. ID: ${executor.id}, Имя: ${
               executor.name
-            }, Статус: ${executor.status}`
+            }, Статус: ${executor.status}, Услуг: ${
+              executor.assigned_services?.length || 0
+            }`
           );
         });
         return null;

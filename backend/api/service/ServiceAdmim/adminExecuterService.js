@@ -68,7 +68,7 @@ export async function createLog(logData) {
 
 export async function getAllExecuters() {
     try {
-        console.log(`👥 Запрос всех исполнителей из базы данных...`);
+        console.log(`👥 Запрос всех исполнителей из базы данных... (время: ${new Date().toLocaleTimeString()})`);
 
         const executers = await Executer.findAll({
             order: [['create_date_executer', 'DESC']] // исправлено поле
@@ -140,7 +140,17 @@ export async function getAllExecuters() {
                 attributes: ['id', 'type_key', 'status', 'contents']
             });
 
+            // 🔍 ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ДЛЯ ОТЛАДКИ
             console.log(`👤 Исполнитель ${executer.id}: ServiceAccess: ${accessServices.length}, Direct: ${directServices.length}, Total: ${uniqueServices.length}, Materials: ${materials.length}`);
+
+            if (uniqueServices.length > 0) {
+                console.log(`  📋 Назначенные услуги исполнителя ${executer.id}:`);
+                uniqueServices.forEach((service, index) => {
+                    console.log(`    ${index + 1}. ID=${service.service_id}, "${service.service_name}" (${service.assignment_type})`);
+                });
+            } else {
+                console.log(`  📭 У исполнителя ${executer.id} нет назначенных услуг`);
+            }
 
             result.push({
                 ...executer.dataValues,

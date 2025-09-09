@@ -21,11 +21,41 @@ export const executerRoute = express.Router();
 // GET /executers/get - получить всех исполнителей
 executerRoute.get('/get', async (req, res) => {
     try {
+        console.log(`🔄 API: Запрос всех исполнителей (время: ${new Date().toLocaleTimeString()})`);
+
         const executers = await getAllExecuters();
+
+        console.log(`✅ API: Возвращаем ${executers.length} исполнителей с актуальными данными`);
+
         res.json(executers);
     } catch (error) {
         console.error('Error fetching executers:', error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /executers/refresh-cache - принудительно обновить кэш данных исполнителей
+executerRoute.post('/refresh-cache', async (req, res) => {
+    try {
+        console.log(`🔄 API: Принудительное обновление кэша исполнителей`);
+
+        // Получаем свежие данные из базы
+        const executers = await getAllExecuters();
+
+        console.log(`✅ API: Кэш обновлен, ${executers.length} исполнителей`);
+
+        res.json({
+            success: true,
+            message: 'Кэш исполнителей обновлен',
+            count: executers.length,
+            timestamp: new Date()
+        });
+    } catch (error) {
+        console.error('Error refreshing executers cache:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 });
 
