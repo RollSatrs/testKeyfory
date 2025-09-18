@@ -481,7 +481,7 @@ adminRoute.post('/auto-replace-material', async (req, res) => {
       const executer = await Executer.findByPk(executerId);
 
       if (executer && executer.telegram_id) {
-        const botModule = await import('../../../../bot/executerBot.js');
+        const botModule = await import('../../../bot/executerBot.js');
 
         if (botModule.notifyMaterialReplacement) {
           await botModule.notifyMaterialReplacement({
